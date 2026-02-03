@@ -10,60 +10,142 @@ AI-powered audio compliance tool for a direct-sales company's marketing guidelin
 
 ## Architecture
 
-**POC (Proof of Concept)** - Current phase, CLI-based pipeline:
+The project has three main components:
 
 ```
-poc/
-├── analyze.py      # Main CLI entry point
-├── transcriber.py  # Whisper transcription (faster-whisper, Apple Silicon optimized)
-├── compliance.py   # GPT-4o compliance analysis with chunked processing
-├── bsm_rules.txt   # System prompt containing compliance rules
-└── .env            # API keys (not committed)
+ai-audio-editing/
+├── poc/                    # Original CLI-based proof of concept
+│   ├── analyze.py          # Main CLI entry point
+│   ├── transcriber.py      # Whisper transcription (faster-whisper)
+│   ├── compliance.py       # GPT-4o compliance analysis
+│   ├── bsm_rules.txt       # compliance rules
+│   └── .env                # API keys (not committed)
+├── backend/                # FastAPI backend
+│   ├── app/
+│   │   ├── main.py         # FastAPI entry + CORS
+│   │   ├── database.py     # SQLite setup
+│   │   ├── models.py       # SQLAlchemy: Job, Violation
+│   │   ├── schemas.py      # Pydantic request/response
+│   │   ├── routes/
+│   │   │   ├── jobs.py     # Upload, status, list
+│   │   │   ├── violations.py # List, update status
+│   │   │   └── audio.py    # Stream, waveform, export
+│   │   └── services/
+│   │       ├── processor.py    # Wraps POC transcriber + compliance
+│   │       └── audio_editor.py # pydub cut/mute operations
+│   ├── uploads/            # Uploaded audio files
+│   ├── exports/            # Edited audio output
+│   └── requirements.txt
+├── frontend/               # Next.js 14 frontend
+│   ├── src/
+│   │   ├── app/
+│   │   │   ├── page.tsx           # Upload page
+│   │   │   └── jobs/[id]/page.tsx # Review interface
+│   │   ├── components/
+│   │   │   ├── Waveform.tsx       # wavesurfer + markers
+│   │   │   ├── ViolationList.tsx  # Sidebar list
+│   │   │   └── ViolationCard.tsx  # Detail + actions
+│   │   └── lib/
+│   │       └── api.ts             # API client
+│   └── package.json
+└── tests/                  # Test data and transcripts
 ```
 
 **Data Flow:**
-1. Audio file → faster-whisper → transcript with word-level timestamps
-2. Transcript → GPT-4o (with compliance rules) → JSON violations with timestamps
-3. Violations mapped back to precise audio positions using word timing data
-
-**Key Implementation Details:**
-- `Transcriber` class uses faster-whisper with int8 quantization for M4 Mac performance
-- `ComplianceAnalyzer` uses **chunked analysis with sliding window** for long transcripts (>100 segments)
-  - Default chunk size: 50 segments (~2-3 minutes of audio)
-  - Default overlap: 10 segments between chunks (catches violations at boundaries)
-  - Aggressive "forensic auditor" prompt forces LLM to find ALL violations, not just the first
-  - Violations deduplicated (by rule + timestamp proximity) and sorted at the end
-- Transcript format: `[0.0s - 2.2s] Text content here` (one segment per line)
-- `load_transcript()` function can parse saved transcript files back into `TranscriptResult` objects
+1. Upload audio via frontend → FastAPI saves to `uploads/`
+2. Backend calls POC transcriber (faster-whisper) → transcript with timestamps
+3. Backend calls POC compliance analyzer (GPT-4o) → violations with timestamps
+4. Violations stored in SQLite, returned to frontend
+5. User reviews violations on waveform, accepts/rejects each
+6. Export generates edited audio with accepted violations cut/muted
 
 ## Commands
 
 ```bash
-# Setup (from project root)
+# Backend setup
+cd backend
 python3 -m venv .venv
+source .venv/bin/activate
+pip install -r requirements.txt
+
+# Start backend (port 8000)
+uvicorn app.main:app --reload
+
+# Frontend setup
+cd frontend
+npm install
+
+# Start frontend (port 3000)
+npm run dev
+```
+
+**Full app**: Run both backend and frontend, then open http://localhost:3000
+
+**POC CLI** (still available):
+```bash
+# Setup (from project root)
 source .venv/bin/activate
 pip install -r poc/requirements.txt
 
-# Full analysis (transcription + compliance)
+# Full analysis
 python poc/analyze.py audio.mp3
-python poc/analyze.py audio.mp3 --model medium     # Faster transcription, less accurate
-python poc/analyze.py audio.mp3 --language es      # Force Spanish detection
 
-# Skip transcription - use existing transcript (faster iteration on compliance rules)
+# Skip transcription - use existing transcript
 python poc/analyze.py --transcript tests/transcripts/large-v3/client_seminar_transcript.txt
-python poc/analyze.py -T transcript.txt --chunk-size 30   # Smaller chunks = more thorough
-python poc/analyze.py -T transcript.txt --no-overlap      # Faster but may miss boundary violations
-
-# Transcription only (no compliance analysis)
-python poc/analyze.py audio.mp3 --transcript-only
-
-# Custom compliance rules
-python poc/analyze.py audio.mp3 --rules custom_rules.txt
-
-# Test individual modules
-python poc/transcriber.py audio.mp3
-python poc/compliance.py audio.mp3
 ```
+
+## API Endpoints
+
+| Method | Endpoint | Purpose |
+|--------|----------|---------|
+| POST | `/api/jobs` | Upload audio, start processing |
+| GET | `/api/jobs` | List all jobs |
+| GET | `/api/jobs/{id}` | Job details + violation count |
+| GET | `/api/jobs/{id}/violations` | List violations for job |
+| PATCH | `/api/jobs/{id}/violations/{vid}` | Update: accepted/rejected |
+| GET | `/api/jobs/{id}/audio` | Stream original audio |
+| GET | `/api/jobs/{id}/audio/waveform` | Waveform peaks JSON |
+| POST | `/api/jobs/{id}/export` | Generate edited audio |
+| GET | `/api/jobs/{id}/export/download` | Download edited file |
+
+## Database Schema (SQLite)
+
+```sql
+-- jobs table
+CREATE TABLE jobs (
+    id TEXT PRIMARY KEY,
+    filename TEXT NOT NULL,
+    status TEXT DEFAULT 'pending',  -- pending, processing, completed, failed
+    duration_seconds REAL,
+    language TEXT,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    error_message TEXT,
+    waveform_data TEXT  -- JSON cached peaks
+);
+
+-- violations table
+CREATE TABLE violations (
+    id TEXT PRIMARY KEY,
+    job_id TEXT REFERENCES jobs(id),
+    text TEXT NOT NULL,
+    start_time REAL NOT NULL,
+    end_time REAL NOT NULL,
+    rule_violated TEXT,
+    severity TEXT,  -- high, medium, low
+    reasoning TEXT,
+    status TEXT DEFAULT 'pending',  -- pending, accepted, rejected
+    edit_action TEXT DEFAULT 'cut'  -- cut, mute
+);
+```
+
+## Environment
+
+Requires `.env` file in `poc/` directory:
+```
+OPENAI_API_KEY=your_key_here
+```
+
+System dependency: `brew install ffmpeg`
 
 ## Test Data
 
@@ -77,33 +159,22 @@ tests/
 └── scripts/
 ```
 
-Use `--transcript` flag to iterate on compliance rules without re-running slow transcription.
+## Key Implementation Details
 
-## Environment
-
-Requires `.env` file in `poc/` directory:
-```
-OPENAI_API_KEY=your_key_here
-```
-
-System dependency: `brew install ffmpeg`
-
-## Exit Codes
-
-- `0`: No violations found
-- `1`: Some violations found (medium/low severity)
-- `2`: High severity violations found
-
-## Future Phases
-
-- **Phase 2**: FastAPI backend with job queue, audio editing (pydub)
-- **Phase 3**: Next.js frontend with wavesurfer.js waveform visualization
-- **Phase 4**: Deployment (Vercel frontend, Railway/Render backend)
+- **Transcriber**: faster-whisper with int8 quantization for M4 Mac performance
+- **ComplianceAnalyzer**: Chunked analysis with sliding window for long transcripts (>100 segments)
+  - Default: 50 segments per chunk, 10 segment overlap
+  - Violations deduplicated by rule + timestamp proximity
+- **AudioEditor**: pydub for cut/mute operations with crossfade
+- **Waveform**: wavesurfer.js with regions plugin for violation markers
+- **Processing**: Synchronous for MVP (single-user local use)
 
 ## Common Issues
 
-**"Unexpected response format" from GPT-4o**: The compliance analyzer handles various JSON response formats (array, object with `violations` key, single violation object). If you see this, the LLM returned something unexpected - check the raw response.
+**"Unexpected response format" from GPT-4o**: Check the raw response - the compliance analyzer handles various JSON formats but may encounter unexpected output.
 
-**Slow transcription**: Use `--model medium` or `--model small` for faster (but less accurate) transcription. Or use `--transcript` to skip transcription entirely when iterating on compliance rules.
+**Slow transcription**: Use `--model medium` or `--model small` for faster (less accurate) transcription.
 
-**Chunk size tuning**: Default is 50 segments with 10-segment overlap. Use `--chunk-size 30` for more thorough analysis (more API calls, higher cost). Use `--no-overlap` for faster analysis if boundary violations aren't a concern. Use `--overlap 20` to increase overlap for very critical content.
+**CORS errors**: Ensure backend is running on port 8000 and frontend on port 3000.
+
+**Database issues**: Delete `backend/audio_compliance.db` to reset the database.

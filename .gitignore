@@ -67,4 +67,20 @@ htmlcov/
 # Build and output files
 dist/
 build/
-*.json
+
+# SQLite database
+*.db
+
+# Backend uploads/exports (keep .gitkeep)
+backend/uploads/*
+!backend/uploads/.gitkeep
+backend/exports/*
+!backend/exports/.gitkeep
+
+# Node
+node_modules/
+.next/
+out/
+
+# JSON output files (not package.json etc)
+*_violations.json
