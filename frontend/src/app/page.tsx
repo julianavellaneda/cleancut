@@ -4,14 +4,12 @@ import { useState, useCallback, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Progress } from "@/components/ui/progress";
 import { api, JobListItem } from "@/lib/api";
 
 export default function UploadPage() {
   const router = useRouter();
   const [isDragging, setIsDragging] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
-  const [uploadProgress, setUploadProgress] = useState(0);
   const [error, setError] = useState<string | null>(null);
   const [jobs, setJobs] = useState<JobListItem[]>([]);
   const [loadingJobs, setLoadingJobs] = useState(false);
@@ -70,34 +68,25 @@ export default function UploadPage() {
       "audio/flac",
       "audio/ogg",
       "audio/webm",
+      "audio/x-aiff",
+      "audio/aiff",
     ];
 
-    if (!allowedTypes.includes(file.type) && !file.name.match(/\.(mp3|wav|m4a|flac|ogg|webm)$/i)) {
-      setError("Please upload an audio file (MP3, WAV, M4A, FLAC, OGG, or WEBM)");
+    if (!allowedTypes.includes(file.type) && !file.name.match(/\.(mp3|wav|m4a|flac|ogg|webm|aif|aiff)$/i)) {
+      setError("Please upload an audio file (MP3, WAV, M4A, FLAC, OGG, WEBM, or AIFF)");
       return;
     }
 
     setError(null);
     setIsUploading(true);
-    setUploadProgress(10);
-
-    // Simulate progress while waiting (actual upload is synchronous)
-    const progressInterval = setInterval(() => {
-      setUploadProgress((prev) => Math.min(prev + 5, 90));
-    }, 2000);
 
     try {
       const job = await api.uploadAudio(file);
-      clearInterval(progressInterval);
-      setUploadProgress(100);
-
-      // Redirect to review page
+      // Redirect to job page immediately - processing runs in background
       router.push(`/jobs/${job.id}`);
     } catch (err) {
-      clearInterval(progressInterval);
       setError(err instanceof Error ? err.message : "Upload failed");
       setIsUploading(false);
-      setUploadProgress(0);
     }
   }
 
@@ -145,7 +134,7 @@ export default function UploadPage() {
               <input
                 id="file-input"
                 type="file"
-                accept="audio/*,.mp3,.wav,.m4a,.flac,.ogg,.webm"
+                accept="audio/*,.mp3,.wav,.m4a,.flac,.ogg,.webm,.aif,.aiff"
                 onChange={handleFileInput}
                 className="hidden"
                 disabled={isUploading}
@@ -153,10 +142,9 @@ export default function UploadPage() {
 
               {isUploading ? (
                 <div className="space-y-4">
-                  <div className="text-lg font-medium">Processing audio...</div>
-                  <Progress value={uploadProgress} className="w-64 mx-auto" />
+                  <div className="text-lg font-medium">Uploading...</div>
                   <p className="text-sm text-muted-foreground">
-                    This may take a few minutes for long recordings
+                    Saving file, please wait
                   </p>
                 </div>
               ) : (
@@ -169,7 +157,7 @@ export default function UploadPage() {
                     or click to browse
                   </p>
                   <p className="text-sm text-muted-foreground">
-                    Supports MP3, WAV, M4A, FLAC, OGG, WEBM
+                    Supports MP3, WAV, M4A, FLAC, OGG, WEBM, AIFF
                   </p>
                 </div>
               )}
@@ -199,7 +187,7 @@ export default function UploadPage() {
                   >
                     <div className="flex items-center gap-3">
                       <span className="text-2xl">
-                        {job.status === "completed" ? "✅" : job.status === "failed" ? "❌" : "⏳"}
+                        {job.status === "completed" ? "✅" : job.status === "failed" ? "❌" : job.status === "transcribing" || job.status === "analyzing" ? "🔄" : "⏳"}
                       </span>
                       <div>
                         <div className="font-medium">{job.filename}</div>

@@ -23,7 +23,7 @@ class AudioProcessor:
     Wraps POC transcription and compliance analysis for the backend.
     """
 
-    def __init__(self, model_size: str = "large-v3"):
+    def __init__(self, model_size: str = "medium"):
         self.model_size = model_size
         self._transcriber = None
         self._analyzer = None
@@ -92,7 +92,7 @@ class AudioProcessor:
 _processor: AudioProcessor | None = None
 
 
-def get_processor(model_size: str = "large-v3") -> AudioProcessor:
+def get_processor(model_size: str = "medium") -> AudioProcessor:
     """Get or create the global processor instance."""
     global _processor
     if _processor is None or _processor.model_size != model_size:

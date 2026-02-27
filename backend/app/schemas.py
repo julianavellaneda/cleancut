@@ -44,7 +44,7 @@ class JobCreate(JobBase):
 
 class JobResponse(JobBase):
     id: str
-    status: str
+    status: str  # pending, transcribing, analyzing, completed, failed
     duration_seconds: float | None = None
     language: str | None = None
     created_at: datetime
@@ -78,3 +78,12 @@ class ExportResponse(BaseModel):
     job_id: str
     export_filename: str
     message: str
+
+
+class AdminStats(BaseModel):
+    total_jobs: int
+    total_violations: int
+    jobs_by_status: dict[str, int]
+    total_uploads_size_mb: float
+    total_exports_size_mb: float
+    files_count: int

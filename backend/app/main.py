@@ -6,7 +6,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from .database import init_db
-from .routes import jobs, violations, audio
+from .routes import jobs, violations, audio, admin
 
 app = FastAPI(
     title="Audio Compliance API",
@@ -27,6 +27,7 @@ app.add_middleware(
 app.include_router(jobs.router, prefix="/api/jobs", tags=["jobs"])
 app.include_router(violations.router, prefix="/api/jobs", tags=["violations"])
 app.include_router(audio.router, prefix="/api/jobs", tags=["audio"])
+app.include_router(admin.router, prefix="/api/admin", tags=["admin"])
 
 
 @app.on_event("startup")

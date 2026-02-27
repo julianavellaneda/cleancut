@@ -3,14 +3,16 @@ Job routes - upload, list, and status endpoints.
 """
 
 import shutil
+import threading
 import uuid
 from pathlib import Path
 from typing import List
 
 from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
 from sqlalchemy.orm import Session
+from pydub import AudioSegment
 
-from ..database import get_db
+from ..database import get_db, SessionLocal
 from ..models import Job, Violation
 from ..schemas import JobResponse, JobListResponse
 from ..services.processor import get_processor
@@ -28,11 +30,12 @@ async def create_job(
     db: Session = Depends(get_db)
 ):
     """
-    Upload audio file and start processing.
-    Processing is synchronous for MVP (single-user local use).
+    Upload audio file and start background processing.
+    Returns immediately after saving the file; processing runs in a background thread.
+    Poll GET /api/jobs/{id} to track progress (transcribing → analyzing → completed).
     """
     # Validate file type
-    allowed_extensions = {".mp3", ".wav", ".m4a", ".flac", ".ogg", ".webm"}
+    allowed_extensions = {".mp3", ".wav", ".m4a", ".flac", ".ogg", ".webm", ".aif", ".aiff"}
     file_ext = Path(file.filename).suffix.lower()
     if file_ext not in allowed_extensions:
         raise HTTPException(
@@ -45,7 +48,7 @@ async def create_job(
     job = Job(
         id=job_id,
         filename=file.filename,
-        status="processing"
+        status="pending"
     )
     db.add(job)
     db.commit()
@@ -61,17 +64,63 @@ async def create_job(
         db.commit()
         raise HTTPException(status_code=500, detail=str(e))
 
-    # Process audio (synchronous for MVP)
-    try:
-        processor = get_processor()
-        transcript, analysis = processor.process_audio(str(file_path))
+    # Spawn background thread for processing
+    thread = threading.Thread(
+        target=_process_job_background,
+        args=(job_id, str(file_path)),
+        daemon=True
+    )
+    thread.start()
 
-        # Update job with results
+    # Return immediately with pending status
+    return _build_job_response(job, db)
+
+
+def _process_job_background(job_id: str, file_path: str):
+    """Run transcription and compliance analysis in a background thread."""
+    db = SessionLocal()
+    try:
+        job = db.query(Job).filter(Job.id == job_id).first()
+        if not job:
+            return
+
+        file_path_obj = Path(file_path)
+        file_ext = file_path_obj.suffix.lower()
+        file_path_to_use = file_path
+
+        # Step 0: Convert AIFF to MP3 if needed
+        if file_ext in [".aif", ".aiff"]:
+            job.status = "converting"
+            db.commit()
+            
+            try:
+                mp3_path = file_path_obj.with_suffix(".mp3")
+                audio = AudioSegment.from_file(file_path, format="aiff")
+                audio.export(mp3_path, format="mp3")
+                file_path_to_use = str(mp3_path)
+                
+                # Optionally delete original AIFF to save space
+                file_path_obj.unlink()
+            except Exception as e:
+                raise Exception(f"AIFF to MP3 conversion failed: {str(e)}")
+
+        # Step 1: Transcribing
+        job.status = "transcribing"
+        db.commit()
+
+        processor = get_processor()
+        transcript = processor.transcribe(file_path_to_use)
+
         job.duration_seconds = transcript.duration
         job.language = transcript.language
-        job.status = "completed"
 
-        # Create violation records
+        # Step 2: Analyzing
+        job.status = "analyzing"
+        db.commit()
+
+        analysis = processor.analyze(transcript)
+
+        # Step 3: Save results
         for v in analysis.violations:
             violation = Violation(
                 id=str(uuid.uuid4()),
@@ -86,16 +135,15 @@ async def create_job(
             )
             db.add(violation)
 
+        job.status = "completed"
         db.commit()
 
     except Exception as e:
         job.status = "failed"
         job.error_message = str(e)
         db.commit()
-        raise HTTPException(status_code=500, detail=f"Processing failed: {str(e)}")
-
-    # Return response with violation counts
-    return _build_job_response(job, db)
+    finally:
+        db.close()
 
 
 @router.get("", response_model=List[JobListResponse])
@@ -132,7 +180,7 @@ def delete_job(job_id: str, db: Session = Depends(get_db)):
         raise HTTPException(status_code=404, detail="Job not found")
 
     # Delete uploaded file
-    for ext in [".mp3", ".wav", ".m4a", ".flac", ".ogg", ".webm"]:
+    for ext in [".mp3", ".wav", ".m4a", ".flac", ".ogg", ".webm", ".aif", ".aiff"]:
         file_path = UPLOAD_DIR / f"{job_id}{ext}"
         if file_path.exists():
             file_path.unlink()

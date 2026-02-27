@@ -91,9 +91,16 @@ export const Waveform = forwardRef<WaveformHandle, WaveformProps>(function Wavef
     ws.on("finish", () => setIsPlaying(false));
 
     return () => {
-      ws.destroy();
+      try {
+        ws.destroy();
+      } catch (e) {
+        // Suppress AbortError from React Strict Mode double-mount
+        if (!(e instanceof DOMException && e.name === "AbortError")) {
+          throw e;
+        }
+      }
     };
-  }, [audioUrl, onTimeUpdate]);
+  }, [audioUrl]);
 
   // Add violation regions when ready
   useEffect(() => {

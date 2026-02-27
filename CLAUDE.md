@@ -29,7 +29,8 @@ ai-audio-editing/
 │   │   ├── routes/
 │   │   │   ├── jobs.py     # Upload, status, list
 │   │   │   ├── violations.py # List, update status
-│   │   │   └── audio.py    # Stream, waveform, export
+│   │   │   ├── audio.py    # Stream, waveform, export
+│   │   │   └── admin.py    # Reset, storage, stats
 │   │   └── services/
 │   │       ├── processor.py    # Wraps POC transcriber + compliance
 │   │       └── audio_editor.py # pydub cut/mute operations
@@ -40,6 +41,7 @@ ai-audio-editing/
 │   ├── src/
 │   │   ├── app/
 │   │   │   ├── page.tsx           # Upload page
+│   │   │   ├── admin/page.tsx     # Admin dashboard
 │   │   │   └── jobs/[id]/page.tsx # Review interface
 │   │   ├── components/
 │   │   │   ├── Waveform.tsx       # wavesurfer + markers
@@ -107,6 +109,10 @@ python poc/analyze.py --transcript tests/transcripts/large-v3/client_seminar_tra
 | GET | `/api/jobs/{id}/audio/waveform` | Waveform peaks JSON |
 | POST | `/api/jobs/{id}/export` | Generate edited audio |
 | GET | `/api/jobs/{id}/export/download` | Download edited file |
+| GET | `/api/admin/stats` | System-wide statistics |
+| POST | `/api/admin/reset-database` | Wipe all database records |
+| POST | `/api/admin/clear-storage` | Delete all audio files |
+| POST | `/api/admin/reset-all` | Wipe database + storage |
 
 ## Database Schema (SQLite)
 
@@ -177,4 +183,4 @@ tests/
 
 **CORS errors**: Ensure backend is running on port 8000 and frontend on port 3000.
 
-**Database issues**: Delete `backend/audio_compliance.db` to reset the database.
+**Database issues**: Use the **Admin Dashboard** (/admin) to reset the database or storage. Alternatively, delete `backend/audio_compliance.db` manually.

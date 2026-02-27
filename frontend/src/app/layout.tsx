@@ -25,9 +25,17 @@ export default function RootLayout({
   return (
     <html lang="en">
       <body
-        className={`${geistSans.variable} ${geistMono.variable} antialiased`}
+        className={`${geistSans.variable} ${geistMono.variable} antialiased min-h-screen flex flex-col`}
       >
-        {children}
+        <main className="flex-grow">
+          {children}
+        </main>
+        <footer className="p-4 border-t text-center text-xs text-muted-foreground bg-background">
+          <div className="flex justify-center gap-4">
+            <span>© 2026 Audio Compliance Review</span>
+            <a href="/admin" className="hover:underline">Admin</a>
+          </div>
+        </footer>
       </body>
     </html>
   );
