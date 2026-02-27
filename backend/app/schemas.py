@@ -45,6 +45,7 @@ class JobCreate(JobBase):
 class JobResponse(JobBase):
     id: str
     status: str  # pending, transcribing, analyzing, completed, failed
+    auto_fix: bool = False
     duration_seconds: float | None = None
     language: str | None = None
     created_at: datetime
@@ -62,6 +63,7 @@ class JobListResponse(BaseModel):
     id: str
     filename: str
     status: str
+    auto_fix: bool = False
     duration_seconds: float | None = None
     created_at: datetime
     violation_count: int = 0

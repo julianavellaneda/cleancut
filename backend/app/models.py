@@ -4,7 +4,7 @@ SQLAlchemy models for Job and Violation.
 
 import uuid
 from datetime import datetime
-from sqlalchemy import Column, String, Float, Text, ForeignKey, DateTime
+from sqlalchemy import Column, String, Float, Text, ForeignKey, DateTime, Boolean
 from sqlalchemy.orm import relationship
 
 from .database import Base
@@ -21,6 +21,7 @@ class Job(Base):
     id = Column(String, primary_key=True, default=generate_uuid)
     filename = Column(String, nullable=False)
     status = Column(String, default="pending")  # pending, processing, completed, failed
+    auto_fix = Column(Boolean, default=False)
     duration_seconds = Column(Float, nullable=True)
     language = Column(String, nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)

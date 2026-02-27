@@ -10,6 +10,7 @@ export default function UploadPage() {
   const router = useRouter();
   const [isDragging, setIsDragging] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
+  const [autoFix, setAutoFix] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [jobs, setJobs] = useState<JobListItem[]>([]);
   const [loadingJobs, setLoadingJobs] = useState(false);
@@ -81,7 +82,7 @@ export default function UploadPage() {
     setIsUploading(true);
 
     try {
-      const job = await api.uploadAudio(file);
+      const job = await api.uploadAudio(file, autoFix);
       // Redirect to job page immediately - processing runs in background
       router.push(`/jobs/${job.id}`);
     } catch (err) {
@@ -117,6 +118,22 @@ export default function UploadPage() {
         {/* Upload Area */}
         <Card className="mb-8">
           <CardContent className="pt-6">
+            <div className="flex items-center space-x-2 mb-6 p-4 bg-muted/50 rounded-lg">
+              <input
+                type="checkbox"
+                id="auto-fix"
+                checked={autoFix}
+                onChange={(e) => setAutoFix(e.target.checked)}
+                className="w-4 h-4 rounded border-gray-300 text-primary focus:ring-primary"
+              />
+              <label
+                htmlFor="auto-fix"
+                className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70 cursor-pointer"
+              >
+                Auto-fix all violations (Download link will be ready after analysis)
+              </label>
+            </div>
+
             <div
               className={`border-2 border-dashed rounded-lg p-12 text-center transition-colors ${
                 isDragging

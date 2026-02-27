@@ -16,17 +16,21 @@ from ..database import get_db, SessionLocal
 from ..models import Job, Violation
 from ..schemas import JobResponse, JobListResponse
 from ..services.processor import get_processor
+from ..services.audio_editor import AudioEditor
 
 router = APIRouter()
 
-# Upload directory
+# Directories
 UPLOAD_DIR = Path(__file__).parent.parent.parent / "uploads"
 UPLOAD_DIR.mkdir(exist_ok=True)
+EXPORT_DIR = Path(__file__).parent.parent.parent / "exports"
+EXPORT_DIR.mkdir(exist_ok=True)
 
 
 @router.post("", response_model=JobResponse)
 async def create_job(
     file: UploadFile = File(...),
+    auto_fix: bool = False,
     db: Session = Depends(get_db)
 ):
     """
@@ -48,7 +52,8 @@ async def create_job(
     job = Job(
         id=job_id,
         filename=file.filename,
-        status="pending"
+        status="pending",
+        auto_fix=auto_fix
     )
     db.add(job)
     db.commit()
@@ -121,7 +126,9 @@ def _process_job_background(job_id: str, file_path: str):
         analysis = processor.analyze(transcript)
 
         # Step 3: Save results
+        violations_to_fix = []
         for v in analysis.violations:
+            status = "accepted" if job.auto_fix else "pending"
             violation = Violation(
                 id=str(uuid.uuid4()),
                 job_id=job_id,
@@ -131,9 +138,31 @@ def _process_job_background(job_id: str, file_path: str):
                 rule_violated=v.rule_violated,
                 severity=v.severity,
                 reasoning=v.reasoning,
-                status="pending"
+                status=status
             )
             db.add(violation)
+            if job.auto_fix:
+                violations_to_fix.append((v.start_time, v.end_time))
+
+        # Step 4: Auto-fix if requested
+        if job.auto_fix:
+            job.status = "exporting"
+            db.commit()
+            
+            export_path = EXPORT_DIR / f"{job_id}_edited.mp3"
+            editor = AudioEditor()
+
+            if violations_to_fix:
+                audio = editor.load_audio(file_path_to_use)
+                edited = editor.cut_segments(audio, violations_to_fix)
+                editor.export(edited, str(export_path), format="mp3")
+            else:
+                # No violations found, just copy the original as edited version
+                if file_path_to_use.lower().endswith(".mp3"):
+                    shutil.copy(file_path_to_use, export_path)
+                else:
+                    audio = editor.load_audio(file_path_to_use)
+                    editor.export(audio, str(export_path), format="mp3")
 
         job.status = "completed"
         db.commit()
@@ -155,6 +184,7 @@ def list_jobs(db: Session = Depends(get_db)):
             id=job.id,
             filename=job.filename,
             status=job.status,
+            auto_fix=job.auto_fix,
             duration_seconds=job.duration_seconds,
             created_at=job.created_at,
             violation_count=len(job.violations)
@@ -200,6 +230,7 @@ def _build_job_response(job: Job, db: Session) -> JobResponse:
         id=job.id,
         filename=job.filename,
         status=job.status,
+        auto_fix=job.auto_fix,
         duration_seconds=job.duration_seconds,
         language=job.language,
         created_at=job.created_at,

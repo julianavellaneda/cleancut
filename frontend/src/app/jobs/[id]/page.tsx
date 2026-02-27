@@ -10,12 +10,13 @@ import { ViolationList } from "@/components/ViolationList";
 import { ViolationCard } from "@/components/ViolationCard";
 import { api, Job, Violation } from "@/lib/api";
 
-type ProcessingStatus = "pending" | "transcribing" | "analyzing" | "completed" | "failed";
+type ProcessingStatus = "pending" | "transcribing" | "analyzing" | "exporting" | "completed" | "failed";
 
 const PROCESSING_STEPS: { key: ProcessingStatus; label: string }[] = [
   { key: "pending", label: "Upload" },
   { key: "transcribing", label: "Transcribing" },
   { key: "analyzing", label: "Analyzing" },
+  { key: "exporting", label: "Auto-fixing" },
   { key: "completed", label: "Complete" },
 ];
 
@@ -65,7 +66,13 @@ export default function ReviewPage() {
 
   // Poll while processing
   useEffect(() => {
-    if (!job || !isProcessing(job.status)) return;
+    if (!job) return;
+
+    if (job.auto_fix && job.status === "completed") {
+      setExportReady(true);
+    }
+
+    if (!isProcessing(job.status)) return;
 
     const interval = setInterval(async () => {
       try {
@@ -214,7 +221,11 @@ export default function ReviewPage() {
 
   // Processing view - show step-by-step progress
   if (isProcessing(job.status)) {
-    const currentStepIndex = PROCESSING_STEPS.findIndex((s) => s.key === job.status);
+    const stepsToShow = job.auto_fix 
+      ? PROCESSING_STEPS 
+      : PROCESSING_STEPS.filter(s => s.key !== "exporting");
+    
+    const currentStepIndex = stepsToShow.findIndex((s) => s.key === job.status);
 
     return (
       <div className="h-screen bg-background flex flex-col">
@@ -233,9 +244,11 @@ export default function ReviewPage() {
 
         <div className="flex-1 flex items-center justify-center">
           <div className="w-full max-w-md space-y-6">
-            <h2 className="text-lg font-semibold text-center mb-8">Processing Audio</h2>
+            <h2 className="text-lg font-semibold text-center mb-8">
+              {job.auto_fix ? "Auto-processing Audio" : "Processing Audio"}
+            </h2>
 
-            {PROCESSING_STEPS.map((step, i) => {
+            {stepsToShow.map((step, i) => {
               const isDone = i < currentStepIndex;
               const isCurrent = i === currentStepIndex;
               const isPending = i > currentStepIndex;
@@ -303,14 +316,22 @@ export default function ReviewPage() {
                 {job.language?.toUpperCase()} •{" "}
                 {Math.floor((job.duration_seconds || 0) / 60)}:
                 {String(Math.floor((job.duration_seconds || 0) % 60)).padStart(2, "0")}
+                {job.auto_fix && " • Auto-fixed"}
               </div>
             </div>
           </div>
-          <Badge
-            variant={job.status === "completed" ? "default" : "secondary"}
-          >
-            {job.status}
-          </Badge>
+          <div className="flex items-center gap-3">
+            {job.auto_fix && (
+              <Button onClick={handleDownload} className="bg-green-600 hover:bg-green-700">
+                Download Edited Audio
+              </Button>
+            )}
+            <Badge
+              variant={job.status === "completed" ? "default" : "secondary"}
+            >
+              {job.status}
+            </Badge>
+          </div>
         </div>
       </header>
 
