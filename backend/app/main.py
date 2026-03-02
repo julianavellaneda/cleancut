@@ -7,6 +7,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from .database import init_db
 from .routes import jobs, violations, audio, admin
+from .services.worker import start_worker
 
 app = FastAPI(
     title="Audio Compliance API",
@@ -32,8 +33,9 @@ app.include_router(admin.router, prefix="/api/admin", tags=["admin"])
 
 @app.on_event("startup")
 def startup_event():
-    """Initialize database on startup."""
+    """Initialize database and start background worker on startup."""
     init_db()
+    start_worker()
 
 
 @app.get("/")

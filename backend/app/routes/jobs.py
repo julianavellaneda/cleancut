@@ -3,20 +3,17 @@ Job routes - upload, list, and status endpoints.
 """
 
 import shutil
-import threading
 import uuid
 from pathlib import Path
 from typing import List
 
 from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
 from sqlalchemy.orm import Session
-from pydub import AudioSegment
 
-from ..database import get_db, SessionLocal
-from ..models import Job, Violation
+from ..database import get_db
+from ..models import Job
 from ..schemas import JobResponse, JobListResponse
-from ..services.processor import get_processor
-from ..services.audio_editor import AudioEditor
+from ..services.worker import enqueue_job
 
 router = APIRouter()
 
@@ -35,8 +32,8 @@ async def create_job(
 ):
     """
     Upload audio file and start background processing.
-    Returns immediately after saving the file; processing runs in a background thread.
-    Poll GET /api/jobs/{id} to track progress (transcribing → analyzing → completed).
+    Returns immediately after saving the file; processing runs in a sequential background queue.
+    Poll GET /api/jobs/{id} to track progress.
     """
     # Validate file type
     allowed_extensions = {".mp3", ".wav", ".m4a", ".flac", ".ogg", ".webm", ".aif", ".aiff"}
@@ -69,110 +66,11 @@ async def create_job(
         db.commit()
         raise HTTPException(status_code=500, detail=str(e))
 
-    # Spawn background thread for processing
-    thread = threading.Thread(
-        target=_process_job_background,
-        args=(job_id, str(file_path)),
-        daemon=True
-    )
-    thread.start()
+    # Enqueue job for sequential processing
+    enqueue_job(job_id, str(file_path))
 
     # Return immediately with pending status
     return _build_job_response(job, db)
-
-
-def _process_job_background(job_id: str, file_path: str):
-    """Run transcription and compliance analysis in a background thread."""
-    db = SessionLocal()
-    try:
-        job = db.query(Job).filter(Job.id == job_id).first()
-        if not job:
-            return
-
-        file_path_obj = Path(file_path)
-        file_ext = file_path_obj.suffix.lower()
-        file_path_to_use = file_path
-
-        # Step 0: Convert AIFF to MP3 if needed
-        if file_ext in [".aif", ".aiff"]:
-            job.status = "converting"
-            db.commit()
-            
-            try:
-                mp3_path = file_path_obj.with_suffix(".mp3")
-                audio = AudioSegment.from_file(file_path, format="aiff")
-                audio.export(mp3_path, format="mp3")
-                file_path_to_use = str(mp3_path)
-                
-                # Optionally delete original AIFF to save space
-                file_path_obj.unlink()
-            except Exception as e:
-                raise Exception(f"AIFF to MP3 conversion failed: {str(e)}")
-
-        # Step 1: Transcribing
-        job.status = "transcribing"
-        db.commit()
-
-        processor = get_processor()
-        transcript = processor.transcribe(file_path_to_use)
-
-        job.duration_seconds = transcript.duration
-        job.language = transcript.language
-
-        # Step 2: Analyzing
-        job.status = "analyzing"
-        db.commit()
-
-        analysis = processor.analyze(transcript)
-
-        # Step 3: Save results
-        violations_to_fix = []
-        for v in analysis.violations:
-            status = "accepted" if job.auto_fix else "pending"
-            violation = Violation(
-                id=str(uuid.uuid4()),
-                job_id=job_id,
-                text=v.text,
-                start_time=v.start_time,
-                end_time=v.end_time,
-                rule_violated=v.rule_violated,
-                severity=v.severity,
-                reasoning=v.reasoning,
-                status=status
-            )
-            db.add(violation)
-            if job.auto_fix:
-                violations_to_fix.append((v.start_time, v.end_time))
-
-        # Step 4: Auto-fix if requested
-        if job.auto_fix:
-            job.status = "exporting"
-            db.commit()
-            
-            export_path = EXPORT_DIR / f"{job_id}_edited.mp3"
-            editor = AudioEditor()
-
-            if violations_to_fix:
-                audio = editor.load_audio(file_path_to_use)
-                edited = editor.cut_segments(audio, violations_to_fix)
-                editor.export(edited, str(export_path), format="mp3")
-            else:
-                # No violations found, just copy the original as edited version
-                if file_path_to_use.lower().endswith(".mp3"):
-                    shutil.copy(file_path_to_use, export_path)
-                else:
-                    audio = editor.load_audio(file_path_to_use)
-                    editor.export(audio, str(export_path), format="mp3")
-
-        job.status = "completed"
-        db.commit()
-
-    except Exception as e:
-        job.status = "failed"
-        job.error_message = str(e)
-        db.commit()
-    finally:
-        db.close()
 
 
 @router.get("", response_model=List[JobListResponse])

@@ -1,9 +1,10 @@
 "use client";
 
-import { useState, useCallback, useEffect } from "react";
+import { useState, useCallback, useEffect, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+import { Progress } from "@/components/ui/progress";
 import { api, JobListItem } from "@/lib/api";
 
 export default function UploadPage() {
@@ -14,9 +15,15 @@ export default function UploadPage() {
   const [error, setError] = useState<string | null>(null);
   const [jobs, setJobs] = useState<JobListItem[]>([]);
   const [loadingJobs, setLoadingJobs] = useState(false);
+  const [uploadProgress, setUploadProgress] = useState<{ [key: string]: string }>({});
+  
+  const pollInterval = useRef<NodeJS.Timeout | null>(null);
 
   useEffect(() => {
     loadJobs();
+    // Start polling for updates if there are active jobs
+    startPolling();
+    return () => stopPolling();
   }, []);
 
   async function loadJobs() {
@@ -24,10 +31,40 @@ export default function UploadPage() {
     try {
       const jobList = await api.listJobs();
       setJobs(jobList);
+      
+      // If any jobs are not completed/failed, ensure polling is active
+      const hasActiveJobs = jobList.some(j => !["completed", "failed"].includes(j.status));
+      if (hasActiveJobs) {
+        startPolling();
+      }
     } catch {
       // Ignore errors loading jobs
     } finally {
       setLoadingJobs(false);
+    }
+  }
+
+  function startPolling() {
+    if (pollInterval.current) return;
+    pollInterval.current = setInterval(async () => {
+      try {
+        const jobList = await api.listJobs();
+        setJobs(jobList);
+        
+        const hasActiveJobs = jobList.some(j => !["completed", "failed"].includes(j.status));
+        if (!hasActiveJobs) {
+          stopPolling();
+        }
+      } catch (err) {
+        console.error("Polling error:", err);
+      }
+    }, 3000);
+  }
+
+  function stopPolling() {
+    if (pollInterval.current) {
+      clearInterval(pollInterval.current);
+      pollInterval.current = null;
     }
   }
 
@@ -44,51 +81,54 @@ export default function UploadPage() {
   const handleDrop = useCallback((e: React.DragEvent) => {
     e.preventDefault();
     setIsDragging(false);
-    const files = e.dataTransfer.files;
+    const files = Array.from(e.dataTransfer.files);
     if (files.length > 0) {
-      handleFile(files[0]);
+      handleFiles(files);
     }
   }, []);
 
   const handleFileInput = useCallback(
     (e: React.ChangeEvent<HTMLInputElement>) => {
-      const files = e.target.files;
-      if (files && files.length > 0) {
-        handleFile(files[0]);
+      const files = e.target.files ? Array.from(e.target.files) : [];
+      if (files.length > 0) {
+        handleFiles(files);
       }
     },
     []
   );
 
-  async function handleFile(file: File) {
-    const allowedTypes = [
-      "audio/mpeg",
-      "audio/wav",
-      "audio/mp4",
-      "audio/x-m4a",
-      "audio/flac",
-      "audio/ogg",
-      "audio/webm",
-      "audio/x-aiff",
-      "audio/aiff",
-    ];
+  async function handleFiles(files: File[]) {
+    const allowedExtensions = /\.(mp3|wav|m4a|flac|ogg|webm|aif|aiff)$/i;
+    const validFiles = files.filter(file => allowedExtensions.test(file.name));
 
-    if (!allowedTypes.includes(file.type) && !file.name.match(/\.(mp3|wav|m4a|flac|ogg|webm|aif|aiff)$/i)) {
-      setError("Please upload an audio file (MP3, WAV, M4A, FLAC, OGG, WEBM, or AIFF)");
+    if (validFiles.length === 0) {
+      setError("Please upload valid audio files (MP3, WAV, M4A, FLAC, OGG, WEBM, or AIFF)");
       return;
     }
 
     setError(null);
     setIsUploading(true);
 
-    try {
-      const job = await api.uploadAudio(file, autoFix);
-      // Redirect to job page immediately - processing runs in background
-      router.push(`/jobs/${job.id}`);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Upload failed");
-      setIsUploading(false);
+    // Upload files one by one (they are queued on backend anyway)
+    for (const file of validFiles) {
+      setUploadProgress(prev => ({ ...prev, [file.name]: "Uploading..." }));
+      try {
+        await api.uploadAudio(file, autoFix);
+        setUploadProgress(prev => ({ ...prev, [file.name]: "Queued" }));
+      } catch (err) {
+        setUploadProgress(prev => ({ ...prev, [file.name]: "Failed" }));
+        setError(err instanceof Error ? err.message : "Upload failed");
+      }
     }
+
+    setIsUploading(false);
+    loadJobs();
+    startPolling();
+    
+    // Clear upload progress after a delay
+    setTimeout(() => {
+      setUploadProgress({});
+    }, 5000);
   }
 
   function formatDuration(seconds: number | null): string {
@@ -106,6 +146,34 @@ export default function UploadPage() {
       minute: "2-digit",
     });
   }
+
+  function getStatusIcon(status: string) {
+    switch (status) {
+      case "completed": return "✅";
+      case "failed": return "❌";
+      case "pending": return "⏳";
+      case "converting":
+      case "transcribing":
+      case "analyzing":
+      case "exporting": return "🔄";
+      default: return "⏳";
+    }
+  }
+
+  function getStatusProgress(status: string) {
+    switch (status) {
+      case "pending": return 10;
+      case "converting": return 25;
+      case "transcribing": return 50;
+      case "analyzing": return 75;
+      case "exporting": return 90;
+      case "completed": return 100;
+      default: return 0;
+    }
+  }
+
+  const activeJobs = jobs.filter(j => !["completed", "failed"].includes(j.status));
+  const completedJobs = jobs.filter(j => j.status === "completed");
 
   return (
     <div className="min-h-screen bg-background p-8">
@@ -151,6 +219,7 @@ export default function UploadPage() {
               <input
                 id="file-input"
                 type="file"
+                multiple
                 accept="audio/*,.mp3,.wav,.m4a,.flac,.ogg,.webm,.aif,.aiff"
                 onChange={handleFileInput}
                 className="hidden"
@@ -159,16 +228,21 @@ export default function UploadPage() {
 
               {isUploading ? (
                 <div className="space-y-4">
-                  <div className="text-lg font-medium">Uploading...</div>
-                  <p className="text-sm text-muted-foreground">
-                    Saving file, please wait
-                  </p>
+                  <div className="text-lg font-medium">Uploading Files...</div>
+                  <div className="max-w-xs mx-auto space-y-2">
+                    {Object.entries(uploadProgress).map(([name, status]) => (
+                      <div key={name} className="flex justify-between text-xs">
+                        <span className="truncate mr-4">{name}</span>
+                        <span className="font-semibold">{status}</span>
+                      </div>
+                    ))}
+                  </div>
                 </div>
               ) : (
                 <div className="space-y-4">
                   <div className="text-6xl">🎵</div>
                   <div className="text-lg font-medium">
-                    Drag and drop audio file here
+                    Drag and drop audio files here
                   </div>
                   <p className="text-muted-foreground">
                     or click to browse
@@ -188,50 +262,104 @@ export default function UploadPage() {
           </CardContent>
         </Card>
 
-        {/* Recent Jobs */}
+        {/* Processing Summary */}
+        {(activeJobs.length > 0) && (
+          <div className="mb-4 flex items-center justify-between bg-primary/10 p-4 rounded-lg border border-primary/20">
+            <div className="flex items-center gap-4">
+              <div className="flex flex-col">
+                <span className="text-sm font-medium">Processing Queue</span>
+                <span className="text-2xl font-bold">{activeJobs.length} Files Left</span>
+              </div>
+              <div className="h-8 w-px bg-primary/20" />
+              <div className="flex flex-col">
+                <span className="text-sm text-muted-foreground">Current Step</span>
+                <span className="text-sm font-semibold capitalize">{activeJobs[activeJobs.length - 1].status}...</span>
+              </div>
+            </div>
+            <div className="text-right">
+              <span className="text-sm text-muted-foreground">{completedJobs.length} completed</span>
+            </div>
+          </div>
+        )}
+
+        {/* Job List */}
         {jobs.length > 0 && (
           <Card>
-            <CardHeader>
-              <CardTitle>Recent Jobs</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="space-y-2">
-                {jobs.map((job) => (
-                  <div
-                    key={job.id}
-                    className="flex items-center justify-between p-3 rounded-lg hover:bg-muted/50 cursor-pointer transition-colors"
-                    onClick={() => router.push(`/jobs/${job.id}`)}
-                  >
-                    <div className="flex items-center gap-3">
-                      <span className="text-2xl">
-                        {job.status === "completed" ? "✅" : job.status === "failed" ? "❌" : job.status === "transcribing" || job.status === "analyzing" ? "🔄" : "⏳"}
-                      </span>
-                      <div>
-                        <div className="font-medium">{job.filename}</div>
-                        <div className="text-sm text-muted-foreground">
-                          {formatDate(job.created_at)} • {formatDuration(job.duration_seconds)}
-                        </div>
-                      </div>
-                    </div>
-                    <div className="text-right">
-                      <div className="font-medium">
-                        {job.violation_count} violation{job.violation_count !== 1 ? "s" : ""}
-                      </div>
-                      <div className="text-sm text-muted-foreground capitalize">
-                        {job.status}
-                      </div>
-                    </div>
-                  </div>
-                ))}
-              </div>
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-4">
+              <CardTitle>Files</CardTitle>
               <Button
-                variant="outline"
-                className="w-full mt-4"
+                variant="ghost"
+                size="sm"
                 onClick={() => loadJobs()}
                 disabled={loadingJobs}
               >
-                {loadingJobs ? "Loading..." : "Refresh"}
+                {loadingJobs ? "Refreshing..." : "Refresh"}
               </Button>
+            </CardHeader>
+            <CardContent>
+              <div className="space-y-4">
+                {jobs.map((job) => (
+                  <div
+                    key={job.id}
+                    className={`flex flex-col p-4 rounded-lg border transition-colors ${
+                      job.status === 'completed' ? 'bg-card' : 'bg-muted/30'
+                    }`}
+                  >
+                    <div className="flex items-center justify-between mb-2">
+                      <div className="flex items-center gap-3 min-w-0">
+                        <span className="text-xl flex-shrink-0">
+                          {getStatusIcon(job.status)}
+                        </span>
+                        <div className="min-w-0">
+                          <div className="font-medium truncate">{job.filename}</div>
+                          <div className="text-xs text-muted-foreground">
+                            {formatDate(job.created_at)} • {formatDuration(job.duration_seconds)}
+                          </div>
+                        </div>
+                      </div>
+                      
+                      <div className="flex items-center gap-2">
+                        {job.status === "completed" ? (
+                          job.auto_fix ? (
+                            <Button 
+                              size="sm" 
+                              variant="outline"
+                              className="h-8"
+                              onClick={() => window.open(api.getExportDownloadUrl(job.id))}
+                            >
+                              Download
+                            </Button>
+                          ) : (
+                            <Button 
+                              size="sm" 
+                              className="h-8"
+                              onClick={() => router.push(`/jobs/${job.id}`)}
+                            >
+                              Review
+                            </Button>
+                          )
+                        ) : job.status === "failed" ? (
+                          <span className="text-xs text-destructive font-medium">Failed</span>
+                        ) : (
+                          <span className="text-xs font-medium capitalize">{job.status}...</span>
+                        )}
+                      </div>
+                    </div>
+                    
+                    {!["completed", "failed"].includes(job.status) && (
+                      <div className="mt-2">
+                        <Progress value={getStatusProgress(job.status)} className="h-1" />
+                      </div>
+                    )}
+
+                    {job.status === "completed" && job.violation_count > 0 && (
+                      <div className="mt-1 text-xs text-muted-foreground">
+                        {job.violation_count} violation{job.violation_count !== 1 ? "s" : ""} detected
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </div>
             </CardContent>
           </Card>
         )}

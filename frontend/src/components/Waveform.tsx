@@ -93,11 +93,16 @@ export const Waveform = forwardRef<WaveformHandle, WaveformProps>(function Wavef
     return () => {
       try {
         ws.destroy();
-      } catch (e) {
-        // Suppress AbortError from React Strict Mode double-mount
-        if (!(e instanceof DOMException && e.name === "AbortError")) {
-          throw e;
+      } catch (e: any) {
+        // Suppress AbortError from React Strict Mode double-mount or fetch cancellation
+        if (
+          e.name === "AbortError" || 
+          e.message?.includes("aborted") ||
+          (e instanceof DOMException && e.name === "AbortError")
+        ) {
+          return;
         }
+        throw e;
       }
     };
   }, [audioUrl]);
