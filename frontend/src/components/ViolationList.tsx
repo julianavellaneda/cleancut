@@ -21,16 +21,14 @@ export function ViolationList({
     return `${mins}:${secs.toString().padStart(2, "0")}`;
   }
 
-  function getSeverityBadge(severity: string | null) {
-    const variant = severity?.toLowerCase() === "high"
+  function getActionBadge(action: string | null) {
+    const variant = action?.toLowerCase() === "cut"
       ? "destructive"
-      : severity?.toLowerCase() === "medium"
-      ? "default"
       : "secondary";
 
     return (
-      <Badge variant={variant} className="text-xs">
-        {severity?.toUpperCase() || "?"}
+      <Badge variant={variant} className="text-[10px] h-4 px-1 leading-none uppercase">
+        {action || "CUT"}
       </Badge>
     );
   }
@@ -49,36 +47,36 @@ export function ViolationList({
   return (
     <div className="h-full flex flex-col">
       <div className="p-4 border-b">
-        <h3 className="font-semibold">
-          Violations ({violations.length})
+        <h3 className="font-semibold text-sm">
+          Suggested Edits ({violations.length})
         </h3>
       </div>
 
       <ScrollArea className="flex-1">
         <div className="p-2 space-y-1">
           {violations.length === 0 ? (
-            <div className="p-4 text-center text-muted-foreground">
-              No violations found
+            <div className="p-4 text-center text-muted-foreground text-sm">
+              No edits suggested
             </div>
           ) : (
             violations.map((v) => (
               <div
                 key={v.id}
-                className={`p-3 rounded-lg cursor-pointer transition-colors ${
+                className={`p-3 rounded-lg cursor-pointer transition-colors border ${
                   selectedViolation?.id === v.id
-                    ? "bg-primary/10 border border-primary"
-                    : "hover:bg-muted/50"
-                } ${v.status === "rejected" ? "opacity-50" : ""}`}
+                    ? "bg-primary/5 border-primary"
+                    : "border-transparent hover:bg-muted/50"
+                } ${v.status === "rejected" ? "opacity-40 grayscale" : ""}`}
                 onClick={() => onSelect(v)}
               >
                 <div className="flex items-center justify-between mb-1">
-                  <span className="text-sm font-mono text-muted-foreground">
+                  <span className="text-[10px] font-mono text-muted-foreground">
                     {formatTime(v.start_time)}
                   </span>
-                  <div className="flex items-center gap-2">
+                  <div className="flex items-center gap-1.5">
                     {v.status !== "pending" && (
                       <span
-                        className={`text-sm ${
+                        className={`text-xs font-bold ${
                           v.status === "accepted"
                             ? "text-green-600"
                             : "text-muted-foreground"
@@ -87,14 +85,14 @@ export function ViolationList({
                         {getStatusIcon(v.status)}
                       </span>
                     )}
-                    {getSeverityBadge(v.severity)}
+                    {getActionBadge(v.action)}
                   </div>
                 </div>
-                <div className="text-sm font-medium truncate">
-                  {v.rule_violated || "Unknown Rule"}
+                <div className="text-xs font-semibold truncate">
+                  {v.label || "Suggested Edit"}
                 </div>
-                <div className="text-xs text-muted-foreground truncate mt-1">
-                  {v.text.substring(0, 50)}...
+                <div className="text-[10px] text-muted-foreground line-clamp-1 mt-1 italic">
+                  "{v.text}"
                 </div>
               </div>
             ))

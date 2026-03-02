@@ -1,5 +1,5 @@
 """
-Job worker - sequential processing of audio jobs using a queue.
+Job worker - sequential processing of media jobs using a queue.
 """
 
 import queue
@@ -7,13 +7,14 @@ import threading
 import shutil
 import logging
 import uuid
+import ffmpeg
 from pathlib import Path
-from pydub import AudioSegment
 
 from ..database import SessionLocal
 from ..models import Job, Violation
 from ..services.processor import get_processor
-from ..services.audio_editor import AudioEditor
+from ..services.media_editor import MediaEditor
+from ..services.scrubber import Scrubber
 
 # Logging
 logging.basicConfig(level=logging.INFO)
@@ -53,7 +54,7 @@ def _worker_loop():
 
 
 def _process_job_sequentially(job_id: str, file_path: str):
-    """Run transcription and compliance analysis for a single job."""
+    """Run transcription and semantic analysis for a single job."""
     db = SessionLocal()
     try:
         job = db.query(Job).filter(Job.id == job_id).first()
@@ -64,16 +65,19 @@ def _process_job_sequentially(job_id: str, file_path: str):
         file_ext = file_path_obj.suffix.lower()
         file_path_to_use = file_path
 
-        # Step 0: Convert AIFF to MP3 if needed
+        # Step 0: Convert AIFF to MP3 if needed (Whisper handles most other formats)
         if file_ext in [".aif", ".aiff"]:
             job.status = "converting"
             db.commit()
             
             try:
                 mp3_path = file_path_obj.with_suffix(".mp3")
-                audio = AudioSegment.from_file(file_path, format="aiff")
-                audio.export(mp3_path, format="mp3")
+                ffmpeg.input(file_path).output(str(mp3_path), format="mp3").run(overwrite_output=True, quiet=True)
                 file_path_to_use = str(mp3_path)
+                
+                # Update job record with new filename
+                job.filename = f"{job_id}.mp3"
+                db.commit()
                 
                 # Delete original AIFF
                 file_path_obj.unlink()
@@ -94,46 +98,70 @@ def _process_job_sequentially(job_id: str, file_path: str):
         job.status = "analyzing"
         db.commit()
 
-        analysis = processor.analyze(transcript)
+        analysis = processor.analyze(transcript, prompt=job.prompt)
 
-        # Step 3: Save results
-        violations_to_fix = []
-        for v in analysis.violations:
-            status = "accepted" if job.auto_fix else "pending"
+        # Step 2.5: Deterministic Scrubbing (Silence & Fillers)
+        scrubber_violations = []
+        # Always run scrubber, but status depends on auto_scrub
+        scrubber_violations.extend(Scrubber.detect_silence(transcript))
+        scrubber_violations.extend(Scrubber.detect_filler_words(transcript))
+
+        # Combine all violations
+        all_suggestions = analysis.violations + scrubber_violations
+
+        # Step 3: Save results (Suggested Edits)
+        for v in all_suggestions:
+            # For scrubber violations, we use auto_scrub to decide initial status
+            # For LLM violations, we use auto_fix
+            is_scrubber = v.label in ["Dead Air", "Filler Word"]
+            if is_scrubber:
+                status = "accepted" if job.auto_scrub else "pending"
+            else:
+                status = "accepted" if job.auto_fix else "pending"
+                
             violation = Violation(
                 id=str(uuid.uuid4()),
                 job_id=job_id,
                 text=v.text,
                 start_time=v.start_time,
                 end_time=v.end_time,
-                rule_violated=v.rule_violated,
-                severity=v.severity,
+                label=v.label,
+                action=v.action,
                 reasoning=v.reasoning,
                 status=status
             )
             db.add(violation)
-            if job.auto_fix:
-                violations_to_fix.append((v.start_time, v.end_time))
 
-        # Step 4: Auto-fix if requested
-        if job.auto_fix:
+        # Step 4: Auto-fix if requested (LLM fixes or Scrubber fixes)
+        if job.auto_fix or job.auto_scrub:
             job.status = "exporting"
             db.commit()
             
-            export_path = EXPORT_DIR / f"{job_id}_edited.mp3"
-            editor = AudioEditor()
+            # Use original extension for video, mp3 for audio
+            export_ext = file_path_obj.suffix if job.media_type == "video" else ".mp3"
+            export_path = EXPORT_DIR / f"{job_id}_edited{export_ext}"
+            
+            editor = MediaEditor()
+            
+            # Map accepted suggestions to time segments for editing
+            # If auto_fix is on, we take all LLM violations.
+            # If auto_scrub is on, we take all scrubber violations.
+            segments_to_fix = []
+            for v in all_suggestions:
+                is_scrubber = v.label in ["Dead Air", "Filler Word"]
+                if (is_scrubber and job.auto_scrub) or (not is_scrubber and job.auto_fix):
+                    segments_to_fix.append((v.start_time, v.end_time))
 
-            if violations_to_fix:
-                audio = editor.load_audio(file_path_to_use)
-                edited = editor.cut_segments(audio, violations_to_fix)
-                editor.export(edited, str(export_path), format="mp3")
+            if segments_to_fix:
+                editor.cut_segments(
+                    file_path_to_use, 
+                    str(export_path), 
+                    segments_to_fix, 
+                    media_type=job.media_type
+                )
             else:
-                # No violations found, just copy the original as edited version
-                if file_path_to_use.lower().endswith(".mp3"):
-                    shutil.copy(file_path_to_use, export_path)
-                else:
-                    audio = editor.load_audio(file_path_to_use)
-                    editor.export(audio, str(export_path), format="mp3")
+                # No suggestions found, just copy/transcode original as edited version
+                ffmpeg.input(file_path_to_use).output(str(export_path)).run(overwrite_output=True, quiet=True)
 
         job.status = "completed"
         db.commit()

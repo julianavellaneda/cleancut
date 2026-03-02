@@ -16,7 +16,7 @@ const PROCESSING_STEPS: { key: ProcessingStatus; label: string }[] = [
   { key: "pending", label: "Upload" },
   { key: "transcribing", label: "Transcribing" },
   { key: "analyzing", label: "Analyzing" },
-  { key: "exporting", label: "Auto-fixing" },
+  { key: "exporting", label: "Auto-editing" },
   { key: "completed", label: "Complete" },
 ];
 
@@ -38,6 +38,7 @@ export default function ReviewPage() {
   const [exportReady, setExportReady] = useState(false);
 
   const waveformRef = useRef<WaveformHandle>(null);
+  const videoRef = useRef<HTMLVideoElement>(null);
 
   // Load job data (and violations if completed)
   const loadData = useCallback(async () => {
@@ -97,6 +98,15 @@ export default function ReviewPage() {
     return () => clearInterval(interval);
   }, [job?.status, jobId]);
 
+  // Sync video player when violation is selected
+  useEffect(() => {
+    if (job?.status !== "completed" || !selectedViolation) return;
+    
+    if (job.media_type === "video" && videoRef.current) {
+        videoRef.current.currentTime = Math.max(0, selectedViolation.start_time - 0.2);
+    }
+  }, [selectedViolation, job?.status, job?.media_type]);
+
   const handleViolationSelect = useCallback((violation: Violation) => {
     setSelectedViolation(violation);
   }, []);
@@ -132,10 +142,10 @@ export default function ReviewPage() {
   );
 
   const handleBulkUpdate = useCallback(
-    async (status: "accepted" | "rejected") => {
+    async (status: "accepted" | "rejected", labels?: string[]) => {
       setIsUpdating(true);
       try {
-        await api.bulkUpdateViolations(jobId, { status });
+        await api.bulkUpdateViolations(jobId, { status }, labels);
 
         // Refresh violations and job
         const [jobData, violationsData] = await Promise.all([
@@ -160,6 +170,10 @@ export default function ReviewPage() {
     },
     [jobId, selectedViolation]
   );
+
+  const handleScrubCleanup = useCallback(() => {
+    handleBulkUpdate("accepted", ["Dead Air", "Filler Word"]);
+  }, [handleBulkUpdate]);
 
   const handleExport = useCallback(async () => {
     setIsExporting(true);
@@ -237,7 +251,7 @@ export default function ReviewPage() {
               </Button>
             </Link>
             <div>
-              <h1 className="text-xl font-semibold">{job.filename}</h1>
+              <h1 className="text-xl font-semibold">{job.original_filename || job.filename}</h1>
             </div>
           </div>
         </header>
@@ -245,7 +259,7 @@ export default function ReviewPage() {
         <div className="flex-1 flex items-center justify-center">
           <div className="w-full max-w-md space-y-6">
             <h2 className="text-lg font-semibold text-center mb-8">
-              {job.auto_fix ? "Auto-processing Audio" : "Processing Audio"}
+              {job.auto_fix ? "Auto-processing Media" : "Processing Media"}
             </h2>
 
             {stepsToShow.map((step, i) => {
@@ -298,6 +312,9 @@ export default function ReviewPage() {
   const acceptedCount = violations.filter((v) => v.status === "accepted").length;
   const rejectedCount = violations.filter((v) => v.status === "rejected").length;
   const pendingCount = violations.filter((v) => v.status === "pending").length;
+  const pendingScrubCount = violations.filter(
+    (v) => v.status === "pending" && (v.label === "Dead Air" || v.label === "Filler Word")
+  ).length;
 
   return (
     <div className="h-screen bg-background flex flex-col overflow-hidden">
@@ -311,19 +328,19 @@ export default function ReviewPage() {
               </Button>
             </Link>
             <div>
-              <h1 className="text-xl font-semibold">{job.filename}</h1>
+              <h1 className="text-xl font-semibold">{job.original_filename || job.filename}</h1>
               <div className="text-sm text-muted-foreground">
-                {job.language?.toUpperCase()} •{" "}
+                {job.media_type.toUpperCase()} • {job.language?.toUpperCase()} •{" "}
                 {Math.floor((job.duration_seconds || 0) / 60)}:
                 {String(Math.floor((job.duration_seconds || 0) % 60)).padStart(2, "0")}
-                {job.auto_fix && " • Auto-fixed"}
+                {job.auto_fix && " • Auto-edited"}
               </div>
             </div>
           </div>
           <div className="flex items-center gap-3">
             {job.auto_fix && (
               <Button onClick={handleDownload} className="bg-green-600 hover:bg-green-700">
-                Download Edited Audio
+                Download Edited Media
               </Button>
             )}
             <Badge
@@ -348,15 +365,29 @@ export default function ReviewPage() {
 
         {/* Main Panel */}
         <main className="flex-1 flex flex-col overflow-hidden">
-          {/* Waveform */}
-          <div className="p-6 border-b shrink-0">
-            <Waveform
-              ref={waveformRef}
-              audioUrl={api.getAudioUrl(jobId)}
-              violations={violations}
-              selectedViolation={selectedViolation}
-              onViolationClick={handleViolationSelect}
-            />
+          {/* Media Player */}
+          <div className="p-6 border-b shrink-0 bg-black/5 flex flex-col items-center">
+            {job.media_type === "video" && (
+              <div className="w-full max-w-2xl aspect-video mb-6 bg-black rounded-lg overflow-hidden shadow-xl">
+                <video
+                  ref={videoRef}
+                  src={api.getAudioUrl(jobId)}
+                  className="w-full h-full"
+                  controls
+                />
+              </div>
+            )}
+            
+            <div className="w-full">
+              <Waveform
+                ref={waveformRef}
+                audioUrl={api.getAudioUrl(jobId)}
+                violations={violations}
+                selectedViolation={selectedViolation}
+                onViolationClick={handleViolationSelect}
+                mediaRef={job.media_type === "video" ? videoRef : undefined}
+              />
+            </div>
           </div>
 
           {/* Selected Violation Details */}
@@ -371,7 +402,7 @@ export default function ReviewPage() {
               />
             ) : (
               <div className="h-full flex items-center justify-center text-muted-foreground">
-                Select a violation to review
+                Select a suggested edit to review
               </div>
             )}
           </div>
@@ -400,6 +431,15 @@ export default function ReviewPage() {
             <Button
               variant="outline"
               size="sm"
+              onClick={handleScrubCleanup}
+              disabled={pendingScrubCount === 0 || isUpdating}
+              className="border-blue-200 text-blue-700 hover:bg-blue-50"
+            >
+              🪄 Clean All (Scrub)
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
               onClick={() => handleBulkUpdate("accepted")}
               disabled={pendingCount === 0 || isUpdating}
             >
@@ -416,14 +456,14 @@ export default function ReviewPage() {
 
             {exportReady ? (
               <Button onClick={handleDownload}>
-                Download Edited Audio
+                Download Edited Media
               </Button>
             ) : (
               <Button
                 onClick={handleExport}
                 disabled={acceptedCount === 0 || isExporting}
               >
-                {isExporting ? "Exporting..." : "Export Audio"}
+                {isExporting ? "Exporting..." : "Export Media"}
               </Button>
             )}
           </div>

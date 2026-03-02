@@ -1,26 +1,27 @@
 """
-Audio processing service - wraps POC transcriber and compliance analyzer.
+Audio processing service - wraps transcriber and prompt analyzer.
 """
 
 import sys
 from pathlib import Path
 
-# Add POC directory to path for imports
-POC_PATH = Path(__file__).parent.parent.parent.parent / "poc"
-sys.path.insert(0, str(POC_PATH))
+# Add the analysis directory to the Python path for imports
+ANALYSIS_PATH = Path(__file__).parent.parent / "analysis"
+sys.path.insert(0, str(ANALYSIS_PATH))
 
 from dotenv import load_dotenv
 
-# Load environment variables from poc/.env
-load_dotenv(POC_PATH / ".env")
+# Load environment variables from the root .env file
+# The .env file from the `poc` directory should be moved to the project root
+load_dotenv(ANALYSIS_PATH.parent.parent.parent / ".env")
 
 from transcriber import Transcriber, TranscriptResult
-from compliance import ComplianceAnalyzer, AnalysisResult, Violation
+from prompt_analyzer import PromptAnalyzer, AnalysisResult, Violation
 
 
 class AudioProcessor:
     """
-    Wraps POC transcription and compliance analysis for the backend.
+    Wraps POC transcription and prompt analysis for the backend.
     """
 
     def __init__(self, model_size: str = "medium"):
@@ -36,11 +37,11 @@ class AudioProcessor:
         return self._transcriber
 
     @property
-    def analyzer(self) -> ComplianceAnalyzer:
-        """Lazy-load compliance analyzer."""
+    def analyzer(self) -> PromptAnalyzer:
+        """Lazy-load prompt analyzer."""
         if self._analyzer is None:
-            rules_path = POC_PATH / "bsm_rules.txt"
-            self._analyzer = ComplianceAnalyzer(rules_path=str(rules_path))
+            rules_path = ANALYSIS_PATH / "bsm_rules.txt"
+            self._analyzer = PromptAnalyzer(rules_path=str(rules_path))
         return self._analyzer
 
     def transcribe(self, audio_path: str, language: str | None = None) -> TranscriptResult:
@@ -56,21 +57,23 @@ class AudioProcessor:
         """
         return self.transcriber.transcribe(audio_path, language=language)
 
-    def analyze(self, transcript: TranscriptResult) -> AnalysisResult:
+    def analyze(self, transcript: TranscriptResult, prompt: str | None = None) -> AnalysisResult:
         """
-        Analyze transcript for compliance violations.
+        Analyze transcript based on a prompt.
 
         Args:
             transcript: TranscriptResult from transcription
+            prompt: User-defined editing instructions
 
         Returns:
-            AnalysisResult with violations
+            AnalysisResult with suggested edits
         """
-        return self.analyzer.analyze(transcript)
+        return self.analyzer.analyze(transcript, prompt=prompt)
 
     def process_audio(
         self,
         audio_path: str,
+        prompt: str | None = None,
         language: str | None = None
     ) -> tuple[TranscriptResult, AnalysisResult]:
         """
@@ -78,13 +81,14 @@ class AudioProcessor:
 
         Args:
             audio_path: Path to the audio file
+            prompt: User-defined editing instructions
             language: Language code or None for auto-detect
 
         Returns:
             Tuple of (TranscriptResult, AnalysisResult)
         """
         transcript = self.transcribe(audio_path, language)
-        analysis = self.analyze(transcript)
+        analysis = self.analyze(transcript, prompt=prompt)
         return transcript, analysis
 
 

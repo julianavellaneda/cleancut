@@ -10,6 +10,7 @@ class ViolationBase(BaseModel):
     text: str
     start_time: float
     end_time: float
+    label: str | None = None
     rule_violated: str | None = None
     severity: str | None = None
     reasoning: str | None = None
@@ -23,7 +24,7 @@ class ViolationResponse(ViolationBase):
     id: str
     job_id: str
     status: str
-    edit_action: str
+    action: str
 
     class Config:
         from_attributes = True
@@ -31,21 +32,26 @@ class ViolationResponse(ViolationBase):
 
 class ViolationUpdate(BaseModel):
     status: str | None = None  # pending, accepted, rejected
-    edit_action: str | None = None  # cut, mute
+    action: str | None = None  # cut, mute
 
 
 class JobBase(BaseModel):
     filename: str
+    original_filename: str | None = None
+    media_type: str = "audio"
+    prompt: str | None = None
 
 
 class JobCreate(JobBase):
-    pass
+    auto_fix: bool = False
+    auto_scrub: bool = False
 
 
 class JobResponse(JobBase):
     id: str
     status: str  # pending, transcribing, analyzing, completed, failed
     auto_fix: bool = False
+    auto_scrub: bool = False
     duration_seconds: float | None = None
     language: str | None = None
     created_at: datetime
@@ -62,8 +68,12 @@ class JobResponse(JobBase):
 class JobListResponse(BaseModel):
     id: str
     filename: str
+    original_filename: str | None = None
+    media_type: str = "audio"
+    prompt: str | None = None
     status: str
     auto_fix: bool = False
+    auto_scrub: bool = False
     duration_seconds: float | None = None
     created_at: datetime
     violation_count: int = 0

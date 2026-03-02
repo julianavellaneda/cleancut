@@ -12,6 +12,8 @@ export default function UploadPage() {
   const [isDragging, setIsDragging] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
   const [autoFix, setAutoFix] = useState(false);
+  const [autoScrub, setAutoScrub] = useState(false);
+  const [prompt, setPrompt] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [jobs, setJobs] = useState<JobListItem[]>([]);
   const [loadingJobs, setLoadingJobs] = useState(false);
@@ -98,11 +100,11 @@ export default function UploadPage() {
   );
 
   async function handleFiles(files: File[]) {
-    const allowedExtensions = /\.(mp3|wav|m4a|flac|ogg|webm|aif|aiff)$/i;
+    const allowedExtensions = /\.(mp3|wav|m4a|flac|ogg|webm|aif|aiff|mp4|mov)$/i;
     const validFiles = files.filter(file => allowedExtensions.test(file.name));
 
     if (validFiles.length === 0) {
-      setError("Please upload valid audio files (MP3, WAV, M4A, FLAC, OGG, WEBM, or AIFF)");
+      setError("Please upload valid audio/video files (MP3, WAV, M4A, FLAC, OGG, WEBM, AIFF, MP4, or MOV)");
       return;
     }
 
@@ -113,7 +115,7 @@ export default function UploadPage() {
     for (const file of validFiles) {
       setUploadProgress(prev => ({ ...prev, [file.name]: "Uploading..." }));
       try {
-        await api.uploadAudio(file, autoFix);
+        await api.uploadAudio(file, prompt, autoFix, autoScrub);
         setUploadProgress(prev => ({ ...prev, [file.name]: "Queued" }));
       } catch (err) {
         setUploadProgress(prev => ({ ...prev, [file.name]: "Failed" }));
@@ -178,28 +180,60 @@ export default function UploadPage() {
   return (
     <div className="min-h-screen bg-background p-8">
       <div className="max-w-4xl mx-auto">
-        <h1 className="text-3xl font-bold mb-2">Audio Compliance Review</h1>
+        <h1 className="text-3xl font-bold mb-2">AI Media Editor</h1>
         <p className="text-muted-foreground mb-8">
-          Upload audio to analyze for compliance violations
+          Upload audio or video and describe the edits you want to make
         </p>
 
         {/* Upload Area */}
         <Card className="mb-8">
           <CardContent className="pt-6">
-            <div className="flex items-center space-x-2 mb-6 p-4 bg-muted/50 rounded-lg">
-              <input
-                type="checkbox"
-                id="auto-fix"
-                checked={autoFix}
-                onChange={(e) => setAutoFix(e.target.checked)}
-                className="w-4 h-4 rounded border-gray-300 text-primary focus:ring-primary"
-              />
-              <label
-                htmlFor="auto-fix"
-                className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70 cursor-pointer"
-              >
-                Auto-fix all violations (Download link will be ready after analysis)
-              </label>
+            <div className="space-y-4 mb-6">
+              <div className="space-y-2">
+                <label htmlFor="prompt" className="text-sm font-medium">
+                  What would you like to do?
+                </label>
+                <textarea
+                  id="prompt"
+                  placeholder="e.g., Remove all filler words, mute parts where I talk about the price, or find segments where the speaker is talking about income claims."
+                  value={prompt}
+                  onChange={(e) => setPrompt(e.target.value)}
+                  className="w-full min-h-[100px] p-3 rounded-md border border-input bg-background text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
+                />
+              </div>
+              
+              <div className="flex flex-col gap-2 p-4 bg-muted/50 rounded-lg">
+                <div className="flex items-center space-x-2">
+                  <input
+                    type="checkbox"
+                    id="auto-fix"
+                    checked={autoFix}
+                    onChange={(e) => setAutoFix(e.target.checked)}
+                    className="w-4 h-4 rounded border-gray-300 text-primary focus:ring-primary"
+                  />
+                  <label
+                    htmlFor="auto-fix"
+                    className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70 cursor-pointer"
+                  >
+                    Auto-apply all AI suggested edits (Markers based on your prompt)
+                  </label>
+                </div>
+                <div className="flex items-center space-x-2">
+                  <input
+                    type="checkbox"
+                    id="auto-scrub"
+                    checked={autoScrub}
+                    onChange={(e) => setAutoScrub(e.target.checked)}
+                    className="w-4 h-4 rounded border-gray-300 text-primary focus:ring-primary"
+                  />
+                  <label
+                    htmlFor="auto-scrub"
+                    className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70 cursor-pointer"
+                  >
+                    Auto-apply "Scrubber" edits (Remove silences and filler words)
+                  </label>
+                </div>
+              </div>
             </div>
 
             <div
@@ -220,7 +254,7 @@ export default function UploadPage() {
                 id="file-input"
                 type="file"
                 multiple
-                accept="audio/*,.mp3,.wav,.m4a,.flac,.ogg,.webm,.aif,.aiff"
+                accept="audio/*,video/*,.mp3,.wav,.m4a,.flac,.ogg,.webm,.aif,.aiff,.mp4,.mov"
                 onChange={handleFileInput}
                 className="hidden"
                 disabled={isUploading}
@@ -240,15 +274,15 @@ export default function UploadPage() {
                 </div>
               ) : (
                 <div className="space-y-4">
-                  <div className="text-6xl">🎵</div>
+                  <div className="text-6xl">🎥</div>
                   <div className="text-lg font-medium">
-                    Drag and drop audio files here
+                    Drag and drop media files here
                   </div>
                   <p className="text-muted-foreground">
                     or click to browse
                   </p>
                   <p className="text-sm text-muted-foreground">
-                    Supports MP3, WAV, M4A, FLAC, OGG, WEBM, AIFF
+                    Supports MP3, WAV, M4A, FLAC, MP4, MOV, and more
                   </p>
                 </div>
               )}
@@ -311,9 +345,10 @@ export default function UploadPage() {
                           {getStatusIcon(job.status)}
                         </span>
                         <div className="min-w-0">
-                          <div className="font-medium truncate">{job.filename}</div>
+                          <div className="font-medium truncate">{job.original_filename || job.filename}</div>
                           <div className="text-xs text-muted-foreground">
                             {formatDate(job.created_at)} • {formatDuration(job.duration_seconds)}
+                            {job.prompt && ` • "${job.prompt.substring(0, 30)}${job.prompt.length > 30 ? '...' : ''}"`}
                           </div>
                         </div>
                       </div>
@@ -354,7 +389,7 @@ export default function UploadPage() {
 
                     {job.status === "completed" && job.violation_count > 0 && (
                       <div className="mt-1 text-xs text-muted-foreground">
-                        {job.violation_count} violation{job.violation_count !== 1 ? "s" : ""} detected
+                        {job.violation_count} suggested edit{job.violation_count !== 1 ? "s" : ""}
                       </div>
                     )}
                   </div>

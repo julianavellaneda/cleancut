@@ -27,16 +27,19 @@ EXPORT_DIR.mkdir(exist_ok=True)
 @router.post("", response_model=JobResponse)
 async def create_job(
     file: UploadFile = File(...),
+    prompt: str | None = None,
+    media_type: str = "audio",
     auto_fix: bool = False,
+    auto_scrub: bool = False,
     db: Session = Depends(get_db)
 ):
     """
-    Upload audio file and start background processing.
+    Upload media file and start background processing.
     Returns immediately after saving the file; processing runs in a sequential background queue.
     Poll GET /api/jobs/{id} to track progress.
     """
     # Validate file type
-    allowed_extensions = {".mp3", ".wav", ".m4a", ".flac", ".ogg", ".webm", ".aif", ".aiff"}
+    allowed_extensions = {".mp3", ".wav", ".m4a", ".flac", ".ogg", ".webm", ".aif", ".aiff", ".mp4", ".mov"}
     file_ext = Path(file.filename).suffix.lower()
     if file_ext not in allowed_extensions:
         raise HTTPException(
@@ -44,13 +47,21 @@ async def create_job(
             detail=f"Unsupported file type. Allowed: {', '.join(allowed_extensions)}"
         )
 
+    # Determine media type if not provided
+    if media_type == "audio" and file_ext in {".mp4", ".mov"}:
+        media_type = "video"
+
     # Create job record
     job_id = str(uuid.uuid4())
     job = Job(
         id=job_id,
-        filename=file.filename,
+        filename=f"{job_id}{file_ext}",
+        original_filename=file.filename,
+        media_type=media_type,
+        prompt=prompt,
         status="pending",
-        auto_fix=auto_fix
+        auto_fix=auto_fix,
+        auto_scrub=auto_scrub
     )
     db.add(job)
     db.commit()
@@ -81,8 +92,12 @@ def list_jobs(db: Session = Depends(get_db)):
         JobListResponse(
             id=job.id,
             filename=job.filename,
+            original_filename=job.original_filename,
+            media_type=job.media_type,
+            prompt=job.prompt,
             status=job.status,
             auto_fix=job.auto_fix,
+            auto_scrub=job.auto_scrub,
             duration_seconds=job.duration_seconds,
             created_at=job.created_at,
             violation_count=len(job.violations)
@@ -108,7 +123,7 @@ def delete_job(job_id: str, db: Session = Depends(get_db)):
         raise HTTPException(status_code=404, detail="Job not found")
 
     # Delete uploaded file
-    for ext in [".mp3", ".wav", ".m4a", ".flac", ".ogg", ".webm", ".aif", ".aiff"]:
+    for ext in [".mp3", ".wav", ".m4a", ".flac", ".ogg", ".webm", ".aif", ".aiff", ".mp4", ".mov"]:
         file_path = UPLOAD_DIR / f"{job_id}{ext}"
         if file_path.exists():
             file_path.unlink()
@@ -127,8 +142,12 @@ def _build_job_response(job: Job, db: Session) -> JobResponse:
     return JobResponse(
         id=job.id,
         filename=job.filename,
+        original_filename=job.original_filename,
+        media_type=job.media_type,
+        prompt=job.prompt,
         status=job.status,
         auto_fix=job.auto_fix,
+        auto_scrub=job.auto_scrub,
         duration_seconds=job.duration_seconds,
         language=job.language,
         created_at=job.created_at,

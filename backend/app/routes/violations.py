@@ -4,7 +4,7 @@ Violation routes - list and update violation status.
 
 from typing import List
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 
 from ..database import get_db
@@ -35,11 +35,12 @@ def list_violations(job_id: str, db: Session = Depends(get_db)):
             text=v.text,
             start_time=v.start_time,
             end_time=v.end_time,
+            label=v.label,
             rule_violated=v.rule_violated,
             severity=v.severity,
             reasoning=v.reasoning,
             status=v.status,
-            edit_action=v.edit_action
+            action=v.action
         )
         for v in violations
     ]
@@ -71,54 +72,48 @@ def update_violation(
             )
         violation.status = update.status
 
-    if update.edit_action is not None:
-        if update.edit_action not in ["cut", "mute"]:
+    if update.action is not None:
+        if update.action not in ["cut", "mute"]:
             raise HTTPException(
                 status_code=400,
-                detail="Edit action must be 'cut' or 'mute'"
+                detail="Action must be 'cut' or 'mute'"
             )
-        violation.edit_action = update.edit_action
+        violation.action = update.action
 
     db.commit()
     db.refresh(violation)
 
-    return ViolationResponse(
-        id=violation.id,
-        job_id=violation.job_id,
-        text=violation.text,
-        start_time=violation.start_time,
-        end_time=violation.end_time,
-        rule_violated=violation.rule_violated,
-        severity=violation.severity,
-        reasoning=violation.reasoning,
-        status=violation.status,
-        edit_action=violation.edit_action
-    )
+    return violation
 
 
 @router.post("/{job_id}/violations/bulk-update")
 def bulk_update_violations(
     job_id: str,
     update: ViolationUpdate,
+    labels: List[str] | None = Query(None),
     db: Session = Depends(get_db)
 ):
-    """Update all pending violations for a job."""
+    """Update multiple pending violations for a job, optionally filtered by label."""
     job = db.query(Job).filter(Job.id == job_id).first()
     if not job:
         raise HTTPException(status_code=404, detail="Job not found")
 
-    violations = (
-        db.query(Violation)
-        .filter(Violation.job_id == job_id, Violation.status == "pending")
-        .all()
+    query = db.query(Violation).filter(
+        Violation.job_id == job_id, 
+        Violation.status == "pending"
     )
+
+    if labels:
+        query = query.filter(Violation.label.in_(labels))
+
+    violations = query.all()
 
     updated_count = 0
     for v in violations:
         if update.status is not None:
             v.status = update.status
-        if update.edit_action is not None:
-            v.edit_action = update.edit_action
+        if update.action is not None:
+            v.action = update.action
         updated_count += 1
 
     db.commit()

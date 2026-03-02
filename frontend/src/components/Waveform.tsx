@@ -12,6 +12,7 @@ interface WaveformProps {
   selectedViolation: Violation | null;
   onViolationClick: (violation: Violation) => void;
   onTimeUpdate?: (time: number) => void;
+  mediaRef?: React.RefObject<HTMLMediaElement | null>;
 }
 
 export interface WaveformHandle {
@@ -25,6 +26,7 @@ export const Waveform = forwardRef<WaveformHandle, WaveformProps>(function Wavef
     selectedViolation,
     onViolationClick,
     onTimeUpdate,
+    mediaRef,
   },
   ref
 ) {
@@ -41,16 +43,27 @@ export const Waveform = forwardRef<WaveformHandle, WaveformProps>(function Wavef
     playClip: (startTime: number, endTime: number) => {
       if (!wavesurferRef.current || duration === 0) return;
 
-      const start = Math.max(0, startTime - 2);
-      wavesurferRef.current.seekTo(start / duration);
-      wavesurferRef.current.play();
+      const start = Math.max(0, startTime - 0.5);
+      
+      if (mediaRef?.current) {
+        mediaRef.current.currentTime = start;
+        mediaRef.current.play();
+      } else {
+        wavesurferRef.current.seekTo(start / duration);
+        wavesurferRef.current.play();
+      }
 
-      const clipDuration = (endTime + 2 - start) * 1000;
+      // Pause automatically after the clip
+      const clipDuration = (endTime + 0.5 - start) * 1000;
       setTimeout(() => {
-        wavesurferRef.current?.pause();
+        if (mediaRef?.current) {
+          mediaRef.current.pause();
+        } else {
+          wavesurferRef.current?.pause();
+        }
       }, clipDuration);
     },
-  }), [duration]);
+  }), [duration, mediaRef]);
 
   // Initialize WaveSurfer
   useEffect(() => {
@@ -69,12 +82,15 @@ export const Waveform = forwardRef<WaveformHandle, WaveformProps>(function Wavef
       barWidth: 2,
       barGap: 1,
       barRadius: 2,
+      media: mediaRef?.current || undefined,
       plugins: [regions],
     });
 
     wavesurferRef.current = ws;
 
-    ws.load(audioUrl);
+    if (!mediaRef?.current) {
+      ws.load(audioUrl);
+    }
 
     ws.on("ready", () => {
       setDuration(ws.getDuration());
@@ -94,7 +110,6 @@ export const Waveform = forwardRef<WaveformHandle, WaveformProps>(function Wavef
       try {
         ws.destroy();
       } catch (e: any) {
-        // Suppress AbortError from React Strict Mode double-mount or fetch cancellation
         if (
           e.name === "AbortError" || 
           e.message?.includes("aborted") ||
@@ -105,7 +120,7 @@ export const Waveform = forwardRef<WaveformHandle, WaveformProps>(function Wavef
         throw e;
       }
     };
-  }, [audioUrl]);
+  }, [audioUrl, mediaRef]);
 
   // Add violation regions when ready
   useEffect(() => {
@@ -116,7 +131,7 @@ export const Waveform = forwardRef<WaveformHandle, WaveformProps>(function Wavef
 
     // Add regions for each violation
     violations.forEach((v) => {
-      const color = getSeverityColor(v.severity, v.status);
+      const color = getActionColor(v.action, v.status);
       const region = regionsRef.current!.addRegion({
         start: v.start_time,
         end: v.end_time,
@@ -136,8 +151,8 @@ export const Waveform = forwardRef<WaveformHandle, WaveformProps>(function Wavef
   useEffect(() => {
     if (!isReady || !selectedViolation || !wavesurferRef.current || duration === 0) return;
 
-    // Seek to the violation
-    wavesurferRef.current.seekTo(selectedViolation.start_time / duration);
+    // Seek to the violation (with small buffer)
+    wavesurferRef.current.seekTo(Math.max(0, selectedViolation.start_time - 0.2) / duration);
   }, [selectedViolation, isReady, duration]);
 
   const togglePlayPause = useCallback(() => {
@@ -209,27 +224,27 @@ export const Waveform = forwardRef<WaveformHandle, WaveformProps>(function Wavef
   );
 });
 
-function getSeverityColor(
-  severity: string | null,
+function getActionColor(
+  action: string | null,
   status: string
 ): string {
-  // Faded colors for rejected/accepted
+  // Faded colors for rejected
   if (status === "rejected") {
-    return "rgba(128, 128, 128, 0.2)";
+    return "rgba(128, 128, 128, 0.1)";
   }
+  
+  // Accepted color
   if (status === "accepted") {
     return "rgba(34, 197, 94, 0.3)"; // Green for accepted
   }
 
   // Active colors for pending
-  switch (severity?.toLowerCase()) {
-    case "high":
-      return "rgba(239, 68, 68, 0.4)"; // Red
-    case "medium":
-      return "rgba(234, 179, 8, 0.4)"; // Yellow
-    case "low":
-      return "rgba(59, 130, 246, 0.4)"; // Blue
+  switch (action?.toLowerCase()) {
+    case "cut":
+      return "rgba(239, 68, 68, 0.3)"; // Red
+    case "mute":
+      return "rgba(234, 179, 8, 0.3)"; // Yellow
     default:
-      return "rgba(156, 163, 175, 0.4)"; // Gray
+      return "rgba(59, 130, 246, 0.3)"; // Blue
   }
 }

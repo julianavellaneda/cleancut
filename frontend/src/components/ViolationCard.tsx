@@ -26,59 +26,57 @@ export function ViolationCard({
     return `${mins}:${secs.toString().padStart(2, "0")}`;
   }
 
-  function getSeverityBadge(severity: string | null) {
-    const variant = severity?.toLowerCase() === "high"
+  function getActionBadge(action: string | null) {
+    const variant = action?.toLowerCase() === "cut"
       ? "destructive"
-      : severity?.toLowerCase() === "medium"
-      ? "default"
       : "secondary";
 
     return (
-      <Badge variant={variant}>
-        {severity?.toUpperCase() || "UNKNOWN"}
+      <Badge variant={variant} className="uppercase">
+        {action || "CUT"}
       </Badge>
     );
   }
 
   return (
-    <Card className="h-full flex flex-col">
-      <CardHeader className="pb-3">
+    <Card className="h-full flex flex-col border-none shadow-none bg-transparent">
+      <CardHeader className="pb-3 px-0">
         <div className="flex items-center justify-between">
-          <CardTitle className="text-lg">Selected Violation</CardTitle>
-          {getSeverityBadge(violation.severity)}
+          <CardTitle className="text-lg">Edit Details</CardTitle>
+          {getActionBadge(violation.action)}
         </div>
       </CardHeader>
 
-      <CardContent className="flex-1 flex flex-col space-y-4">
-        {/* Rule Info */}
+      <CardContent className="flex-1 flex flex-col space-y-4 px-0">
+        {/* Label Info */}
         <div>
-          <div className="text-sm text-muted-foreground mb-1">Rule Violated</div>
-          <div className="font-medium">{violation.rule_violated || "Unknown"}</div>
+          <div className="text-xs text-muted-foreground mb-1 uppercase tracking-wider font-semibold">Label</div>
+          <div className="font-medium text-base">{violation.label || "Suggested Edit"}</div>
         </div>
 
         {/* Time */}
         <div>
-          <div className="text-sm text-muted-foreground mb-1">Timestamp</div>
-          <div className="font-mono">
+          <div className="text-xs text-muted-foreground mb-1 uppercase tracking-wider font-semibold">Timestamp</div>
+          <div className="font-mono text-sm">
             {formatTime(violation.start_time)} - {formatTime(violation.end_time)}
           </div>
         </div>
 
         {/* Quoted Text */}
         <div>
-          <div className="text-sm text-muted-foreground mb-1">Flagged Text</div>
-          <div className="p-3 bg-muted/50 rounded-lg text-sm italic">
+          <div className="text-xs text-muted-foreground mb-1 uppercase tracking-wider font-semibold">Segment Content</div>
+          <div className="p-4 bg-muted/50 rounded-lg text-sm italic leading-relaxed">
             &ldquo;{violation.text}&rdquo;
           </div>
         </div>
 
-        {/* AI Reasoning */}
+        {/* Reasoning */}
         {violation.reasoning && (
           <div>
-            <div className="text-sm text-muted-foreground mb-1">
-              AI Reasoning
+            <div className="text-xs text-muted-foreground mb-1 uppercase tracking-wider font-semibold">
+              Reasoning
             </div>
-            <div className="p-3 bg-blue-50 dark:bg-blue-950/30 rounded-lg text-sm">
+            <div className="p-4 bg-blue-50 dark:bg-blue-950/30 rounded-lg text-sm border border-blue-100 dark:border-blue-900/50">
               💡 {violation.reasoning}
             </div>
           </div>
@@ -87,12 +85,12 @@ export function ViolationCard({
         {/* Status */}
         {violation.status !== "pending" && (
           <div>
-            <div className="text-sm text-muted-foreground mb-1">Status</div>
+            <div className="text-xs text-muted-foreground mb-1 uppercase tracking-wider font-semibold">Status</div>
             <Badge
               variant={violation.status === "accepted" ? "default" : "secondary"}
               className={
                 violation.status === "accepted"
-                  ? "bg-green-600"
+                  ? "bg-green-600 hover:bg-green-600"
                   : ""
               }
             >
@@ -105,7 +103,7 @@ export function ViolationCard({
         <div className="flex-1" />
 
         {/* Actions */}
-        <div className="space-y-3 pt-4 border-t">
+        <div className="space-y-3 pt-6 border-t">
           <Button
             variant="outline"
             className="w-full"
@@ -138,6 +136,7 @@ export function ViolationCard({
           {violation.status !== "pending" && (
             <Button
               variant="ghost"
+              size="sm"
               className="w-full text-muted-foreground"
               onClick={violation.status === "accepted" ? onReject : onAccept}
               disabled={isUpdating}

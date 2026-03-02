@@ -7,6 +7,9 @@ const API_BASE = "http://localhost:8000/api";
 export interface Job {
   id: string;
   filename: string;
+  original_filename: string | null;
+  media_type: "audio" | "video";
+  prompt: string | null;
   status: "pending" | "processing" | "transcribing" | "analyzing" | "exporting" | "completed" | "failed";
   auto_fix: boolean;
   duration_seconds: number | null;
@@ -22,6 +25,9 @@ export interface Job {
 export interface JobListItem {
   id: string;
   filename: string;
+  original_filename: string | null;
+  media_type: string;
+  prompt: string | null;
   status: string;
   auto_fix: boolean;
   duration_seconds: number | null;
@@ -35,11 +41,12 @@ export interface Violation {
   text: string;
   start_time: number;
   end_time: number;
+  label: string | null;
   rule_violated: string | null;
   severity: "high" | "medium" | "low" | null;
   reasoning: string | null;
   status: "pending" | "accepted" | "rejected";
-  edit_action: "cut" | "mute";
+  action: "cut" | "mute";
 }
 
 export interface ExportResponse {
@@ -77,11 +84,19 @@ async function handleResponse<T>(response: Response): Promise<T> {
 
 export const api = {
   // Jobs
-  async uploadAudio(file: File, autoFix: boolean = false): Promise<Job> {
+  async uploadAudio(
+    file: File, 
+    prompt: string | null = null, 
+    autoFix: boolean = false,
+    autoScrub: boolean = false
+  ): Promise<Job> {
     const formData = new FormData();
     formData.append("file", file);
+    if (prompt) {
+      formData.append("prompt", prompt);
+    }
 
-    const response = await fetch(`${API_BASE}/jobs?auto_fix=${autoFix}`, {
+    const response = await fetch(`${API_BASE}/jobs?auto_fix=${autoFix}&auto_scrub=${autoScrub}`, {
       method: "POST",
       body: formData,
     });
@@ -117,7 +132,7 @@ export const api = {
   async updateViolation(
     jobId: string,
     violationId: string,
-    update: { status?: string; edit_action?: string }
+    update: { status?: string; action?: string }
   ): Promise<Violation> {
     const response = await fetch(
       `${API_BASE}/jobs/${jobId}/violations/${violationId}`,
@@ -132,16 +147,19 @@ export const api = {
 
   async bulkUpdateViolations(
     jobId: string,
-    update: { status?: string; edit_action?: string }
+    update: { status?: string; action?: string },
+    labels?: string[]
   ): Promise<{ message: string }> {
-    const response = await fetch(
-      `${API_BASE}/jobs/${jobId}/violations/bulk-update`,
-      {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(update),
-      }
-    );
+    const url = new URL(`${API_BASE}/jobs/${jobId}/violations/bulk-update`);
+    if (labels && labels.length > 0) {
+      labels.forEach(label => url.searchParams.append("labels", label));
+    }
+
+    const response = await fetch(url.toString(), {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(update),
+    });
     return handleResponse<{ message: string }>(response);
   },
 
@@ -158,12 +176,12 @@ export const api = {
   // Export
   async exportAudio(
     jobId: string,
-    editAction: "cut" | "mute" = "cut"
+    action: "cut" | "mute" = "cut"
   ): Promise<ExportResponse> {
     const response = await fetch(`${API_BASE}/jobs/${jobId}/export`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ edit_action: editAction }),
+      body: JSON.stringify({ edit_action: action }),
     });
     return handleResponse<ExportResponse>(response);
   },
