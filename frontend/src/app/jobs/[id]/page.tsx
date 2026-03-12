@@ -10,16 +10,6 @@ import { ViolationList } from "@/components/ViolationList";
 import { ViolationCard } from "@/components/ViolationCard";
 import { api, Job, Violation } from "@/lib/api";
 
-type ProcessingStatus = "pending" | "transcribing" | "analyzing" | "exporting" | "completed" | "failed";
-
-const PROCESSING_STEPS: { key: ProcessingStatus; label: string }[] = [
-  { key: "pending", label: "Upload" },
-  { key: "transcribing", label: "Transcribing" },
-  { key: "analyzing", label: "Analyzing" },
-  { key: "exporting", label: "Auto-editing" },
-  { key: "completed", label: "Complete" },
-];
-
 function isProcessing(status: string): boolean {
   return !["completed", "failed"].includes(status);
 }
@@ -40,18 +30,14 @@ export default function ReviewPage() {
   const waveformRef = useRef<WaveformHandle>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
 
-  // Load job data (and violations if completed)
   const loadData = useCallback(async () => {
     try {
       const jobData = await api.getJob(jobId);
       setJob(jobData);
-
       if (jobData.status === "completed") {
         const violationsData = await api.getViolations(jobId);
         setViolations(violationsData);
-        if (violationsData.length > 0 && !selectedViolation) {
-          setSelectedViolation(violationsData[0]);
-        }
+        if (violationsData.length > 0 && !selectedViolation) setSelectedViolation(violationsData[0]);
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to load job");
@@ -60,427 +46,99 @@ export default function ReviewPage() {
     }
   }, [jobId, selectedViolation]);
 
-  // Initial load
+  useEffect(() => { loadData(); }, [jobId]);
+
   useEffect(() => {
-    loadData();
-  }, [jobId]); // eslint-disable-line react-hooks/exhaustive-deps
-
-  // Poll while processing
-  useEffect(() => {
-    if (!job) return;
-
-    if (job.auto_fix && job.status === "completed") {
-      setExportReady(true);
-    }
-
-    if (!isProcessing(job.status)) return;
-
+    if (!job || !isProcessing(job.status)) return;
     const interval = setInterval(async () => {
       try {
         const jobData = await api.getJob(jobId);
         setJob(jobData);
-
         if (jobData.status === "completed") {
-          const violationsData = await api.getViolations(jobId);
-          setViolations(violationsData);
-          if (violationsData.length > 0) {
-            setSelectedViolation(violationsData[0]);
-          }
-          clearInterval(interval);
-        } else if (jobData.status === "failed") {
+          const vData = await api.getViolations(jobId);
+          setViolations(vData);
+          if (vData.length > 0) setSelectedViolation(vData[0]);
           clearInterval(interval);
         }
-      } catch {
-        // Ignore polling errors, will retry
-      }
+      } catch {}
     }, 3000);
-
     return () => clearInterval(interval);
   }, [job?.status, jobId]);
 
-  // Sync video player when violation is selected
-  useEffect(() => {
-    if (job?.status !== "completed" || !selectedViolation) return;
-    
-    if (job.media_type === "video" && videoRef.current) {
-        videoRef.current.currentTime = Math.max(0, selectedViolation.start_time - 0.2);
+  const handleStatusUpdate = async (status: "accepted" | "rejected") => {
+    if (!selectedViolation) return;
+    setIsUpdating(true);
+    try {
+      const updated = await api.updateViolation(jobId, selectedViolation.id, { status });
+      setViolations(v => v.map(vi => vi.id === updated.id ? updated : vi));
+      setSelectedViolation(updated);
+      setExportReady(false);
+    } catch (err) {
+      setError("Update failed");
+    } finally {
+      setIsUpdating(false);
     }
-  }, [selectedViolation, job?.status, job?.media_type]);
+  };
 
-  const handleViolationSelect = useCallback((violation: Violation) => {
-    setSelectedViolation(violation);
-  }, []);
-
-  const handleStatusUpdate = useCallback(
-    async (status: "accepted" | "rejected") => {
-      if (!selectedViolation) return;
-
-      setIsUpdating(true);
-      try {
-        const updated = await api.updateViolation(
-          jobId,
-          selectedViolation.id,
-          { status }
-        );
-
-        setViolations((prev) =>
-          prev.map((v) => (v.id === updated.id ? updated : v))
-        );
-        setSelectedViolation(updated);
-
-        const jobData = await api.getJob(jobId);
-        setJob(jobData);
-
-        setExportReady(false);
-      } catch (err) {
-        setError(err instanceof Error ? err.message : "Failed to update");
-      } finally {
-        setIsUpdating(false);
-      }
-    },
-    [jobId, selectedViolation]
-  );
-
-  const handleBulkUpdate = useCallback(
-    async (status: "accepted" | "rejected", labels?: string[]) => {
-      setIsUpdating(true);
-      try {
-        await api.bulkUpdateViolations(jobId, { status }, labels);
-
-        // Refresh violations and job
-        const [jobData, violationsData] = await Promise.all([
-          api.getJob(jobId),
-          api.getViolations(jobId),
-        ]);
-        setJob(jobData);
-        setViolations(violationsData);
-
-        // Update selected violation from refreshed data
-        if (selectedViolation) {
-          const updated = violationsData.find((v) => v.id === selectedViolation.id);
-          if (updated) setSelectedViolation(updated);
-        }
-
-        setExportReady(false);
-      } catch (err) {
-        setError(err instanceof Error ? err.message : "Bulk update failed");
-      } finally {
-        setIsUpdating(false);
-      }
-    },
-    [jobId, selectedViolation]
-  );
-
-  const handleScrubCleanup = useCallback(() => {
-    handleBulkUpdate("accepted", ["Dead Air", "Filler Word"]);
-  }, [handleBulkUpdate]);
-
-  const handleExport = useCallback(async () => {
+  const handleExport = async () => {
     setIsExporting(true);
     try {
       await api.exportAudio(jobId, "cut");
       setExportReady(true);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Export failed");
+      setError("Export failed");
     } finally {
       setIsExporting(false);
     }
-  }, [jobId]);
+  };
 
-  const handleDownload = useCallback(() => {
-    window.open(api.getExportDownloadUrl(jobId), "_blank");
-  }, [jobId]);
-
-  const playClip = useCallback(() => {
-    if (!selectedViolation) return;
-    waveformRef.current?.playClip(selectedViolation.start_time, selectedViolation.end_time);
-  }, [selectedViolation]);
-
-  if (isLoading) {
-    return (
-      <div className="h-screen bg-background flex items-center justify-center">
-        <div className="text-center">
-          <div className="text-4xl mb-4">...</div>
-          <div className="text-lg">Loading...</div>
-        </div>
-      </div>
-    );
-  }
-
-  if (error && !job) {
-    return (
-      <div className="h-screen bg-background flex items-center justify-center">
-        <div className="text-center">
-          <div className="text-lg text-destructive mb-4">{error || "Job not found"}</div>
-          <Link href="/">
-            <Button>Back to Home</Button>
-          </Link>
-        </div>
-      </div>
-    );
-  }
-
-  if (!job) {
-    return (
-      <div className="h-screen bg-background flex items-center justify-center">
-        <div className="text-center">
-          <div className="text-lg text-destructive mb-4">Job not found</div>
-          <Link href="/">
-            <Button>Back to Home</Button>
-          </Link>
-        </div>
-      </div>
-    );
-  }
-
-  // Processing view - show step-by-step progress
-  if (isProcessing(job.status)) {
-    const stepsToShow = job.auto_fix 
-      ? PROCESSING_STEPS 
-      : PROCESSING_STEPS.filter(s => s.key !== "exporting");
-    
-    const currentStepIndex = stepsToShow.findIndex((s) => s.key === job.status);
-
-    return (
-      <div className="h-screen bg-background flex flex-col">
-        <header className="border-b px-6 py-4">
-          <div className="flex items-center gap-4">
-            <Link href="/">
-              <Button variant="ghost" size="sm">
-                ← Back
-              </Button>
-            </Link>
-            <div>
-              <h1 className="text-xl font-semibold">{job.original_filename || job.filename}</h1>
-            </div>
-          </div>
-        </header>
-
-        <div className="flex-1 flex items-center justify-center">
-          <div className="w-full max-w-md space-y-6">
-            <h2 className="text-lg font-semibold text-center mb-8">
-              {job.auto_fix ? "Auto-processing Media" : "Processing Media"}
-            </h2>
-
-            {stepsToShow.map((step, i) => {
-              const isDone = i < currentStepIndex;
-              const isCurrent = i === currentStepIndex;
-              const isPending = i > currentStepIndex;
-
-              return (
-                <div key={step.key} className="flex items-center gap-4">
-                  <div className={`w-8 h-8 rounded-full flex items-center justify-center text-sm font-medium ${
-                    isDone
-                      ? "bg-green-100 text-green-700"
-                      : isCurrent
-                        ? "bg-blue-100 text-blue-700"
-                        : "bg-muted text-muted-foreground"
-                  }`}>
-                    {isDone ? "\u2713" : i + 1}
-                  </div>
-                  <div className="flex-1">
-                    <div className={`font-medium ${
-                      isCurrent ? "text-foreground" : isPending ? "text-muted-foreground" : ""
-                    }`}>
-                      {step.label}
-                    </div>
-                  </div>
-                  {isCurrent && (
-                    <div className="text-sm text-muted-foreground animate-pulse">
-                      In progress...
-                    </div>
-                  )}
-                  {isDone && (
-                    <div className="text-sm text-green-600">Done</div>
-                  )}
-                </div>
-              );
-            })}
-
-            {job.status === "failed" && (
-              <div className="mt-6 p-4 bg-destructive/10 text-destructive rounded-lg">
-                {job.error_message || "Processing failed"}
-              </div>
-            )}
-          </div>
-        </div>
-      </div>
-    );
-  }
-
-  // Completed review view
-  const acceptedCount = violations.filter((v) => v.status === "accepted").length;
-  const rejectedCount = violations.filter((v) => v.status === "rejected").length;
-  const pendingCount = violations.filter((v) => v.status === "pending").length;
-  const pendingScrubCount = violations.filter(
-    (v) => v.status === "pending" && (v.label === "Dead Air" || v.label === "Filler Word")
-  ).length;
+  if (isLoading) return <div className="h-screen flex items-center justify-center text-sm font-medium animate-pulse">Initializing Terminal...</div>;
+  if (!job) return <div className="h-screen flex items-center justify-center"><Link href="/"><Button>Back to Home</Button></Link></div>;
 
   return (
-    <div className="h-screen bg-background flex flex-col overflow-hidden">
-      {/* Header */}
-      <header className="border-b px-6 py-4 shrink-0">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-4">
-            <Link href="/">
-              <Button variant="ghost" size="sm">
-                ← Back
-              </Button>
-            </Link>
-            <div>
-              <h1 className="text-xl font-semibold">{job.original_filename || job.filename}</h1>
-              <div className="text-sm text-muted-foreground">
-                {job.media_type.toUpperCase()} • {job.language?.toUpperCase()} •{" "}
-                {Math.floor((job.duration_seconds || 0) / 60)}:
-                {String(Math.floor((job.duration_seconds || 0) % 60)).padStart(2, "0")}
-                {job.auto_fix && " • Auto-edited"}
-              </div>
-            </div>
-          </div>
-          <div className="flex items-center gap-3">
-            {job.auto_fix && (
-              <Button onClick={handleDownload} className="bg-green-600 hover:bg-green-700">
-                Download Edited Media
-              </Button>
-            )}
-            <Badge
-              variant={job.status === "completed" ? "default" : "secondary"}
-            >
-              {job.status}
-            </Badge>
-          </div>
+    <div className="h-screen flex flex-col bg-background">
+      <header className="border-b px-8 py-4 flex items-center justify-between">
+        <div className="flex items-center gap-6">
+          <Link href="/" className="text-sm font-medium hover:underline transition-all">← Projects</Link>
+          <h1 className="text-lg font-bold tracking-tight truncate max-w-md">{job.original_filename || job.filename}</h1>
+        </div>
+        <div className="flex items-center gap-3">
+          {exportReady ? (
+            <Button size="sm" onClick={() => window.open(api.getExportDownloadUrl(jobId))}>Download Master</Button>
+          ) : (
+            <Button size="sm" onClick={handleExport} disabled={isExporting || violations.filter(v => v.status === "accepted").length === 0}>
+              {isExporting ? "Exporting..." : "Export Edited"}
+            </Button>
+          )}
         </div>
       </header>
 
-      {/* Main Content */}
       <div className="flex-1 flex overflow-hidden">
-        {/* Violation List Sidebar */}
-        <aside className="w-96 border-r bg-muted/10 overflow-hidden shrink-0">
-          <ViolationList
-            violations={violations}
-            selectedViolation={selectedViolation}
-            onSelect={handleViolationSelect}
-          />
+        <aside className="w-80 border-r bg-muted/20">
+          <ViolationList violations={violations} selectedViolation={selectedViolation} onSelect={setSelectedViolation} />
         </aside>
 
-        {/* Main Panel */}
         <main className="flex-1 flex flex-col overflow-hidden">
-          {/* Media Player */}
-          <div className="p-6 border-b shrink-0 bg-black/5 flex flex-col items-center">
-            {job.media_type === "video" && (
-              <div className="w-full max-w-2xl aspect-video mb-6 bg-black rounded-lg overflow-hidden shadow-xl">
-                <video
-                  ref={videoRef}
-                  src={api.getAudioUrl(jobId)}
-                  className="w-full h-full"
-                  controls
-                />
-              </div>
-            )}
-            
-            <div className="w-full">
-              <Waveform
-                ref={waveformRef}
-                audioUrl={api.getAudioUrl(jobId)}
-                violations={violations}
-                selectedViolation={selectedViolation}
-                onViolationClick={handleViolationSelect}
-                mediaRef={job.media_type === "video" ? videoRef : undefined}
-              />
+          <div className="p-8 border-b bg-muted/10">
+            <div className="max-w-4xl mx-auto w-full">
+              {job.media_type === "video" && (
+                <video ref={videoRef} src={api.getAudioUrl(jobId)} className="w-full aspect-video rounded-lg border mb-8 bg-black" controls />
+              )}
+              <Waveform ref={waveformRef} audioUrl={api.getAudioUrl(jobId)} violations={violations} selectedViolation={selectedViolation} onViolationClick={setSelectedViolation} mediaRef={job.media_type === "video" ? videoRef : undefined} />
             </div>
           </div>
 
-          {/* Selected Violation Details */}
-          <div className="flex-1 p-6 overflow-auto">
-            {selectedViolation ? (
-              <ViolationCard
-                violation={selectedViolation}
-                onAccept={() => handleStatusUpdate("accepted")}
-                onReject={() => handleStatusUpdate("rejected")}
-                onPlayClip={playClip}
-                isUpdating={isUpdating}
-              />
-            ) : (
-              <div className="h-full flex items-center justify-center text-muted-foreground">
-                Select a suggested edit to review
-              </div>
-            )}
+          <div className="flex-1 p-8 overflow-auto">
+            <div className="max-w-2xl mx-auto">
+              {selectedViolation ? (
+                <ViolationCard violation={selectedViolation} onAccept={() => handleStatusUpdate("accepted")} onReject={() => handleStatusUpdate("rejected")} onPlayClip={() => waveformRef.current?.playClip(selectedViolation.start_time, selectedViolation.end_time)} isUpdating={isUpdating} />
+              ) : (
+                <div className="h-full flex items-center justify-center text-muted-foreground text-sm italic">Select an edit to review</div>
+              )}
+            </div>
           </div>
         </main>
       </div>
-
-      {/* Footer */}
-      <footer className="border-t px-6 py-4 shrink-0">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-6 text-sm">
-            <span>
-              <span className="font-medium text-green-600">{acceptedCount}</span>{" "}
-              Accepted
-            </span>
-            <span>
-              <span className="font-medium">{rejectedCount}</span>{" "}
-              Rejected
-            </span>
-            <span>
-              <span className="font-medium text-orange-500">{pendingCount}</span>{" "}
-              Pending
-            </span>
-          </div>
-
-          <div className="flex items-center gap-3">
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={handleScrubCleanup}
-              disabled={pendingScrubCount === 0 || isUpdating}
-              className="border-blue-200 text-blue-700 hover:bg-blue-50"
-            >
-              🪄 Clean All (Scrub)
-            </Button>
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => handleBulkUpdate("accepted")}
-              disabled={pendingCount === 0 || isUpdating}
-            >
-              Accept All
-            </Button>
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => handleBulkUpdate("rejected")}
-              disabled={pendingCount === 0 || isUpdating}
-            >
-              Reject All
-            </Button>
-
-            {exportReady ? (
-              <Button onClick={handleDownload}>
-                Download Edited Media
-              </Button>
-            ) : (
-              <Button
-                onClick={handleExport}
-                disabled={acceptedCount === 0 || isExporting}
-              >
-                {isExporting ? "Exporting..." : "Export Media"}
-              </Button>
-            )}
-          </div>
-        </div>
-      </footer>
-
-      {/* Error toast */}
-      {error && (
-        <div className="fixed bottom-20 right-6 p-4 bg-destructive/10 text-destructive rounded-lg shadow-lg">
-          <div className="flex items-center gap-2">
-            <span>{error}</span>
-            <Button variant="ghost" size="sm" onClick={() => setError(null)}>
-              Dismiss
-            </Button>
-          </div>
-        </div>
-      )}
     </div>
   );
 }

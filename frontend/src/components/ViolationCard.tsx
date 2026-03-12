@@ -4,6 +4,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Violation } from "@/lib/api";
+import { cn } from "@/lib/utils";
 
 interface ViolationCardProps {
   violation: Violation;
@@ -32,78 +33,59 @@ export function ViolationCard({
       : "secondary";
 
     return (
-      <Badge variant={variant} className="uppercase">
+      <Badge variant={variant} className="uppercase font-semibold">
         {action || "CUT"}
       </Badge>
     );
   }
 
   return (
-    <Card className="h-full flex flex-col border-none shadow-none bg-transparent">
-      <CardHeader className="pb-3 px-0">
+    <Card className="h-full flex flex-col border shadow-sm">
+      <CardHeader className="pb-4">
         <div className="flex items-center justify-between">
-          <CardTitle className="text-lg">Edit Details</CardTitle>
+          <CardTitle className="text-xl font-bold">
+            {violation.label || "Suggested Edit"}
+          </CardTitle>
           {getActionBadge(violation.action)}
         </div>
       </CardHeader>
 
-      <CardContent className="flex-1 flex flex-col space-y-4 px-0">
-        {/* Label Info */}
-        <div>
-          <div className="text-xs text-muted-foreground mb-1 uppercase tracking-wider font-semibold">Label</div>
-          <div className="font-medium text-base">{violation.label || "Suggested Edit"}</div>
-        </div>
-
-        {/* Time */}
-        <div>
-          <div className="text-xs text-muted-foreground mb-1 uppercase tracking-wider font-semibold">Timestamp</div>
-          <div className="font-mono text-sm">
-            {formatTime(violation.start_time)} - {formatTime(violation.end_time)}
+      <CardContent className="flex-1 flex flex-col space-y-6">
+        {/* Time & Text */}
+        <div className="space-y-1">
+          <div className="text-xs text-muted-foreground font-mono">
+            {formatTime(violation.start_time)} — {formatTime(violation.end_time)}
           </div>
-        </div>
-
-        {/* Quoted Text */}
-        <div>
-          <div className="text-xs text-muted-foreground mb-1 uppercase tracking-wider font-semibold">Segment Content</div>
-          <div className="p-4 bg-muted/50 rounded-lg text-sm italic leading-relaxed">
+          <div className="text-sm italic leading-relaxed text-muted-foreground p-4 bg-muted/50 rounded-md">
             &ldquo;{violation.text}&rdquo;
           </div>
         </div>
 
         {/* Reasoning */}
         {violation.reasoning && (
-          <div>
-            <div className="text-xs text-muted-foreground mb-1 uppercase tracking-wider font-semibold">
-              Reasoning
-            </div>
-            <div className="p-4 bg-blue-50 dark:bg-blue-950/30 rounded-lg text-sm border border-blue-100 dark:border-blue-900/50">
-              💡 {violation.reasoning}
+          <div className="space-y-1">
+            <div className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Reasoning</div>
+            <div className="text-sm p-4 bg-primary/5 rounded-md border text-foreground/80">
+              {violation.reasoning}
             </div>
           </div>
         )}
 
         {/* Status */}
         {violation.status !== "pending" && (
-          <div>
-            <div className="text-xs text-muted-foreground mb-1 uppercase tracking-wider font-semibold">Status</div>
+          <div className="flex items-center gap-2">
+            <div className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Status:</div>
             <Badge
-              variant={violation.status === "accepted" ? "default" : "secondary"}
-              className={
-                violation.status === "accepted"
-                  ? "bg-green-600 hover:bg-green-600"
-                  : ""
-              }
+              variant={violation.status === "accepted" ? "default" : "outline"}
+              className="px-2 py-0"
             >
-              {violation.status === "accepted" ? "✓ Accepted" : "✗ Rejected"}
+              {violation.status === "accepted" ? "Accepted" : "Rejected"}
             </Badge>
           </div>
         )}
 
-        {/* Spacer */}
-        <div className="flex-1" />
-
         {/* Actions */}
-        <div className="space-y-3 pt-6 border-t">
+        <div className="pt-6 border-t mt-auto space-y-3">
           <Button
             variant="outline"
             className="w-full"
@@ -116,19 +98,19 @@ export function ViolationCard({
             <div className="flex gap-2">
               <Button
                 variant="default"
-                className="flex-1 bg-green-600 hover:bg-green-700"
+                className="flex-1"
                 onClick={onAccept}
                 disabled={isUpdating}
               >
-                ✓ Accept
+                Accept
               </Button>
               <Button
                 variant="outline"
-                className="flex-1"
+                className="flex-1 text-destructive hover:bg-destructive/5"
                 onClick={onReject}
                 disabled={isUpdating}
               >
-                ✗ Reject
+                Reject
               </Button>
             </div>
           )}
@@ -137,11 +119,11 @@ export function ViolationCard({
             <Button
               variant="ghost"
               size="sm"
-              className="w-full text-muted-foreground"
+              className="w-full text-xs text-muted-foreground"
               onClick={violation.status === "accepted" ? onReject : onAccept}
               disabled={isUpdating}
             >
-              {violation.status === "accepted" ? "Undo (Reject)" : "Undo (Accept)"}
+              Undo Status
             </Button>
           )}
         </div>

@@ -74,11 +74,11 @@ export const Waveform = forwardRef<WaveformHandle, WaveformProps>(function Wavef
 
     const ws = WaveSurfer.create({
       container: containerRef.current,
-      waveColor: "#a1a1aa",
-      progressColor: "#3b82f6",
-      cursorColor: "#1d4ed8",
+      waveColor: "#94a3b8",
+      progressColor: "#334155",
+      cursorColor: "#1e293b",
       cursorWidth: 2,
-      height: 128,
+      height: 100,
       barWidth: 2,
       barGap: 1,
       barRadius: 2,
@@ -109,11 +109,11 @@ export const Waveform = forwardRef<WaveformHandle, WaveformProps>(function Wavef
     return () => {
       try {
         ws.destroy();
-      } catch (e: any) {
+      } catch (e: unknown) {
         if (
-          e.name === "AbortError" || 
-          e.message?.includes("aborted") ||
-          (e instanceof DOMException && e.name === "AbortError")
+          e instanceof Error &&
+          (e.name === "AbortError" || 
+           e.message?.includes("aborted"))
         ) {
           return;
         }
@@ -182,8 +182,8 @@ export const Waveform = forwardRef<WaveformHandle, WaveformProps>(function Wavef
       {/* Waveform container */}
       <div
         ref={containerRef}
-        className="w-full bg-muted/30 rounded-lg"
-        style={{ minHeight: 128 }}
+        className="w-full bg-muted/20 border rounded-md overflow-hidden"
+        style={{ minHeight: 100 }}
       />
 
       {/* Controls */}
@@ -198,13 +198,13 @@ export const Waveform = forwardRef<WaveformHandle, WaveformProps>(function Wavef
             -5s
           </Button>
           <Button
-            variant="default"
+            variant="secondary"
             size="lg"
             onClick={togglePlayPause}
             disabled={!isReady}
             className="w-16"
           >
-            {isPlaying ? "⏸" : "▶"}
+            {isPlaying ? "Pause" : "Play"}
           </Button>
           <Button
             variant="outline"
@@ -216,7 +216,7 @@ export const Waveform = forwardRef<WaveformHandle, WaveformProps>(function Wavef
           </Button>
         </div>
 
-        <div className="text-sm font-mono">
+        <div className="text-xs font-mono font-medium text-muted-foreground">
           {formatTime(currentTime)} / {formatTime(duration)}
         </div>
       </div>
@@ -230,21 +230,21 @@ function getActionColor(
 ): string {
   // Faded colors for rejected
   if (status === "rejected") {
-    return "rgba(128, 128, 128, 0.1)";
+    return "rgba(148, 163, 184, 0.1)";
   }
   
   // Accepted color
   if (status === "accepted") {
-    return "rgba(34, 197, 94, 0.3)"; // Green for accepted
+    return "rgba(148, 163, 184, 0.2)"; 
   }
 
   // Active colors for pending
   switch (action?.toLowerCase()) {
     case "cut":
-      return "rgba(239, 68, 68, 0.3)"; // Red
+      return "rgba(239, 68, 68, 0.15)";
     case "mute":
-      return "rgba(234, 179, 8, 0.3)"; // Yellow
+      return "rgba(234, 179, 8, 0.15)";
     default:
-      return "rgba(59, 130, 246, 0.3)"; // Blue
+      return "rgba(148, 163, 184, 0.2)";
   }
 }

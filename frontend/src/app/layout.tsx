@@ -3,18 +3,18 @@ import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
 
 const geistSans = Geist({
-  variable: "--font-geist-sans",
+  variable: "--font-body",
   subsets: ["latin"],
 });
 
 const geistMono = Geist_Mono({
-  variable: "--font-geist-mono",
+  variable: "--font-mono",
   subsets: ["latin"],
 });
 
 export const metadata: Metadata = {
-  title: "Audio Compliance Review",
-  description: "AI-powered audio compliance analysis for marketing guidelines",
+  title: "AI Media Editor",
+  description: "Simple AI-powered media editing",
 };
 
 export default function RootLayout({
@@ -25,15 +25,15 @@ export default function RootLayout({
   return (
     <html lang="en">
       <body
-        className={`${geistSans.variable} ${geistMono.variable} antialiased min-h-screen flex flex-col`}
+        className={`${geistSans.variable} ${geistMono.variable} antialiased min-h-screen flex flex-col font-sans`}
       >
         <main className="flex-grow">
           {children}
         </main>
-        <footer className="p-4 border-t text-center text-xs text-muted-foreground bg-background">
-          <div className="flex justify-center gap-4">
-            <span>© 2026 Audio Compliance Review</span>
-            <a href="/admin" className="hover:underline">Admin</a>
+        <footer className="p-8 border-t text-center text-xs text-muted-foreground bg-background">
+          <div className="flex justify-center gap-6">
+            <span>© 2026 AI Media Editor</span>
+            <a href="/admin" className="hover:text-foreground transition-colors">Admin Dashboard</a>
           </div>
         </footer>
       </body>

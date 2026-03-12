@@ -3,6 +3,7 @@
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Badge } from "@/components/ui/badge";
 import { Violation } from "@/lib/api";
+import { cn } from "@/lib/utils";
 
 interface ViolationListProps {
   violations: Violation[];
@@ -27,21 +28,10 @@ export function ViolationList({
       : "secondary";
 
     return (
-      <Badge variant={variant} className="text-[10px] h-4 px-1 leading-none uppercase">
+      <Badge variant={variant} className="text-[10px] h-4 px-1 leading-none">
         {action || "CUT"}
       </Badge>
     );
-  }
-
-  function getStatusIcon(status: string) {
-    switch (status) {
-      case "accepted":
-        return "✓";
-      case "rejected":
-        return "✗";
-      default:
-        return "";
-    }
   }
 
   return (
@@ -62,37 +52,32 @@ export function ViolationList({
             violations.map((v) => (
               <div
                 key={v.id}
-                className={`p-3 rounded-lg cursor-pointer transition-colors border ${
+                className={cn(
+                  "p-3 rounded-md cursor-pointer transition-colors border",
                   selectedViolation?.id === v.id
-                    ? "bg-primary/5 border-primary"
-                    : "border-transparent hover:bg-muted/50"
-                } ${v.status === "rejected" ? "opacity-40 grayscale" : ""}`}
+                    ? "bg-accent border-accent-foreground/20"
+                    : "border-transparent hover:bg-muted"
+                )}
                 onClick={() => onSelect(v)}
               >
                 <div className="flex items-center justify-between mb-1">
-                  <span className="text-[10px] font-mono text-muted-foreground">
+                  <span className="text-[10px] text-muted-foreground font-mono">
                     {formatTime(v.start_time)}
                   </span>
                   <div className="flex items-center gap-1.5">
                     {v.status !== "pending" && (
-                      <span
-                        className={`text-xs font-bold ${
-                          v.status === "accepted"
-                            ? "text-green-600"
-                            : "text-muted-foreground"
-                        }`}
-                      >
-                        {getStatusIcon(v.status)}
+                      <span className="text-[10px] font-medium text-muted-foreground">
+                        {v.status === "accepted" ? "✓" : "✗"}
                       </span>
                     )}
                     {getActionBadge(v.action)}
                   </div>
                 </div>
-                <div className="text-xs font-semibold truncate">
+                <div className="text-xs font-medium truncate">
                   {v.label || "Suggested Edit"}
                 </div>
                 <div className="text-[10px] text-muted-foreground line-clamp-1 mt-1 italic">
-                  "{v.text}"
+                  &ldquo;{v.text}&rdquo;
                 </div>
               </div>
             ))
