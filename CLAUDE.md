@@ -73,6 +73,10 @@ pip install -r requirements.txt
 # Start backend (port 8000)
 uvicorn app.main:app --reload
 
+# Backend tests (from backend/)
+pip install -r requirements-dev.txt
+pytest
+
 # Frontend setup
 cd frontend
 npm install

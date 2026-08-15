@@ -3,16 +3,18 @@ FastAPI application entry point.
 """
 
 import os
-from pathlib import Path
 
 from dotenv import load_dotenv
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
+from .config import root_env_path
+
 # Load environment variables from the project root .env before importing anything
-# that depends on them (OPENAI_API_KEY, CORS_ORIGINS, DATABASE_PATH).
-_ROOT_ENV = Path(__file__).resolve().parents[3] / ".env"
-if _ROOT_ENV.exists():
+# that depends on them (OPENAI_API_KEY, CORS_ORIGINS, DATABASE_PATH). In Docker
+# there is no repo root and no .env - the container supplies these directly.
+_ROOT_ENV = root_env_path(__file__)
+if _ROOT_ENV:
     load_dotenv(_ROOT_ENV)
 
 from .database import init_db

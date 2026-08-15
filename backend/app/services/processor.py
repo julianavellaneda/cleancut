@@ -11,9 +11,13 @@ sys.path.insert(0, str(ANALYSIS_PATH))
 
 from dotenv import load_dotenv
 
-# Load environment variables from the root .env file
-# The .env file from the `poc` directory should be moved to the project root
-load_dotenv(ANALYSIS_PATH.parent.parent.parent / ".env")
+from ..config import root_env_path
+
+# Load environment variables from the root .env file, when there is one.
+# In Docker the container supplies them instead.
+_ROOT_ENV = root_env_path(__file__)
+if _ROOT_ENV:
+    load_dotenv(_ROOT_ENV)
 
 from transcriber import Transcriber, TranscriptResult
 from prompt_analyzer import PromptAnalyzer, AnalysisResult, Violation
