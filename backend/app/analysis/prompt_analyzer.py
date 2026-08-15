@@ -23,6 +23,8 @@ class Violation:
     label: str  # e.g., "Filler Word", "Income Claim", "Silence"
     action: str  # "cut" or "mute"
     reasoning: str
+    rule_violated: str | None = None  # Populated in strict mode
+    severity: str | None = None  # "high" | "medium" | "low", populated in strict mode
 
 
 @dataclass
@@ -72,13 +74,21 @@ class PromptAnalyzer:
         except FileNotFoundError:
             self.default_rules = "No default rules provided."
 
-    def analyze(self, transcript: TranscriptResult, prompt: Optional[str] = None) -> AnalysisResult:
+    def analyze(
+        self,
+        transcript: TranscriptResult,
+        prompt: Optional[str] = None,
+        bsm_mode: bool = False,
+    ) -> AnalysisResult:
         """
-        Analyze a transcript for suggested edits based on a user prompt.
+        Analyze a transcript for suggested edits based on a user prompt, or in
+        strict rulebook compliance mode.
 
         Args:
             transcript: TranscriptResult from transcriber
-            prompt: User-defined editing instructions
+            prompt: User-defined editing instructions (ignored when bsm_mode=True)
+            bsm_mode: If True, use the strict compliance system prompt and
+                extract rule_violated + severity fields.
 
         Returns:
             AnalysisResult with list of suggested edits
@@ -95,11 +105,12 @@ class PromptAnalyzer:
         chunks = self._chunk_segments_with_overlap(transcript.segments, chunk_size, overlap)
         num_chunks = len(chunks)
 
+        mode_label = "strict compliance" if bsm_mode else f"prompt: '{prompt or 'Default'}'"
         if num_chunks == 1:
-            print(f"Analyzing transcript with prompt: '{prompt or 'Default'}'...")
+            print(f"Analyzing transcript with {mode_label}...")
         else:
             overlap_info = f", {overlap} segment overlap" if overlap > 0 else ""
-            print(f"Analyzing transcript in {num_chunks} chunks ({chunk_size} segments each{overlap_info}) with prompt: '{prompt or 'Default'}'...")
+            print(f"Analyzing transcript in {num_chunks} chunks ({chunk_size} segments each{overlap_info}) with {mode_label}...")
 
         all_violations = []
 
@@ -118,13 +129,13 @@ class PromptAnalyzer:
 
             # Format and analyze this chunk
             transcript_text = self._format_transcript_for_analysis(chunk_transcript)
-            chunk_violations = self._call_llm(transcript_text, prompt)
+            chunk_violations = self._call_llm(transcript_text, prompt, bsm_mode=bsm_mode)
 
             if num_chunks > 1:
                 print(f"    Found {len(chunk_violations)} suggested edit(s)")
 
             # Map violations back to precise timestamps
-            mapped = self._map_to_timestamps(chunk_violations, chunk_transcript)
+            mapped = self._map_to_timestamps(chunk_violations, chunk_transcript, bsm_mode=bsm_mode)
             all_violations.extend(mapped)
 
         # Deduplicate violations from overlapping chunks
@@ -194,13 +205,11 @@ class PromptAnalyzer:
             lines.append(f"[{seg.start:.1f}s - {seg.end:.1f}s] {seg.text}")
         return "\n".join(lines)
 
-    def _call_llm(self, transcript_text: str, user_prompt: Optional[str]) -> list[dict]:
-        """Call GPT-4o to analyze the transcript based on the user prompt."""
-        
+    def _prompt_system_prompt(self, user_prompt: Optional[str]) -> str:
+        """Generic prompt-driven system prompt (default mode)."""
         instructions = user_prompt if user_prompt else "Identify all segments that should be removed or muted for clarity and compliance."
-        
-        system_prompt = f"""You are an expert audio/video editor and compliance officer.
-        
+        return f"""You are an expert audio/video editor and compliance officer.
+
 ## EDITING INSTRUCTIONS:
 {instructions}
 
@@ -233,6 +242,58 @@ IMPORTANT:
 - Choose 'mute' if the segment should remain but be silenced (e.g. sensitive info, background noise).
 """
 
+    def _bsm_system_prompt(self) -> str:
+        """Strict rulebook compliance system prompt (lifted from legacy ComplianceAnalyzer)."""
+        return f"""{self.default_rules}
+
+## YOUR TASK
+You are a forensic compliance auditor. Your job is to meticulously scan the ENTIRE transcript and extract EVERY SINGLE instance of content that violates the marketing guidelines.
+
+CRITICAL INSTRUCTIONS:
+1. You MUST read the ENTIRE transcript from start to finish
+2. You MUST identify ALL violations, not just the first one you find
+3. A single transcript may contain ZERO violations, or it may contain TEN or more - list them ALL
+4. Do NOT stop after finding one or two violations - continue scanning until the end
+5. Each violation must be reported separately, even if they are similar
+
+Return your response as a JSON array with this exact structure:
+```json
+[
+  {{
+    "text": "exact quote from transcript",
+    "approximate_time": "57.1s",
+    "rule_violated": "Income Claims",
+    "severity": "high",
+    "reasoning": "brief explanation"
+  }}
+]
+```
+
+If no violations are found, return an empty array: []
+
+IMPORTANT:
+- Quote the EXACT text that violates guidelines
+- Include the approximate timestamp (e.g. "57.1s")
+- severity must be "high", "medium", or "low"
+- rule_violated must be one of the rulebook categories (e.g. "Income Claims", "Lifestyle Claims", "Political/Religious", "Medical/Health Claims", "Business Opportunity Misrepresentation", "Competitive Disparagement")
+- Be EXHAUSTIVE - scan every sentence for potential violations
+- Flag actual violations, not borderline cases
+- Do NOT summarize or combine multiple violations into one entry
+"""
+
+    def _call_llm(
+        self,
+        transcript_text: str,
+        user_prompt: Optional[str],
+        bsm_mode: bool = False,
+    ) -> list[dict]:
+        """Call GPT-4o to analyze the transcript based on the user prompt or compliance rules."""
+
+        if bsm_mode:
+            system_prompt = self._bsm_system_prompt()
+        else:
+            system_prompt = self._prompt_system_prompt(user_prompt)
+
         response = self.client.chat.completions.create(
             model="gpt-4o",
             messages=[
@@ -250,7 +311,8 @@ IMPORTANT:
                 if "violations" in result: return result["violations"]
                 if "markers" in result: return result["markers"]
                 if "edits" in result: return result["edits"]
-                if "text" in result and "label" in result: return [result]
+                if "text" in result and ("label" in result or "rule_violated" in result):
+                    return [result]
                 return []
             return result if isinstance(result, list) else []
         except json.JSONDecodeError:
@@ -259,7 +321,8 @@ IMPORTANT:
     def _map_to_timestamps(
         self,
         raw_violations: list[dict],
-        transcript: TranscriptResult
+        transcript: TranscriptResult,
+        bsm_mode: bool = False,
     ) -> list[Violation]:
         """Map violation text to precise timestamps using transcript data."""
         violations = []
@@ -269,7 +332,7 @@ IMPORTANT:
             approx_time = v.get("approximate_time", "0s")
 
             try:
-                approx_seconds = float(approx_time.replace("s", ""))
+                approx_seconds = float(str(approx_time).replace("s", ""))
             except ValueError:
                 approx_seconds = 0
 
@@ -277,13 +340,27 @@ IMPORTANT:
                 text, transcript, approx_seconds
             )
 
+            rule_violated = v.get("rule_violated")
+            severity = v.get("severity")
+
+            # In strict mode the model returns rule_violated/severity and no label/action.
+            # Map rule_violated onto the label field so the existing review UI renders.
+            if bsm_mode:
+                label = rule_violated or v.get("label") or "Rule Violation"
+                action = v.get("action", "cut")
+            else:
+                label = v.get("label") or rule_violated or "Marker"
+                action = v.get("action", "cut")
+
             violations.append(Violation(
                 text=text,
                 start_time=start_time,
                 end_time=end_time,
-                label=v.get("label", v.get("rule_violated", "Marker")),
-                action=v.get("action", "cut"),
+                label=label,
+                action=action,
                 reasoning=v.get("reasoning", ""),
+                rule_violated=rule_violated,
+                severity=severity,
             ))
 
         return violations

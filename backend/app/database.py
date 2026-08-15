@@ -2,12 +2,18 @@
 SQLite database setup with SQLAlchemy.
 """
 
-from sqlalchemy import create_engine
+import os
+from sqlalchemy import create_engine, inspect, text
 from sqlalchemy.orm import sessionmaker, declarative_base
 from pathlib import Path
 
-# Database file location
-DATABASE_PATH = Path(__file__).parent.parent / "audio_compliance.db"
+# Database file location (override with DATABASE_PATH env var for Docker/custom setups)
+_env_path = os.environ.get("DATABASE_PATH", "").strip()
+if _env_path:
+    DATABASE_PATH = Path(_env_path)
+    DATABASE_PATH.parent.mkdir(parents=True, exist_ok=True)
+else:
+    DATABASE_PATH = Path(__file__).parent.parent / "audio_compliance.db"
 DATABASE_URL = f"sqlite:///{DATABASE_PATH}"
 
 engine = create_engine(
@@ -30,6 +36,18 @@ def get_db():
 
 
 def init_db():
-    """Initialize database tables."""
+    """Initialize database tables and apply lightweight migrations."""
     from . import models  # Import models to register them
     Base.metadata.create_all(bind=engine)
+    _apply_migrations()
+
+
+def _apply_migrations():
+    """Add columns that were introduced after a DB was first created."""
+    inspector = inspect(engine)
+    if "jobs" not in inspector.get_table_names():
+        return
+    existing = {col["name"] for col in inspector.get_columns("jobs")}
+    with engine.begin() as conn:
+        if "bsm_mode" not in existing:
+            conn.execute(text("ALTER TABLE jobs ADD COLUMN bsm_mode BOOLEAN DEFAULT 0"))

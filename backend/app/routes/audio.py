@@ -122,27 +122,44 @@ def export_media(
             detail="No accepted edits to remove. Accept some suggested edits first."
         )
 
-    # Prepare segments to edit
-    segments = [(v.start_time, v.end_time) for v in violations]
+    # Partition by per-violation action. request.edit_action, when supplied,
+    # overrides every violation's own action.
+    cuts = []
+    mutes = []
+    for v in violations:
+        action = request.edit_action or v.action or "cut"
+        if action == "mute":
+            mutes.append((v.start_time, v.end_time))
+        else:
+            cuts.append((v.start_time, v.end_time))
 
     # Process media
     try:
         editor = MediaEditor()
-        
+
         # Export filename and path
         export_ext = audio_path.suffix if job.media_type == "video" else ".mp3"
         export_filename = f"{Path(job.filename).stem}_edited{export_ext}"
         export_path = EXPORT_DIR / f"{job_id}_edited{export_ext}"
 
-        if request.edit_action == "mute":
-            editor.mute_segments(str(audio_path), str(export_path), segments, media_type=job.media_type)
-        else:  # cut
-            editor.cut_segments(str(audio_path), str(export_path), segments, media_type=job.media_type)
+        editor.apply_edits(
+            str(audio_path),
+            str(export_path),
+            segments_to_cut=cuts,
+            segments_to_mute=mutes,
+            media_type=job.media_type
+        )
+
+        parts = []
+        if cuts:
+            parts.append(f"{len(cuts)} cut")
+        if mutes:
+            parts.append(f"{len(mutes)} muted")
 
         return ExportResponse(
             job_id=job_id,
             export_filename=export_filename,
-            message=f"Exported with {len(violations)} edit(s) {request.edit_action}ed"
+            message=f"Exported with {' and '.join(parts)} edit(s)"
         )
 
     except Exception as e:

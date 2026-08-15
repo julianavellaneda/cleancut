@@ -6,7 +6,7 @@ import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Waveform, WaveformHandle } from "@/components/Waveform";
-import { ViolationList } from "@/components/ViolationList";
+import { ViolationList, SCRUB_LABELS } from "@/components/ViolationList";
 import { ViolationCard } from "@/components/ViolationCard";
 import { api, Job, Violation } from "@/lib/api";
 
@@ -25,6 +25,7 @@ export default function ReviewPage() {
   const [error, setError] = useState<string | null>(null);
   const [isUpdating, setIsUpdating] = useState(false);
   const [isExporting, setIsExporting] = useState(false);
+  const [isCleaning, setIsCleaning] = useState(false);
   const [exportReady, setExportReady] = useState(false);
 
   const waveformRef = useRef<WaveformHandle>(null);
@@ -80,10 +81,45 @@ export default function ReviewPage() {
     }
   };
 
+  const handleActionChange = async (action: "cut" | "mute") => {
+    if (!selectedViolation || selectedViolation.action === action) return;
+    setIsUpdating(true);
+    try {
+      const updated = await api.updateViolation(jobId, selectedViolation.id, { action });
+      setViolations(v => v.map(vi => vi.id === updated.id ? updated : vi));
+      setSelectedViolation(updated);
+      setExportReady(false);
+    } catch {
+      setError("Update failed");
+    } finally {
+      setIsUpdating(false);
+    }
+  };
+
+  const handleCleanAll = async () => {
+    setIsCleaning(true);
+    try {
+      await api.bulkUpdateViolations(jobId, { status: "accepted" }, SCRUB_LABELS);
+      const refreshed = await api.getViolations(jobId);
+      setViolations(refreshed);
+      if (selectedViolation) {
+        setSelectedViolation(
+          refreshed.find(v => v.id === selectedViolation.id) ?? selectedViolation
+        );
+      }
+      setExportReady(false);
+    } catch {
+      setError("Clean All failed");
+    } finally {
+      setIsCleaning(false);
+    }
+  };
+
   const handleExport = async () => {
     setIsExporting(true);
     try {
-      await api.exportAudio(jobId, "cut");
+      // No action argument - the backend honors each violation's own cut/mute
+      await api.exportAudio(jobId);
       setExportReady(true);
     } catch (err) {
       setError("Export failed");
@@ -115,7 +151,7 @@ export default function ReviewPage() {
 
       <div className="flex-1 flex overflow-hidden">
         <aside className="w-80 border-r bg-muted/20">
-          <ViolationList violations={violations} selectedViolation={selectedViolation} onSelect={setSelectedViolation} />
+          <ViolationList violations={violations} selectedViolation={selectedViolation} onSelect={setSelectedViolation} onCleanAll={handleCleanAll} isCleaning={isCleaning} />
         </aside>
 
         <main className="flex-1 flex flex-col overflow-hidden">
@@ -131,7 +167,7 @@ export default function ReviewPage() {
           <div className="flex-1 p-8 overflow-auto">
             <div className="max-w-2xl mx-auto">
               {selectedViolation ? (
-                <ViolationCard violation={selectedViolation} onAccept={() => handleStatusUpdate("accepted")} onReject={() => handleStatusUpdate("rejected")} onPlayClip={() => waveformRef.current?.playClip(selectedViolation.start_time, selectedViolation.end_time)} isUpdating={isUpdating} />
+                <ViolationCard violation={selectedViolation} onAccept={() => handleStatusUpdate("accepted")} onReject={() => handleStatusUpdate("rejected")} onActionChange={handleActionChange} onPlayClip={() => waveformRef.current?.playClip(selectedViolation.start_time, selectedViolation.end_time)} isUpdating={isUpdating} />
               ) : (
                 <div className="h-full flex items-center justify-center text-muted-foreground text-sm italic">Select an edit to review</div>
               )}

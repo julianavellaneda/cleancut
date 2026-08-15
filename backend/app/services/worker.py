@@ -98,7 +98,11 @@ def _process_job_sequentially(job_id: str, file_path: str):
         job.status = "analyzing"
         db.commit()
 
-        analysis = processor.analyze(transcript, prompt=job.prompt)
+        analysis = processor.analyze(
+            transcript,
+            prompt=job.prompt,
+            bsm_mode=bool(job.bsm_mode),
+        )
 
         # Step 2.5: Deterministic Scrubbing (Silence & Fillers)
         scrubber_violations = []
@@ -126,6 +130,8 @@ def _process_job_sequentially(job_id: str, file_path: str):
                 start_time=v.start_time,
                 end_time=v.end_time,
                 label=v.label,
+                rule_violated=getattr(v, "rule_violated", None),
+                severity=getattr(v, "severity", None),
                 action=v.action,
                 reasoning=v.reasoning,
                 status=status

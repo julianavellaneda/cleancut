@@ -13,6 +13,7 @@ export default function UploadPage() {
   const [isUploading, setIsUploading] = useState(false);
   const [autoFix, setAutoFix] = useState(false);
   const [autoScrub, setAutoScrub] = useState(false);
+  const [bsmMode, setBsmMode] = useState(false);
   const [prompt, setPrompt] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [jobs, setJobs] = useState<JobListItem[]>([]);
@@ -99,7 +100,7 @@ export default function UploadPage() {
     for (const file of validFiles) {
       setUploadProgress(prev => ({ ...prev, [file.name]: "Uploading..." }));
       try {
-        await api.uploadAudio(file, prompt, autoFix, autoScrub);
+        await api.uploadAudio(file, prompt, autoFix, autoScrub, bsmMode);
         setUploadProgress(prev => ({ ...prev, [file.name]: "Queued" }));
       } catch (err) {
         setUploadProgress(prev => ({ ...prev, [file.name]: "Failed" }));
@@ -136,17 +137,23 @@ export default function UploadPage() {
         <CardContent className="space-y-6">
           <div className="space-y-4">
             <div className="space-y-2">
-              <label htmlFor="prompt" className="text-sm font-medium">Instructions</label>
+              <label htmlFor="prompt" className="text-sm font-medium">
+                Instructions {bsmMode && <span className="text-xs font-normal text-muted-foreground">(disabled — strict preset active)</span>}
+              </label>
               <textarea
                 id="prompt"
-                placeholder="E.g., Remove filler words and silences..."
-                value={prompt}
+                placeholder={bsmMode ? "Strict rulebook compliance analysis is active." : "E.g., Remove filler words and silences..."}
+                value={bsmMode ? "" : prompt}
                 onChange={(e) => setPrompt(e.target.value)}
-                className="w-full min-h-[100px] p-3 rounded-md border border-input bg-background text-sm focus:ring-1 focus:ring-primary outline-none transition-all"
+                disabled={bsmMode}
+                className={cn(
+                  "w-full min-h-[100px] p-3 rounded-md border border-input bg-background text-sm focus:ring-1 focus:ring-primary outline-none transition-all",
+                  bsmMode && "opacity-50 cursor-not-allowed"
+                )}
               />
             </div>
-            
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
               <label className="flex items-center gap-3 p-3 border rounded-md cursor-pointer hover:bg-muted/50 transition-colors">
                 <input
                   type="checkbox"
@@ -165,7 +172,24 @@ export default function UploadPage() {
                 />
                 <span className="text-sm font-medium">Scrubber mode</span>
               </label>
+              <label className={cn(
+                "flex items-center gap-3 p-3 border rounded-md cursor-pointer transition-colors",
+                bsmMode ? "border-primary bg-primary/5" : "hover:bg-muted/50"
+              )}>
+                <input
+                  type="checkbox"
+                  checked={bsmMode}
+                  onChange={(e) => setBsmMode(e.target.checked)}
+                  className="w-4 h-4 rounded border-input"
+                />
+                <span className="text-sm font-medium">Strict Compliance Mode</span>
+              </label>
             </div>
+            {bsmMode && (
+              <div className="text-xs text-muted-foreground px-1">
+                Strict marketing-guidelines analysis. The custom prompt is ignored while this is on.
+              </div>
+            )}
           </div>
 
           <div

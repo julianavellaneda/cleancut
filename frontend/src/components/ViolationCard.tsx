@@ -10,6 +10,7 @@ interface ViolationCardProps {
   violation: Violation;
   onAccept: () => void;
   onReject: () => void;
+  onActionChange: (action: "cut" | "mute") => void;
   onPlayClip: () => void;
   isUpdating: boolean;
 }
@@ -18,6 +19,7 @@ export function ViolationCard({
   violation,
   onAccept,
   onReject,
+  onActionChange,
   onPlayClip,
   isUpdating,
 }: ViolationCardProps) {
@@ -28,13 +30,37 @@ export function ViolationCard({
   }
 
   function getActionBadge(action: string | null) {
-    const variant = action?.toLowerCase() === "cut"
-      ? "destructive"
-      : "secondary";
+    const current = action?.toLowerCase() === "mute" ? "mute" : "cut";
+    const variant = current === "cut" ? "destructive" : "secondary";
 
     return (
+      <button
+        type="button"
+        onClick={() => onActionChange(current === "cut" ? "mute" : "cut")}
+        disabled={isUpdating}
+        title={`Switch to ${current === "cut" ? "mute" : "cut"}`}
+        className="disabled:opacity-50"
+      >
+        <Badge
+          variant={variant}
+          className="uppercase font-semibold cursor-pointer hover:opacity-80 transition-opacity"
+        >
+          {current}
+        </Badge>
+      </button>
+    );
+  }
+
+  function getSeverityBadge(severity: string | null) {
+    if (!severity) return null;
+    const level = severity.toLowerCase();
+    const variant =
+      level === "high" ? "destructive" :
+      level === "medium" ? "default" :
+      "secondary";
+    return (
       <Badge variant={variant} className="uppercase font-semibold">
-        {action || "CUT"}
+        {severity}
       </Badge>
     );
   }
@@ -42,15 +68,26 @@ export function ViolationCard({
   return (
     <Card className="h-full flex flex-col border shadow-sm">
       <CardHeader className="pb-4">
-        <div className="flex items-center justify-between">
+        <div className="flex items-center justify-between gap-2">
           <CardTitle className="text-xl font-bold">
             {violation.label || "Suggested Edit"}
           </CardTitle>
-          {getActionBadge(violation.action)}
+          <div className="flex items-center gap-2 shrink-0">
+            {getSeverityBadge(violation.severity)}
+            {getActionBadge(violation.action)}
+          </div>
         </div>
       </CardHeader>
 
       <CardContent className="flex-1 flex flex-col space-y-6">
+        {/* Rule Violated (strict mode) */}
+        {violation.rule_violated && (
+          <div className="space-y-1">
+            <div className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Rule Violated</div>
+            <div className="text-sm font-medium">{violation.rule_violated}</div>
+          </div>
+        )}
+
         {/* Time & Text */}
         <div className="space-y-1">
           <div className="text-xs text-muted-foreground font-mono">
@@ -86,6 +123,28 @@ export function ViolationCard({
 
         {/* Actions */}
         <div className="pt-6 border-t mt-auto space-y-3">
+          <div className="flex items-center gap-2">
+            <div className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+              On export
+            </div>
+            <div className="flex gap-1 ml-auto">
+              {(["cut", "mute"] as const).map((a) => (
+                <Button
+                  key={a}
+                  size="sm"
+                  variant={
+                    (violation.action || "cut") === a ? "default" : "outline"
+                  }
+                  className="h-7 px-3 text-xs capitalize"
+                  onClick={() => onActionChange(a)}
+                  disabled={isUpdating}
+                >
+                  {a}
+                </Button>
+              ))}
+            </div>
+          </div>
+
           <Button
             variant="outline"
             className="w-full"

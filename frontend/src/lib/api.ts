@@ -2,7 +2,7 @@
  * API client for the Audio Compliance backend.
  */
 
-const API_BASE = "http://localhost:8000/api";
+const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000/api";
 
 export interface Job {
   id: string;
@@ -12,6 +12,8 @@ export interface Job {
   prompt: string | null;
   status: "pending" | "processing" | "transcribing" | "analyzing" | "exporting" | "completed" | "failed";
   auto_fix: boolean;
+  auto_scrub: boolean;
+  bsm_mode: boolean;
   duration_seconds: number | null;
   language: string | null;
   created_at: string;
@@ -30,6 +32,8 @@ export interface JobListItem {
   prompt: string | null;
   status: string;
   auto_fix: boolean;
+  auto_scrub: boolean;
+  bsm_mode: boolean;
   duration_seconds: number | null;
   created_at: string;
   violation_count: number;
@@ -85,18 +89,22 @@ async function handleResponse<T>(response: Response): Promise<T> {
 export const api = {
   // Jobs
   async uploadAudio(
-    file: File, 
-    prompt: string | null = null, 
+    file: File,
+    prompt: string | null = null,
     autoFix: boolean = false,
-    autoScrub: boolean = false
+    autoScrub: boolean = false,
+    bsmMode: boolean = false
   ): Promise<Job> {
     const formData = new FormData();
     formData.append("file", file);
-    if (prompt) {
+    if (prompt && !bsmMode) {
       formData.append("prompt", prompt);
     }
+    formData.append("auto_fix", String(autoFix));
+    formData.append("auto_scrub", String(autoScrub));
+    formData.append("bsm_mode", String(bsmMode));
 
-    const response = await fetch(`${API_BASE}/jobs?auto_fix=${autoFix}&auto_scrub=${autoScrub}`, {
+    const response = await fetch(`${API_BASE}/jobs`, {
       method: "POST",
       body: formData,
     });
@@ -174,14 +182,18 @@ export const api = {
   },
 
   // Export
+  /**
+   * Export the edited file. Omit `action` to honor each violation's own
+   * cut/mute setting; pass one to force it globally.
+   */
   async exportAudio(
     jobId: string,
-    action: "cut" | "mute" = "cut"
+    action?: "cut" | "mute"
   ): Promise<ExportResponse> {
     const response = await fetch(`${API_BASE}/jobs/${jobId}/export`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ edit_action: action }),
+      body: JSON.stringify({ edit_action: action ?? null }),
     });
     return handleResponse<ExportResponse>(response);
   },

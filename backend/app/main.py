@@ -2,23 +2,36 @@
 FastAPI application entry point.
 """
 
+import os
+from pathlib import Path
+
+from dotenv import load_dotenv
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+
+# Load environment variables from the project root .env before importing anything
+# that depends on them (OPENAI_API_KEY, CORS_ORIGINS, DATABASE_PATH).
+_ROOT_ENV = Path(__file__).resolve().parents[3] / ".env"
+if _ROOT_ENV.exists():
+    load_dotenv(_ROOT_ENV)
 
 from .database import init_db
 from .routes import jobs, violations, audio, admin
 from .services.worker import start_worker
 
 app = FastAPI(
-    title="Audio Compliance API",
-    description="AI-powered audio compliance analysis for marketing guidelines",
+    title="AI Media Editor API",
+    description="AI-powered audio/video editing with optional rulebook compliance mode.",
     version="1.0.0",
 )
 
-# CORS configuration for local development
+# CORS configuration — comma-separated origins via CORS_ORIGINS env var.
+_cors_raw = os.environ.get("CORS_ORIGINS", "http://localhost:3000")
+_cors_origins = [o.strip() for o in _cors_raw.split(",") if o.strip()]
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:3000"],  # Next.js dev server
+    allow_origins=_cors_origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],

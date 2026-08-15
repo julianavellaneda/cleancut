@@ -45,6 +45,7 @@ class JobBase(BaseModel):
 class JobCreate(JobBase):
     auto_fix: bool = False
     auto_scrub: bool = False
+    bsm_mode: bool = False
 
 
 class JobResponse(JobBase):
@@ -52,6 +53,7 @@ class JobResponse(JobBase):
     status: str  # pending, transcribing, analyzing, completed, failed
     auto_fix: bool = False
     auto_scrub: bool = False
+    bsm_mode: bool = False
     duration_seconds: float | None = None
     language: str | None = None
     created_at: datetime
@@ -74,6 +76,7 @@ class JobListResponse(BaseModel):
     status: str
     auto_fix: bool = False
     auto_scrub: bool = False
+    bsm_mode: bool = False
     duration_seconds: float | None = None
     created_at: datetime
     violation_count: int = 0
@@ -83,7 +86,8 @@ class JobListResponse(BaseModel):
 
 
 class ExportRequest(BaseModel):
-    edit_action: str = "cut"  # cut or mute
+    # None = honor each violation's own action; set to force one action globally
+    edit_action: str | None = None  # cut or mute
 
 
 class ExportResponse(BaseModel):

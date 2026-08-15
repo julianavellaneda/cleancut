@@ -7,7 +7,7 @@ import uuid
 from pathlib import Path
 from typing import List
 
-from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
+from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
 from sqlalchemy.orm import Session
 
 from ..database import get_db
@@ -27,10 +27,11 @@ EXPORT_DIR.mkdir(exist_ok=True)
 @router.post("", response_model=JobResponse)
 async def create_job(
     file: UploadFile = File(...),
-    prompt: str | None = None,
-    media_type: str = "audio",
-    auto_fix: bool = False,
-    auto_scrub: bool = False,
+    prompt: str | None = Form(None),
+    media_type: str = Form("audio"),
+    auto_fix: bool = Form(False),
+    auto_scrub: bool = Form(False),
+    bsm_mode: bool = Form(False),
     db: Session = Depends(get_db)
 ):
     """
@@ -61,7 +62,8 @@ async def create_job(
         prompt=prompt,
         status="pending",
         auto_fix=auto_fix,
-        auto_scrub=auto_scrub
+        auto_scrub=auto_scrub,
+        bsm_mode=bsm_mode
     )
     db.add(job)
     db.commit()
@@ -98,6 +100,7 @@ def list_jobs(db: Session = Depends(get_db)):
             status=job.status,
             auto_fix=job.auto_fix,
             auto_scrub=job.auto_scrub,
+            bsm_mode=job.bsm_mode,
             duration_seconds=job.duration_seconds,
             created_at=job.created_at,
             violation_count=len(job.violations)
@@ -148,6 +151,7 @@ def _build_job_response(job: Job, db: Session) -> JobResponse:
         status=job.status,
         auto_fix=job.auto_fix,
         auto_scrub=job.auto_scrub,
+        bsm_mode=job.bsm_mode,
         duration_seconds=job.duration_seconds,
         language=job.language,
         created_at=job.created_at,

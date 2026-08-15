@@ -57,18 +57,24 @@ class AudioProcessor:
         """
         return self.transcriber.transcribe(audio_path, language=language)
 
-    def analyze(self, transcript: TranscriptResult, prompt: str | None = None) -> AnalysisResult:
+    def analyze(
+        self,
+        transcript: TranscriptResult,
+        prompt: str | None = None,
+        bsm_mode: bool = False,
+    ) -> AnalysisResult:
         """
-        Analyze transcript based on a prompt.
+        Analyze transcript based on a prompt, or strict compliance.
 
         Args:
             transcript: TranscriptResult from transcription
-            prompt: User-defined editing instructions
+            prompt: User-defined editing instructions (ignored when bsm_mode=True)
+            bsm_mode: If True, use the strict rulebook compliance system prompt
 
         Returns:
             AnalysisResult with suggested edits
         """
-        return self.analyzer.analyze(transcript, prompt=prompt)
+        return self.analyzer.analyze(transcript, prompt=prompt, bsm_mode=bsm_mode)
 
     def process_audio(
         self,

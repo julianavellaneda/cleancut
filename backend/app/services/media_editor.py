@@ -22,25 +22,47 @@ class MediaEditor:
     def __init__(self):
         pass
 
-    def cut_segments(
+    def apply_edits(
         self,
         input_path: str,
         output_path: str,
-        segments_to_remove: List[Tuple[float, float]],
+        segments_to_cut: List[Tuple[float, float]] | None = None,
+        segments_to_mute: List[Tuple[float, float]] | None = None,
         media_type: str = "audio"
     ):
         """
-        Cut (remove) specified segments from media while maintaining sync.
-        Uses complex filter graphs for efficient single-pass processing.
+        Apply per-segment cut and mute edits in a single pass.
+
+        Muting is applied to the untrimmed stream first, so mute timestamps stay
+        on the original timeline even when cuts shift it. The trim/atrim/concat
+        chain then removes the cut segments, preserving A/V sync.
         """
-        if not segments_to_remove:
-            # Just copy/transcode if no segments to remove
+        cuts = self._merge_segments(segments_to_cut or [])
+        mutes = self._merge_segments(segments_to_mute or [])
+
+        if not cuts and not mutes:
+            # Nothing to do - just copy/transcode
             ffmpeg.input(input_path).output(output_path).run(overwrite_output=True, quiet=True)
             return
 
-        # Sort and merge overlapping segments
-        merged = self._merge_segments(segments_to_remove)
-        
+        input_stream = ffmpeg.input(input_path)
+        audio = input_stream.audio
+
+        if mutes:
+            # volume='if(between(t,t1,t2)+between(t,t3,t4),0,1)'
+            # eval=frame is required - the default (once) evaluates t a single
+            # time at startup, which silently disables the whole expression.
+            between_clauses = [f"between(t,{start},{end})" for start, end in mutes]
+            audio = audio.filter('volume', f"if({'+'.join(between_clauses)},0,1)", eval='frame')
+
+        if not cuts:
+            if media_type == "video":
+                out = ffmpeg.output(input_stream.video, audio, output_path, vcodec='copy')
+            else:
+                out = ffmpeg.output(audio, output_path)
+            out.run(overwrite_output=True, quiet=True)
+            return
+
         # Get duration of original file
         probe = ffmpeg.probe(input_path)
         duration = float(probe['format']['duration'])
@@ -48,11 +70,11 @@ class MediaEditor:
         # Calculate parts to KEEP
         keep_segments = []
         last_end = 0.0
-        for start, end in merged:
+        for start, end in cuts:
             if start > last_end:
                 keep_segments.append((last_end, start))
             last_end = end
-        
+
         if last_end < duration:
             keep_segments.append((last_end, duration))
 
@@ -60,16 +82,24 @@ class MediaEditor:
             # Everything was removed? Create a 1s silence or handle error
             raise ValueError("All segments were removed from the media.")
 
+        # A filter output can only feed one consumer, so fan the (possibly
+        # muted) audio out explicitly. Raw input pads are split by ffmpeg
+        # itself, but the volume filter's output is not.
+        if len(keep_segments) > 1:
+            asplit = audio.filter_multi_output('asplit', len(keep_segments))
+            audio_sources = [asplit[i] for i in range(len(keep_segments))]
+        else:
+            audio_sources = [audio]
+
         # Build filter graph
         # For each keep segment, we create a trim and atrim
-        input_stream = ffmpeg.input(input_path)
         v_segments = []
         a_segments = []
 
         for i, (start, end) in enumerate(keep_segments):
-            a = input_stream.audio.filter('atrim', start=start, end=end).filter('asetpts', 'PTS-STARTPTS')
+            a = audio_sources[i].filter('atrim', start=start, end=end).filter('asetpts', 'PTS-STARTPTS')
             a_segments.append(a)
-            
+
             if media_type == "video":
                 v = input_stream.video.filter('trim', start=start, end=end).filter('setpts', 'PTS-STARTPTS')
                 v_segments.append(v)
@@ -83,6 +113,20 @@ class MediaEditor:
 
         out.run(overwrite_output=True, quiet=True)
 
+    def cut_segments(
+        self,
+        input_path: str,
+        output_path: str,
+        segments_to_remove: List[Tuple[float, float]],
+        media_type: str = "audio"
+    ):
+        """Cut (remove) specified segments from media while maintaining sync."""
+        self.apply_edits(
+            input_path, output_path,
+            segments_to_cut=segments_to_remove,
+            media_type=media_type
+        )
+
     def mute_segments(
         self,
         input_path: str,
@@ -90,30 +134,12 @@ class MediaEditor:
         segments_to_mute: List[Tuple[float, float]],
         media_type: str = "audio"
     ):
-        """
-        Mute (silence) specified segments in media.
-        """
-        if not segments_to_mute:
-            ffmpeg.input(input_path).output(output_path).run(overwrite_output=True, quiet=True)
-            return
-
-        merged = self._merge_segments(segments_to_mute)
-        
-        # Build volume filter string
-        # volume='if(between(t,t1,t2),0,1)'
-        # For multiple segments: volume='if(between(t,t1,t2)+between(t,t3,t4),0,1)'
-        between_clauses = [f"between(t,{start},{end})" for start, end in merged]
-        filter_str = f"if({'+'.join(between_clauses)},0,1)"
-
-        input_stream = ffmpeg.input(input_path)
-        a = input_stream.audio.filter('volume', filter_str)
-
-        if media_type == "video":
-            out = ffmpeg.output(input_stream.video, a, output_path, vcodec='copy')
-        else:
-            out = ffmpeg.output(a, output_path)
-
-        out.run(overwrite_output=True, quiet=True)
+        """Mute (silence) specified segments in media."""
+        self.apply_edits(
+            input_path, output_path,
+            segments_to_mute=segments_to_mute,
+            media_type=media_type
+        )
 
     def _merge_segments(self, segments: List[Tuple[float, float]]) -> List[Tuple[float, float]]:
         """Sort and merge overlapping segments."""
