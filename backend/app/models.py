@@ -26,7 +26,7 @@ class Job(Base):
     status = Column(String, default="pending")  # pending, processing, completed, failed
     auto_fix = Column(Boolean, default=False)
     auto_scrub = Column(Boolean, default=False)  # Apply silence/filler detection
-    bsm_mode = Column(Boolean, default=False)  # Strict rulebook compliance analysis
+    preset = Column(String, nullable=True)  # Rule preset id, or NULL for prompt mode
     duration_seconds = Column(Float, nullable=True)
     language = Column(String, nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)

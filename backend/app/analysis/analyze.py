@@ -1,12 +1,13 @@
 #!/usr/bin/env python3
 """
-AI Media Analyzer - POC
-Transcribes audio and flags segments based on a user prompt.
+CleanCut analysis CLI.
 
-Usage:
-    python -m backend.app.analysis.analyze audio.mp3 --prompt "Find all filler words"
-    python -m backend.app.analysis.analyze audio.mp3 --output results.json
-    python -m backend.app.analysis.analyze --transcript transcript.txt
+Transcribes media and flags segments based on a user prompt, without the web app.
+Run it as a module from the `backend/` directory so the `app` package resolves:
+
+    python -m app.analysis.analyze audio.mp3 --prompt "Find all filler words"
+    python -m app.analysis.analyze audio.mp3 --output results.json
+    python -m app.analysis.analyze --transcript transcript.txt --prompt "..."
 """
 
 import argparse
@@ -14,15 +15,16 @@ import json
 import sys
 from pathlib import Path
 
-# Ensure the app's parent directory is in the path for relative imports
-sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 from dotenv import load_dotenv
 
-# Load environment variables from .env file in the same directory
-load_dotenv(Path(__file__).parent / ".env")
-
+from ..config import root_env_path
 from .transcriber import Transcriber, TranscriptResult, load_transcript
-from .prompt_analyzer import PromptAnalyzer, AnalysisResult, to_json
+from .prompt_analyzer import PromptAnalyzer, AnalysisResult, PRESETS, to_json
+
+# Load environment variables from the .env at the repo root, when there is one.
+_ROOT_ENV = root_env_path(__file__)
+if _ROOT_ENV:
+    load_dotenv(_ROOT_ENV)
 
 
 def print_header(text: str) -> None:
@@ -77,7 +79,12 @@ def main():
     )
     parser.add_argument(
         "--rules", "-r",
-        help="Path to custom compliance rules file (used as baseline context)"
+        help="Path to a custom rules file (used as baseline context in prompt mode)"
+    )
+    parser.add_argument(
+        "--preset",
+        choices=sorted(PRESETS),
+        help="Run a built-in rule preset instead of a free-form prompt"
     )
     parser.add_argument(
         "--transcript-only", "-t",
@@ -108,6 +115,9 @@ def main():
 
     if not args.audio_file and not args.transcript:
         parser.error("Either audio_file or --transcript is required")
+
+    if not args.preset and not args.prompt and not args.transcript_only:
+        parser.error("Either --prompt or --preset is required")
 
     if args.transcript:
         transcript_path = Path(args.transcript)
@@ -147,14 +157,17 @@ def main():
         print(f"\nTranscript saved to: {transcript_output}")
         sys.exit(0)
 
-    print_header("STEP 2: PROMPT-BASED ANALYSIS")
+    if args.preset:
+        print_header(f"STEP 2: PRESET ANALYSIS ({args.preset})")
+    else:
+        print_header("STEP 2: PROMPT-BASED ANALYSIS")
     overlap = 0 if args.no_overlap else args.overlap
     analyzer = PromptAnalyzer(
         rules_path=args.rules,
         chunk_size=args.chunk_size,
         overlap=overlap
     )
-    result = analyzer.analyze(transcript, prompt=args.prompt)
+    result = analyzer.analyze(transcript, prompt=args.prompt, preset=args.preset)
 
     print_header("RESULTS")
 

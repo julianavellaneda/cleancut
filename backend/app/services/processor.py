@@ -2,13 +2,6 @@
 Audio processing service - wraps transcriber and prompt analyzer.
 """
 
-import sys
-from pathlib import Path
-
-# Add the analysis directory to the Python path for imports
-ANALYSIS_PATH = Path(__file__).parent.parent / "analysis"
-sys.path.insert(0, str(ANALYSIS_PATH))
-
 from dotenv import load_dotenv
 
 from ..config import root_env_path
@@ -19,8 +12,14 @@ _ROOT_ENV = root_env_path(__file__)
 if _ROOT_ENV:
     load_dotenv(_ROOT_ENV)
 
-from transcriber import Transcriber, TranscriptResult
-from prompt_analyzer import PromptAnalyzer, AnalysisResult, Violation
+from ..analysis.transcriber import Transcriber, TranscriptResult
+from ..analysis.prompt_analyzer import (
+    PromptAnalyzer,
+    AnalysisResult,
+    Violation,
+    PRESETS,
+    is_valid_preset,
+)
 
 
 class AudioProcessor:
@@ -44,8 +43,7 @@ class AudioProcessor:
     def analyzer(self) -> PromptAnalyzer:
         """Lazy-load prompt analyzer."""
         if self._analyzer is None:
-            rules_path = ANALYSIS_PATH / "bsm_rules.txt"
-            self._analyzer = PromptAnalyzer(rules_path=str(rules_path))
+            self._analyzer = PromptAnalyzer()
         return self._analyzer
 
     def transcribe(self, audio_path: str, language: str | None = None) -> TranscriptResult:
@@ -65,20 +63,20 @@ class AudioProcessor:
         self,
         transcript: TranscriptResult,
         prompt: str | None = None,
-        bsm_mode: bool = False,
+        preset: str | None = None,
     ) -> AnalysisResult:
         """
-        Analyze transcript based on a prompt, or strict compliance.
+        Analyze transcript against a free-form prompt or a built-in rule preset.
 
         Args:
             transcript: TranscriptResult from transcription
-            prompt: User-defined editing instructions (ignored when bsm_mode=True)
-            bsm_mode: If True, use the strict rulebook compliance system prompt
+            prompt: User-defined editing instructions (ignored when a preset is set)
+            preset: Preset id from PRESETS, or None for prompt mode
 
         Returns:
             AnalysisResult with suggested edits
         """
-        return self.analyzer.analyze(transcript, prompt=prompt, bsm_mode=bsm_mode)
+        return self.analyzer.analyze(transcript, prompt=prompt, preset=preset)
 
     def process_audio(
         self,

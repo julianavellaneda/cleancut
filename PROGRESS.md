@@ -24,3 +24,24 @@
 - [x] **Silence Removal:** Integrate Voice Activity Detection (VAD) to auto-flag "Dead Air".
 - [x] **Filler Word Detection:** Scan Whisper's word-level timestamps for "um", "ah", "like", etc.
 - [x] **One-Click Cleanup:** Add a "Clean All" button to the UI that applies all suggested "Scrubber" edits at once.
+
+---
+
+# Portfolio track (see `DEVELOPMENT_PLAN.md`)
+
+## Phase 0: Make it true
+- [x] `prompt` and the other multipart fields arrive as `Form(...)` params
+- [x] Per-edit `cut`/`mute` honored on export (mutes applied before cuts)
+- [x] "Clean All" wired to `bulkUpdateViolations`
+- [x] `API_BASE` reads `NEXT_PUBLIC_API_URL`
+- [x] Per-violation cut/mute toggle in `ViolationCard`
+
+## Phase 1: Scrub and rename
+- [ ] **Decide the public-repo strategy** — history still contains the client transcripts,
+      violation JSONs, rules file, and review screenshot. Blocker for going public.
+- [x] Client transcripts and violation JSONs deleted from the working tree
+- [x] `Audio Compliance Review.jpeg` deleted (screenshot of a real client job)
+- [x] `bsm_rules.txt` rewritten as generic preset rulebooks in `backend/app/analysis/presets/`
+- [x] `bsm_mode` boolean renamed to a `preset` string field, with a backfilling migration
+- [x] Name picked: **CleanCut**
+- [x] Client references purged from `README.md`, `CLAUDE.md`, `GEMINI.md`, `proj.md`, `docs/`, UI copy

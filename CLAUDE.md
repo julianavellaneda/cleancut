@@ -4,187 +4,206 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-AI-powered audio compliance tool for a direct-sales company's marketing guidelines. The system transcribes audio recordings, analyzes them for compliance violations against those guidelines, and flags problematic sections with timestamps for human review.
+**CleanCut** — describe what to find in a recording in plain English, review the AI's suggestions on a
+waveform, export a surgically edited file. It transcribes audio or video with word-level timestamps,
+sends the transcript plus your instruction to an LLM, maps the LLM's quoted text back to precise
+timestamps, and renders the accepted edits with FFmpeg.
 
-**Philosophy**: "Copilot, not Autopilot" - The AI flags violations for human review, it does not automatically edit audio. See `proj.md` for full project vision.
+**Philosophy**: "Copilot, not Autopilot" — the AI suggests edits for human review; nothing is removed
+without a human accepting it.
 
 ## Architecture
 
-The project has three main components:
-
 ```
 ai-audio-editing/
-├── poc/                    # Original CLI-based proof of concept
-│   ├── analyze.py          # Main CLI entry point
-│   ├── transcriber.py      # Whisper transcription (faster-whisper)
-│   ├── compliance.py       # GPT-4o compliance analysis
-│   ├── bsm_rules.txt       # compliance rules
-│   └── .env                # API keys (not committed)
-├── backend/                # FastAPI backend
+├── backend/                        # FastAPI backend
 │   ├── app/
-│   │   ├── main.py         # FastAPI entry + CORS
-│   │   ├── database.py     # SQLite setup
-│   │   ├── models.py       # SQLAlchemy: Job, Violation
-│   │   ├── schemas.py      # Pydantic request/response
+│   │   ├── main.py                 # FastAPI entry, CORS, startup
+│   │   ├── config.py               # Root .env discovery
+│   │   ├── database.py             # SQLite setup + hand-rolled column migrations
+│   │   ├── models.py               # SQLAlchemy: Job, Violation
+│   │   ├── schemas.py              # Pydantic request/response
+│   │   ├── analysis/
+│   │   │   ├── transcriber.py      # faster-whisper, word-level timestamps
+│   │   │   ├── prompt_analyzer.py  # Chunked LLM analysis + preset registry
+│   │   │   ├── analyze.py          # Standalone CLI
+│   │   │   └── presets/            # Rule preset markdown (income-claims, pii-redaction)
 │   │   ├── routes/
-│   │   │   ├── jobs.py     # Upload, status, list
-│   │   │   ├── violations.py # List, update status
-│   │   │   ├── audio.py    # Stream, waveform, export
-│   │   │   └── admin.py    # Reset, storage, stats
+│   │   │   ├── jobs.py             # Upload, list, presets, status, delete
+│   │   │   ├── violations.py       # List, update, bulk-update
+│   │   │   ├── audio.py            # Stream, waveform, export, download
+│   │   │   └── admin.py            # Reset, storage, stats
 │   │   └── services/
-│   │       ├── processor.py    # Wraps POC transcriber + compliance
-│   │       └── audio_editor.py # pydub cut/mute operations
-│   ├── uploads/            # Uploaded audio files
-│   ├── exports/            # Edited audio output
-│   └── requirements.txt
-├── frontend/               # Next.js 14 frontend
-│   ├── src/
-│   │   ├── app/
-│   │   │   ├── page.tsx           # Upload page
-│   │   │   ├── admin/page.tsx     # Admin dashboard
-│   │   │   └── jobs/[id]/page.tsx # Review interface
-│   │   ├── components/
-│   │   │   ├── Waveform.tsx       # wavesurfer + markers
-│   │   │   ├── ViolationList.tsx  # Sidebar list
-│   │   │   └── ViolationCard.tsx  # Detail + actions
-│   │   └── lib/
-│   │       └── api.ts             # API client
-│   └── package.json
-└── tests/                  # Test data and transcripts
+│   │       ├── worker.py           # Threaded job queue, per-stage status
+│   │       ├── processor.py        # Wraps transcriber + analyzer
+│   │       ├── scrubber.py         # Deterministic silence + filler detection
+│   │       └── media_editor.py     # FFmpeg trim/atrim + concat filter graphs
+│   ├── tests/                      # pytest suite
+│   ├── uploads/                    # Uploaded media
+│   └── exports/                    # Edited output
+├── frontend/                       # Next.js 15 frontend
+│   └── src/
+│       ├── app/
+│       │   ├── page.tsx            # Upload + prompt/preset selection
+│       │   ├── admin/page.tsx      # Admin dashboard
+│       │   └── jobs/[id]/page.tsx  # Review interface
+│       ├── components/
+│       │   ├── Waveform.tsx        # wavesurfer + region markers
+│       │   ├── ViolationList.tsx   # Sidebar list + Clean All
+│       │   └── ViolationCard.tsx   # Detail, accept/reject, cut/mute toggle
+│       └── lib/api.ts              # API client
+├── docs/                           # Architecture, spec, roadmap
+└── tests/                          # Media fixtures (synthetic only)
 ```
 
-**Data Flow:**
-1. Upload audio via frontend → FastAPI saves to `uploads/`
-2. Backend calls POC transcriber (faster-whisper) → transcript with timestamps
-3. Backend calls POC compliance analyzer (GPT-4o) → violations with timestamps
-4. Violations stored in SQLite, returned to frontend
-5. User reviews violations on waveform, accepts/rejects each
-6. Export generates edited audio with accepted violations cut/muted
+**Data flow:**
+1. Upload media → FastAPI saves to `uploads/`, creates a Job, enqueues it
+2. Worker converts if needed → transcribes (faster-whisper) → analyzes (LLM) → scrubs (deterministic)
+3. Suggestions stored as `Violation` rows; frontend polls job status
+4. User reviews on a waveform, accepts/rejects, picks cut or mute per edit
+5. Export builds one FFmpeg filter graph from the accepted edits
 
 ## Commands
 
 ```bash
-# Backend setup
+# Backend (port 8000)
 cd backend
 python3 -m venv .venv
 source .venv/bin/activate
 pip install -r requirements.txt
-
-# Start backend (port 8000)
 uvicorn app.main:app --reload
 
-# Backend tests (from backend/)
+# Backend tests
 pip install -r requirements-dev.txt
 pytest
 
-# Frontend setup
+# Frontend (port 3000)
 cd frontend
 npm install
-
-# Start frontend (port 3000)
 npm run dev
 ```
 
-**Full app**: Run both backend and frontend, then open http://localhost:3000
+Both at once: `./start.sh`. Or `docker compose up --build`.
 
-**POC CLI** (still available):
+**CLI** (analysis pipeline without the web app):
+Run as a module from `backend/` — `analysis/` uses package-relative imports, so invoking
+`analyze.py` as a script fails with `attempted relative import with no known parent package`.
+
 ```bash
-# Setup (from project root)
-source .venv/bin/activate
-pip install -r poc/requirements.txt
-
-# Full analysis
-python poc/analyze.py audio.mp3
-
-# Skip transcription - use existing transcript
-python poc/analyze.py --transcript tests/transcripts/large-v3/client_seminar_transcript.txt
+cd backend && source .venv/bin/activate
+python -m app.analysis.analyze audio.mp3 --prompt "flag every income claim"
+python -m app.analysis.analyze audio.mp3 --preset income-claims
+python -m app.analysis.analyze --transcript path/to/transcript.txt --prompt "find filler words"
 ```
 
 ## API Endpoints
 
 | Method | Endpoint | Purpose |
 |--------|----------|---------|
-| POST | `/api/jobs` | Upload audio, start processing |
+| POST | `/api/jobs` | Upload media, enqueue processing (multipart) |
 | GET | `/api/jobs` | List all jobs |
-| GET | `/api/jobs/{id}` | Job details + violation count |
-| GET | `/api/jobs/{id}/violations` | List violations for job |
-| PATCH | `/api/jobs/{id}/violations/{vid}` | Update: accepted/rejected |
-| GET | `/api/jobs/{id}/audio` | Stream original audio |
+| GET | `/api/jobs/presets` | List built-in rule presets |
+| GET | `/api/jobs/{id}` | Job details + violation counts |
+| DELETE | `/api/jobs/{id}` | Delete job and files |
+| GET | `/api/jobs/{id}/violations` | List suggested edits |
+| PATCH | `/api/jobs/{id}/violations/{vid}` | Update status or action |
+| POST | `/api/jobs/{id}/violations/bulk-update` | Bulk update, optionally filtered by label |
+| GET | `/api/jobs/{id}/audio` | Stream original media |
 | GET | `/api/jobs/{id}/audio/waveform` | Waveform peaks JSON |
-| POST | `/api/jobs/{id}/export` | Generate edited audio |
+| POST | `/api/jobs/{id}/export` | Generate edited media |
 | GET | `/api/jobs/{id}/export/download` | Download edited file |
 | GET | `/api/admin/stats` | System-wide statistics |
 | POST | `/api/admin/reset-database` | Wipe all database records |
-| POST | `/api/admin/clear-storage` | Delete all audio files |
+| POST | `/api/admin/clear-storage` | Delete all media files |
 | POST | `/api/admin/reset-all` | Wipe database + storage |
+
+**Note:** `/api/jobs/presets` must stay declared before `/api/jobs/{job_id}` in `routes/jobs.py`,
+or the path-param route shadows it.
 
 ## Database Schema (SQLite)
 
 ```sql
--- jobs table
 CREATE TABLE jobs (
     id TEXT PRIMARY KEY,
     filename TEXT NOT NULL,
-    status TEXT DEFAULT 'pending',  -- pending, processing, completed, failed
+    original_filename TEXT,
+    media_type TEXT DEFAULT 'audio',   -- audio, video
+    prompt TEXT,                       -- free-form editing instruction
+    status TEXT DEFAULT 'pending',     -- pending, converting, transcribing,
+                                       -- analyzing, exporting, completed, failed
+    auto_fix BOOLEAN DEFAULT 0,        -- pre-accept LLM suggestions
+    auto_scrub BOOLEAN DEFAULT 0,      -- pre-accept scrubber suggestions
+    preset TEXT,                       -- rule preset id, NULL = prompt mode
     duration_seconds REAL,
     language TEXT,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     error_message TEXT,
-    waveform_data TEXT  -- JSON cached peaks
+    waveform_data TEXT                 -- JSON cached peaks
 );
 
--- violations table
 CREATE TABLE violations (
     id TEXT PRIMARY KEY,
     job_id TEXT REFERENCES jobs(id),
     text TEXT NOT NULL,
     start_time REAL NOT NULL,
     end_time REAL NOT NULL,
-    rule_violated TEXT,
-    severity TEXT,  -- high, medium, low
+    label TEXT,                        -- "Filler Word", "Income Claims", ...
+    rule_violated TEXT,                -- set in preset mode
+    severity TEXT,                     -- high, medium, low
     reasoning TEXT,
-    status TEXT DEFAULT 'pending',  -- pending, accepted, rejected
-    edit_action TEXT DEFAULT 'cut'  -- cut, mute
+    status TEXT DEFAULT 'pending',     -- pending, accepted, rejected
+    action TEXT DEFAULT 'cut'          -- cut, mute
 );
 ```
 
+Schema changes to `jobs` go in `database._apply_migrations()` — a hand-rolled additive migration run
+on every startup. Add a column there and cover it in `backend/tests/test_migrations.py`.
+
 ## Environment
 
-Requires `.env` file in `poc/` directory:
+A `.env` at the **repo root** (not in a subdirectory), discovered by `app/config.py`:
+
 ```
 OPENAI_API_KEY=your_key_here
+CORS_ORIGINS=http://localhost:3000
+DATABASE_PATH=            # optional; Docker sets this to a mounted volume
+NEXT_PUBLIC_API_URL=      # optional; baked into the frontend build
 ```
 
-System dependency: `brew install ffmpeg`
-
-## Test Data
-
-```
-tests/
-├── transcripts/
-│   ├── large-v3/    # Transcripts from Whisper large-v3 model
-│   │   └── client_seminar_transcript.txt
-│   └── medium/      # Transcripts from Whisper medium model
-│       └── client_seminar_transcript.txt
-└── scripts/
-```
+System dependency: `brew install ffmpeg`.
 
 ## Key Implementation Details
 
-- **Transcriber**: faster-whisper with int8 quantization for M4 Mac performance
-- **ComplianceAnalyzer**: Chunked analysis with sliding window for long transcripts (>100 segments)
-  - Default: 50 segments per chunk, 10 segment overlap
-  - Violations deduplicated by rule + timestamp proximity
-- **AudioEditor**: pydub for cut/mute operations with crossfade
-- **Waveform**: wavesurfer.js with regions plugin for violation markers
-- **Processing**: Synchronous for MVP (single-user local use)
+- **Transcriber**: faster-whisper with int8 quantization for M-series Mac performance.
+- **PromptAnalyzer**: two modes.
+  - *Prompt mode* (`preset=None`): the user's instruction drives analysis; returns label + action.
+  - *Preset mode*: a rulebook from `analysis/presets/` replaces the prompt; returns rule_violated +
+    severity, and falls back to the preset's `default_action` (mute for `pii-redaction`).
+  - Chunked sliding window for long transcripts: 50 segments per chunk, 10 overlap, deduplicated by
+    label + timestamp proximity (5s).
+  - LLM-quoted text is remapped onto word-level timestamps via `_find_text_timestamps`.
+- **Adding a preset**: drop a markdown rulebook in `analysis/presets/` and add an entry to `PRESETS`
+  in `prompt_analyzer.py`. It surfaces automatically via `GET /api/jobs/presets`.
+- **Scrubber**: deterministic silence + filler detection off word timestamps, no LLM.
+- **MediaEditor**: FFmpeg `trim`/`atrim` + `concat`, single pass, A/V sync preserved. Mutes are
+  applied before cuts, since cutting shifts the timeline under the mute timestamps.
+- **Worker**: threaded queue, sequential processing, per-stage job status polled by the frontend.
+
+## Conventions
+
+- Backend: Pydantic for validation (`schemas.py`), logic in `services/`, routing in `routes/`.
+- Frontend: functional components, Tailwind v4, strictly typed API interactions.
+- Fixtures in `tests/` must be synthetic. Never commit a real customer recording or transcript.
 
 ## Common Issues
 
-**"Unexpected response format" from GPT-4o**: Check the raw response - the compliance analyzer handles various JSON formats but may encounter unexpected output.
+**"Unexpected response format" from the LLM**: `_call_llm` swallows `JSONDecodeError` and returns
+`[]`, so a malformed response looks identical to "nothing found". Check the raw response.
 
-**Slow transcription**: Use `--model medium` or `--model small` for faster (less accurate) transcription.
+**Slow transcription**: use `--model medium` or `--model small` on the CLI for faster, less accurate
+transcription.
 
-**CORS errors**: Ensure backend is running on port 8000 and frontend on port 3000.
+**CORS errors**: backend on 8000, frontend on 3000, or set `CORS_ORIGINS`.
 
-**Database issues**: Use the **Admin Dashboard** (/admin) to reset the database or storage. Alternatively, delete `backend/audio_compliance.db` manually.
+**Database issues**: use the admin dashboard at `/admin` to reset, or delete
+`backend/audio_compliance.db`.

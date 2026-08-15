@@ -1,101 +1,91 @@
-This is a **highly feasible** and commercially viable idea. You have identified a specific niche (direct-sales marketing compliance) with rigid, text-based rules and a repetitive manual workflow that is painful for humans but excellent for AI.
+# Design notes
 
-Here is a breakdown of how to approach this project, the technical architecture, and why you should avoid fully automated editing in favor of an "Assisted Compliance" workflow.
+Why CleanCut is shaped the way it is. These are the decisions that were not obvious up front, kept
+because the reasoning still governs the code.
 
-### 1. The Core Philosophy: "Copilot," not "Autopilot"
+## 1. Copilot, not autopilot
 
-**Do not try to make the AI automatically delete sections and export the final file.**
-Why?
-1.  **Context Risk:** The guidelines are nuanced. Example: *"Do not discuss income that is not income from the business."* If a speaker says, "I used to work at a bank..." and the AI cuts it, the sentence might become jumpy or lose the setup for a compliant story.
-2.  **Audio Fidelity:** Hard cuts made by code often sound unnatural (clipping off breath sounds or ambient room noise).
-3.  **Liability:** If the AI misses a rule or cuts the wrong thing, the group distributing the audio is liable. A human *must* sign off on the final edit.
+The tempting version of this tool deletes the flagged sections itself and hands back a finished file.
+It should not, for three reasons:
 
-**The Solution:** Build a **Compliance Dashboard**. The AI listens, highlights problematic areas on a timeline, cites the specific rule violated, and lets the user click "Cut" or "Ignore."
+1. **Context risk.** Editing rules are nuanced. "Don't discuss income earned outside this business"
+   sounds mechanical until a speaker says "I used to work at a bank, and back then…" — cut that and
+   the following sentence loses its setup and the audio goes jumpy.
+2. **Audio fidelity.** Hard cuts made by code sound unnatural: clipped breaths, ambient room tone
+   snapping in and out.
+3. **Liability.** If the model misses something or cuts the wrong thing, the person distributing the
+   file carries the consequence. A human has to sign off.
 
----
+So the product is a **review dashboard**. The AI listens, marks regions on a timeline, cites its
+reasoning, and the human clicks accept or reject.
 
-### 2. The Technical Stack (How to build it)
+## 2. The pipeline
 
-Since you are a programmer, here is a concrete stack to get this running:
+### Transcription — the ears
 
-#### A. Transcription (The Ears)
-You need word-level timestamps to know exactly *where* to cut.
-*   **Tool:** **OpenAI Whisper**.
-*   **Why:** It is currently the state-of-the-art for Spanish and English (and mixed audio).
-*   **Implementation:** Use the `whisper-timestamped` Python library or the OpenAI API with `timestamp_granularities=['word']`. This gives you the text *and* the exact start/end time of every word.
+Word-level timestamps are the whole foundation; without them there is no way to know *where* to cut.
+`faster-whisper` with int8 quantization runs locally at usable speed on an M-series CPU, handles
+Spanish and English, and — importantly — handles code-switching mid-sentence, transcribing each
+language as itself.
 
-#### B. Analysis (The Brain)
-You need an LLM to compare the text against the company's marketing rules.
-*   **Tool:** **GPT-4o** or **Claude 3.5 Sonnet** (via API).
-*   **Why:** These models handle complex logic better than smaller models. You need it to understand the difference between "partnership" (legal) and "partnership" (spouse).
-*   **The Prompt:** You will feed the transcript into the LLM with a "System Prompt" containing the text you pasted above.
-    *   *Prompt Strategy:* "You are a compliance officer for a direct-sales company. Review the following transcript. Identify every instance that violates the provided guidelines. Return a JSON list containing: `{ 'text_segment': '...', 'violation_type': 'Income Claim', 'reasoning': '...', 'severity': 'High' }`."
+Running transcription locally rather than through an API is also the privacy story: only text leaves
+the machine, never audio.
 
-#### C. The User Interface (The Editor)
-*   **Don't build a plugin:** Building plugins for Audacity, Pro Tools, or Adobe Audition is a nightmare of compatibility.
-*   **Build a Web App:** React/Next.js frontend.
-    *   **Visuals:** Display a waveform (using a library like `wavesurfer.js`).
-    *   **Workflow:** The AI places red flags on the waveform. The user clicks a flag, reads the AI's reasoning (e.g., "Speaker said 'retired,' which is a prohibited earnings claim"), listens to that snippet, and clicks a "Remove" button which applies a cross-fade cut.
+### Analysis — the brain
 
----
+The transcript goes to an LLM with either the user's plain-English instruction or a preset rulebook.
+A capable model is required here, not a small one: the job includes distinguishing "partnership" in
+the legal sense from "partnership" meaning a spouse.
 
-### 3. Addressing Your Specific Questions
+Output is a JSON list of `{text, approximate_time, label, action, reasoning}`.
 
-#### "What about pauses and shortening the audio?"
-*   **Silence Removal:** Do not use an LLM for this. Use standard signal processing (DSP).
-    *   **Library:** `pydub` (Python) or `ffmpeg`.
-    *   **Logic:** Detect silence (e.g., anything below -40dB for more than 1 second) and truncate it to 0.5 seconds. This is deterministic and doesn't require AI.
-    *   **Feature:** Add a "Smart Shorten" button that runs this script before the human review starts.
+**The hard part is mapping back.** The model quotes text; the player needs timestamps. The quoted
+string is located in the transcript, disambiguated by the model's approximate time when it appears
+more than once, then narrowed to word-level start/end within the matched segment. This is
+`_find_text_timestamps`, and it is what makes the markers land on the right syllable rather than the
+right paragraph.
 
-#### "Can it handle Spanish/English mixing?"
-*   Yes. Whisper (Large model) is excellent at language switching. It will transcribe the Spanish as Spanish and the English as English. The LLM (GPT-4) understands both fluently and can check compliance regardless of the language used.
+**Long recordings need chunking.** A two-hour transcript is large, and models degrade on
+find-everything tasks long before they hit a context limit. Transcripts are split into 50-segment
+chunks with a 10-segment overlap so nothing falls in a boundary, then results are deduplicated by
+label plus timestamp proximity.
 
-#### "How will the AI flag sections?"
-*   Since you have the **transcript with timestamps** and the **LLM analysis**, you can map them.
-*   *Example:*
-    1.  Transcript: "I bought a Ferrari last week." (Timestamp: 05:02 - 05:06).
-    2.  LLM: "Flag 'I bought a Ferrari' as a Lifestyle Claim."
-    3.  Code: Search the transcript for that string, find the timestamp (05:02), and draw a red box on the player UI at that second.
+### Silence and filler — no LLM
 
----
+Silence removal and filler-word detection are deterministic problems. Detecting speech gaps and
+matching filler tokens against word timestamps is exact, free, and instant. Using a language model
+for it would be slower, more expensive, and less reliable. This is the `scrubber`, and its output is
+what the "Clean All" button bulk-accepts.
 
-### 4. Proposed Workflow for the User
+### Export — the scalpel
 
-1.  **Upload:** User uploads `recording.mp3`.
-2.  **Processing (Backend):**
-    *   `ffmpeg` normalizes audio levels.
-    *   `pydub` removes long silences (optional toggle).
-    *   `Whisper` transcribes to text + timestamps.
-    *   `GPT-4` analyzes text for compliance violations.
-3.  **Review (Frontend):**
-    *   User sees the waveform with 15 red flags.
-    *   Flag 1: "Speaker said 'Passive Income'. Rule: No unrealistic income representations."
-    *   User clicks **"Mute Section"** or **"Cut Section"**.
-    *   Flag 2: "Speaker mentioned 'Republican Party'. Rule: No political comments."
-    *   User clicks **"Cut Section"**.
-4.  **Export:** User clicks "Download," and the server renders the edited audio file.
+Editing runs through a single FFmpeg filter graph rather than a sequence of passes. `trim`/`atrim`
+plus `concat` removes intervals from video and audio streams together, so they cannot drift out of
+sync — which is exactly what happens if you cut the audio and video separately.
 
----
+Order matters: **mutes are applied before cuts**, because cutting shifts the timeline out from under
+any mute timestamps computed against the original.
 
-### 5. Business Feasibility & Monetization
+## 3. Prompts vs. presets
 
-This is a great candidate for a **B2B Subscription SaaS**.
+The original tool hardcoded one rulebook. Generalizing it to a free-form prompt made it far more
+useful, but lost something real: recurring review work wants a consistent, versioned, auditable set
+of rules, not a sentence retyped from memory each time.
 
-*   **Niche Value:** The cost of getting a compliance strike from the company is high (losing business eligibility). The cost of paying a human to listen to 2 hours of audio to find 3 mistakes is high.
-*   **Pricing:** Charge per hour of audio processed or a monthly flat fee.
-*   **Security is Key:** Direct-sales groups are very private. You must market this as "Secure & Private." Do not train your models on their data. Use enterprise API settings where data is not retained by OpenAI.
+Hence both. A **prompt** is the default and covers one-off editing. A **preset** is a checked-in
+markdown rulebook (`analysis/presets/`) that replaces the prompt and returns rule categories and
+severities instead of free-form labels. A preset is a file plus a registry entry — deliberately cheap
+to add, so a new review domain does not require touching the analyzer.
 
-### 6. Potential Pitfalls to Watch Out For
+## 4. Known pitfalls
 
-*   **Hallucinations:** The AI might flag something innocent. (This is why the human review interface is mandatory).
-*   **Context Windows:** If the audio is 2 hours long, the transcript will be huge. You may need to chunk the text to feed it to the LLM or use a model with a 128k token context window (GPT-4o and Claude 3.5 both handle this easily now).
-*   **Speaker Diarization:** If there is a translator, you essentially have double the audio. The AI needs to know that if the English speaker says a forbidden word, and the Translator translates it, *both* sections need to be cut. Whisper supports basic diarization, but you might need a specialized library like `pyannote.audio` if you need to distinguish specifically between Speaker A and Speaker B.
-
-### Summary Recommendation
-Start with a **Proof of Concept (POC)**:
-1.  Get one recorded audio file from your client.
-2.  Run it through Whisper manually.
-3.  Paste the transcript into ChatGPT with the compliance prompt.
-4.  See if it catches the violations.
-
-If that works, build the simple web wrapper around it. Do not overcomplicate the editor; simple cut/mute functionality is enough.
+- **Hallucinations.** The model will flag innocent content. This is precisely why the human review
+  interface is mandatory rather than a nicety.
+- **Silent failures.** `_call_llm` currently swallows a `JSONDecodeError` and returns an empty list,
+  which makes a broken response indistinguishable from "found nothing". This should surface on the
+  job instead.
+- **Diarization.** With a translator present, a prohibited statement exists twice — once in each
+  language. Both need flagging. The preset rulebooks instruct the model to do this, but true speaker
+  separation would need something like `pyannote.audio`.
+- **Unauthenticated admin.** `/admin` wipes the database and storage with no auth. Fine locally,
+  disqualifying for a deployment.

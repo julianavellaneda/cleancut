@@ -59,7 +59,7 @@ def test_prompt_arrives_from_form_data(client):
     """The flagship feature: a custom instruction sent in the body is stored."""
     prompt = "Flag every specific income claim and any health claim."
     response = _upload(client, {"prompt": prompt, "auto_fix": "false",
-                                "auto_scrub": "false", "bsm_mode": "false"})
+                                "auto_scrub": "false"})
 
     assert response.status_code == 200
     body = response.json()
@@ -68,28 +68,54 @@ def test_prompt_arrives_from_form_data(client):
 
 
 def test_boolean_flags_arrive_from_form_data(client):
-    response = _upload(client, {"auto_fix": "true", "auto_scrub": "true",
-                                "bsm_mode": "false"})
+    response = _upload(client, {"auto_fix": "true", "auto_scrub": "true"})
 
     assert response.status_code == 200
     body = response.json()
     assert body["auto_fix"] is True
     assert body["auto_scrub"] is True
-    assert body["bsm_mode"] is False
 
     job = _job(body["id"])
-    assert (job.auto_fix, job.auto_scrub, job.bsm_mode) == (True, True, False)
+    assert (job.auto_fix, job.auto_scrub) == (True, True)
 
 
-def test_bsm_mode_without_prompt(client):
-    """Strict mode is the one path that legitimately sends no prompt."""
+def test_preset_without_prompt(client):
+    """A preset is the one path that legitimately sends no prompt."""
     response = _upload(client, {"auto_fix": "false", "auto_scrub": "false",
-                                "bsm_mode": "true"})
+                                "preset": "income-claims"})
 
     assert response.status_code == 200
     body = response.json()
-    assert body["bsm_mode"] is True
+    assert body["preset"] == "income-claims"
     assert body["prompt"] is None
+    assert _job(body["id"]).preset == "income-claims"
+
+
+def test_unknown_preset_is_rejected(client):
+    """An unknown id must 400 rather than silently running prompt mode."""
+    response = _upload(client, {"preset": "not-a-real-preset"})
+
+    assert response.status_code == 400
+    assert "Unknown preset" in response.json()["detail"]
+
+
+def test_empty_preset_means_prompt_mode(client):
+    """An unselected <select> posts an empty string; that is not an error."""
+    response = _upload(client, {"preset": "", "prompt": "cut the ums"})
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["preset"] is None
+    assert body["prompt"] == "cut the ums"
+
+
+def test_presets_endpoint_is_not_shadowed_by_job_lookup(client):
+    """/api/jobs/presets is declared before /{job_id} - prove it still resolves."""
+    response = client.get("/api/jobs/presets")
+
+    assert response.status_code == 200
+    ids = {p["id"] for p in response.json()}
+    assert "income-claims" in ids
 
 
 def test_defaults_when_only_file_is_sent(client):
@@ -100,7 +126,7 @@ def test_defaults_when_only_file_is_sent(client):
     assert body["prompt"] is None
     assert body["auto_fix"] is False
     assert body["auto_scrub"] is False
-    assert body["bsm_mode"] is False
+    assert body["preset"] is None
     assert body["media_type"] == "audio"
 
 

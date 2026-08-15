@@ -45,7 +45,7 @@ class JobBase(BaseModel):
 class JobCreate(JobBase):
     auto_fix: bool = False
     auto_scrub: bool = False
-    bsm_mode: bool = False
+    preset: str | None = None
 
 
 class JobResponse(JobBase):
@@ -53,7 +53,7 @@ class JobResponse(JobBase):
     status: str  # pending, transcribing, analyzing, completed, failed
     auto_fix: bool = False
     auto_scrub: bool = False
-    bsm_mode: bool = False
+    preset: str | None = None
     duration_seconds: float | None = None
     language: str | None = None
     created_at: datetime
@@ -76,13 +76,20 @@ class JobListResponse(BaseModel):
     status: str
     auto_fix: bool = False
     auto_scrub: bool = False
-    bsm_mode: bool = False
+    preset: str | None = None
     duration_seconds: float | None = None
     created_at: datetime
     violation_count: int = 0
 
     class Config:
         from_attributes = True
+
+
+class PresetResponse(BaseModel):
+    """A selectable rule preset the analyzer can run instead of a free-form prompt."""
+    id: str
+    name: str
+    description: str
 
 
 class ExportRequest(BaseModel):

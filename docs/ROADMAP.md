@@ -1,9 +1,9 @@
-# Roadmap: AI Media Editor Revamp
+# Roadmap: CleanCut Revamp
 
 This document outlines the phased transition from a specialized "Compliance Review" tool to a generalized, prompt-based AI Audio/Video Editor.
 
 ## Phase 1: Dynamic Prompting (The "Prompt-Based" Engine)
-**Goal:** Replace the static compliance rules with a user-defined natural language prompt.
+**Goal:** Replace the static, hardcoded rulebook with a user-defined natural language prompt.
 
 - [ ] **Database & API:** Update `Job` model and `POST /api/jobs` schema to include a `prompt` field.
 - [ ] **Frontend:** Add a dynamic prompt input field to the upload screen.

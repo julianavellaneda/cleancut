@@ -13,7 +13,7 @@ export interface Job {
   status: "pending" | "processing" | "transcribing" | "analyzing" | "exporting" | "completed" | "failed";
   auto_fix: boolean;
   auto_scrub: boolean;
-  bsm_mode: boolean;
+  preset: string | null;
   duration_seconds: number | null;
   language: string | null;
   created_at: string;
@@ -33,7 +33,7 @@ export interface JobListItem {
   status: string;
   auto_fix: boolean;
   auto_scrub: boolean;
-  bsm_mode: boolean;
+  preset: string | null;
   duration_seconds: number | null;
   created_at: string;
   violation_count: number;
@@ -51,6 +51,12 @@ export interface Violation {
   reasoning: string | null;
   status: "pending" | "accepted" | "rejected";
   action: "cut" | "mute";
+}
+
+export interface Preset {
+  id: string;
+  name: string;
+  description: string;
 }
 
 export interface ExportResponse {
@@ -93,16 +99,18 @@ export const api = {
     prompt: string | null = null,
     autoFix: boolean = false,
     autoScrub: boolean = false,
-    bsmMode: boolean = false
+    preset: string | null = null
   ): Promise<Job> {
     const formData = new FormData();
     formData.append("file", file);
-    if (prompt && !bsmMode) {
+    if (prompt && !preset) {
       formData.append("prompt", prompt);
     }
     formData.append("auto_fix", String(autoFix));
     formData.append("auto_scrub", String(autoScrub));
-    formData.append("bsm_mode", String(bsmMode));
+    if (preset) {
+      formData.append("preset", preset);
+    }
 
     const response = await fetch(`${API_BASE}/jobs`, {
       method: "POST",
@@ -110,6 +118,11 @@ export const api = {
     });
 
     return handleResponse<Job>(response);
+  },
+
+  async listPresets(): Promise<Preset[]> {
+    const response = await fetch(`${API_BASE}/jobs/presets`);
+    return handleResponse<Preset[]>(response);
   },
 
   async listJobs(): Promise<JobListItem[]> {

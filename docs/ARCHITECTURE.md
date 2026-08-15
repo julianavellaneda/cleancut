@@ -1,4 +1,4 @@
-# Architecture: AI Media Editor
+# Architecture: CleanCut
 
 This document describes the evolved architecture supporting dynamic AI prompts and video processing.
 

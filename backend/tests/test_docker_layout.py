@@ -58,7 +58,7 @@ def test_app_imports_in_container_layout(container_root):
     assert result.returncode == 0, (
         f"import failed in Docker layout:\n{result.stderr}"
     )
-    assert "AI Media Editor API" in result.stdout
+    assert "CleanCut API" in result.stdout
 
 
 def test_env_resolution_at_literal_container_path(container_root):

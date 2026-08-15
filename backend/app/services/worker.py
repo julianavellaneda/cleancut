@@ -101,7 +101,7 @@ def _process_job_sequentially(job_id: str, file_path: str):
         analysis = processor.analyze(
             transcript,
             prompt=job.prompt,
-            bsm_mode=bool(job.bsm_mode),
+            preset=job.preset,
         )
 
         # Step 2.5: Deterministic Scrubbing (Silence & Fillers)
@@ -149,20 +149,29 @@ def _process_job_sequentially(job_id: str, file_path: str):
             
             editor = MediaEditor()
             
-            # Map accepted suggestions to time segments for editing
+            # Map accepted suggestions to time segments for editing.
             # If auto_fix is on, we take all LLM violations.
             # If auto_scrub is on, we take all scrubber violations.
-            segments_to_fix = []
+            # Each suggestion keeps its own action - a preset like pii-redaction
+            # defaults to mute, and auto-applying it as a cut would silently
+            # delete the audio instead of silencing it.
+            cuts = []
+            mutes = []
             for v in all_suggestions:
                 is_scrubber = v.label in ["Dead Air", "Filler Word"]
-                if (is_scrubber and job.auto_scrub) or (not is_scrubber and job.auto_fix):
-                    segments_to_fix.append((v.start_time, v.end_time))
+                if not ((is_scrubber and job.auto_scrub) or (not is_scrubber and job.auto_fix)):
+                    continue
+                if v.action == "mute":
+                    mutes.append((v.start_time, v.end_time))
+                else:
+                    cuts.append((v.start_time, v.end_time))
 
-            if segments_to_fix:
-                editor.cut_segments(
-                    file_path_to_use, 
-                    str(export_path), 
-                    segments_to_fix, 
+            if cuts or mutes:
+                editor.apply_edits(
+                    file_path_to_use,
+                    str(export_path),
+                    segments_to_cut=cuts,
+                    segments_to_mute=mutes,
                     media_type=job.media_type
                 )
             else:

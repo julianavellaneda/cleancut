@@ -1,9 +1,12 @@
 """
 Tests for the hand-rolled column migration in database.py.
 
-`bsm_mode` was added after the first databases were created, so an existing
-audio_compliance.db from before that change must gain the column on startup
-rather than erroring on every query.
+Two generations of schema drift are covered here:
+
+1. A database predating the analysis-mode flag entirely must gain `preset`
+   on startup rather than erroring on every query.
+2. A database carrying the older boolean `bsm_mode` column must have its rows
+   carried over to the `preset` id that replaced it.
 """
 
 import sqlite3
@@ -32,21 +35,47 @@ CREATE TABLE jobs (
 )
 """
 
+BSM_JOBS_TABLE = LEGACY_JOBS_TABLE.replace(
+    "    waveform_data TEXT\n",
+    "    waveform_data TEXT,\n    bsm_mode BOOLEAN DEFAULT 0\n",
+)
 
-@pytest.fixture
-def legacy_db(tmp_path, monkeypatch):
-    """A pre-bsm_mode database with one row already in it."""
-    db_path = tmp_path / "legacy.db"
+
+def _build_db(tmp_path, monkeypatch, name, create_sql, rows):
+    db_path = tmp_path / name
     conn = sqlite3.connect(db_path)
-    conn.execute(LEGACY_JOBS_TABLE)
-    conn.execute(
-        "INSERT INTO jobs (id, filename, status) VALUES ('old-job', 'a.mp3', 'completed')"
-    )
+    conn.execute(create_sql)
+    for sql in rows:
+        conn.execute(sql)
     conn.commit()
     conn.close()
 
     engine = create_engine(f"sqlite:///{db_path}", connect_args={"check_same_thread": False})
     monkeypatch.setattr(database, "engine", engine)
+    return engine
+
+
+@pytest.fixture
+def legacy_db(tmp_path, monkeypatch):
+    """A database from before any analysis-mode column existed."""
+    engine = _build_db(
+        tmp_path, monkeypatch, "legacy.db", LEGACY_JOBS_TABLE,
+        ["INSERT INTO jobs (id, filename, status) VALUES ('old-job', 'a.mp3', 'completed')"],
+    )
+    yield engine
+    engine.dispose()
+
+
+@pytest.fixture
+def bsm_db(tmp_path, monkeypatch):
+    """A database still carrying the retired boolean `bsm_mode` column."""
+    engine = _build_db(
+        tmp_path, monkeypatch, "strict_mode.db", BSM_JOBS_TABLE,
+        [
+            "INSERT INTO jobs (id, filename, bsm_mode) VALUES ('strict-job', 'a.mp3', 1)",
+            "INSERT INTO jobs (id, filename, bsm_mode) VALUES ('prompt-job', 'b.mp3', 0)",
+        ],
+    )
     yield engine
     engine.dispose()
 
@@ -57,30 +86,57 @@ def _columns(engine):
 
 def test_legacy_db_is_missing_the_column(legacy_db):
     """Precondition - without this the migration test proves nothing."""
-    assert "bsm_mode" not in _columns(legacy_db)
+    assert "preset" not in _columns(legacy_db)
 
 
-def test_migration_adds_bsm_mode(legacy_db):
+def test_migration_adds_preset(legacy_db):
     database._apply_migrations()
-    assert "bsm_mode" in _columns(legacy_db)
+    assert "preset" in _columns(legacy_db)
 
 
 def test_migration_preserves_existing_rows(legacy_db):
     database._apply_migrations()
     with legacy_db.begin() as conn:
         row = conn.execute(
-            text("SELECT id, filename, bsm_mode FROM jobs WHERE id = 'old-job'")
+            text("SELECT id, filename, preset FROM jobs WHERE id = 'old-job'")
         ).fetchone()
     assert row[0] == "old-job"
     assert row[1] == "a.mp3"
-    assert not row[2]  # defaults to false, not NULL-crashing
+    assert row[2] is None  # no preset means prompt mode
 
 
 def test_migration_is_idempotent(legacy_db):
     """Startup runs this every boot - a second pass must not error."""
     database._apply_migrations()
     database._apply_migrations()
-    assert "bsm_mode" in _columns(legacy_db)
+    assert "preset" in _columns(legacy_db)
+
+
+def test_bsm_mode_rows_are_backfilled_to_a_preset(bsm_db):
+    """A job that ran in the old strict boolean mode keeps running that rulebook."""
+    database._apply_migrations()
+    with bsm_db.begin() as conn:
+        presets = dict(
+            conn.execute(text("SELECT id, preset FROM jobs")).fetchall()
+        )
+    assert presets["strict-job"] == "income-claims"
+    assert presets["prompt-job"] is None
+
+
+def test_bsm_mode_column_is_retired(bsm_db):
+    database._apply_migrations()
+    assert "bsm_mode" not in _columns(bsm_db)
+
+
+def test_bsm_migration_is_idempotent(bsm_db):
+    database._apply_migrations()
+    database._apply_migrations()
+    assert "preset" in _columns(bsm_db)
+    with bsm_db.begin() as conn:
+        value = conn.execute(
+            text("SELECT preset FROM jobs WHERE id = 'strict-job'")
+        ).scalar()
+    assert value == "income-claims"
 
 
 def test_migration_noop_on_empty_database(tmp_path, monkeypatch):

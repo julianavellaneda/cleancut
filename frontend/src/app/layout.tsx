@@ -13,8 +13,8 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "AI Media Editor",
-  description: "Simple AI-powered media editing",
+  title: "CleanCut",
+  description: "Describe what to find in plain English, review it on a waveform, export a surgically edited file.",
 };
 
 export default function RootLayout({

@@ -49,5 +49,19 @@ def _apply_migrations():
         return
     existing = {col["name"] for col in inspector.get_columns("jobs")}
     with engine.begin() as conn:
-        if "bsm_mode" not in existing:
-            conn.execute(text("ALTER TABLE jobs ADD COLUMN bsm_mode BOOLEAN DEFAULT 0"))
+        # `bsm_mode` (a boolean) was generalized into `preset` (a nullable id).
+        # Add the new column, carry old rows over, then retire the old one.
+        if "preset" not in existing:
+            conn.execute(text("ALTER TABLE jobs ADD COLUMN preset VARCHAR"))
+            if "bsm_mode" in existing:
+                conn.execute(
+                    text("UPDATE jobs SET preset = 'income-claims' WHERE bsm_mode = 1")
+                )
+    if "bsm_mode" in existing:
+        try:
+            with engine.begin() as conn:
+                conn.execute(text("ALTER TABLE jobs DROP COLUMN bsm_mode"))
+        except Exception:
+            # DROP COLUMN needs SQLite 3.35+. Leaving the stale column is
+            # harmless: the ORM no longer maps it and it is nullable.
+            pass

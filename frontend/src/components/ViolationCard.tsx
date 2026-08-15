@@ -80,7 +80,7 @@ export function ViolationCard({
       </CardHeader>
 
       <CardContent className="flex-1 flex flex-col space-y-6">
-        {/* Rule Violated (strict mode) */}
+        {/* Rule Violated (preset mode) */}
         {violation.rule_violated && (
           <div className="space-y-1">
             <div className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Rule Violated</div>

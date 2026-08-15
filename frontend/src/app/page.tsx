@@ -4,7 +4,7 @@ import { useState, useCallback, useEffect, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { api, JobListItem } from "@/lib/api";
+import { api, JobListItem, Preset } from "@/lib/api";
 import { cn } from "@/lib/utils";
 
 export default function UploadPage() {
@@ -13,7 +13,8 @@ export default function UploadPage() {
   const [isUploading, setIsUploading] = useState(false);
   const [autoFix, setAutoFix] = useState(false);
   const [autoScrub, setAutoScrub] = useState(false);
-  const [bsmMode, setBsmMode] = useState(false);
+  const [preset, setPreset] = useState<string | null>(null);
+  const [presets, setPresets] = useState<Preset[]>([]);
   const [prompt, setPrompt] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [jobs, setJobs] = useState<JobListItem[]>([]);
@@ -24,9 +25,18 @@ export default function UploadPage() {
 
   useEffect(() => {
     loadJobs();
+    loadPresets();
     startPolling();
     return () => stopPolling();
   }, []);
+
+  async function loadPresets() {
+    try {
+      setPresets(await api.listPresets());
+    } catch {
+      // Presets are optional - fall back to prompt-only mode.
+    }
+  }
 
   async function loadJobs() {
     setLoadingJobs(true);
@@ -100,7 +110,7 @@ export default function UploadPage() {
     for (const file of validFiles) {
       setUploadProgress(prev => ({ ...prev, [file.name]: "Uploading..." }));
       try {
-        await api.uploadAudio(file, prompt, autoFix, autoScrub, bsmMode);
+        await api.uploadAudio(file, prompt, autoFix, autoScrub, preset);
         setUploadProgress(prev => ({ ...prev, [file.name]: "Queued" }));
       } catch (err) {
         setUploadProgress(prev => ({ ...prev, [file.name]: "Failed" }));
@@ -121,13 +131,13 @@ export default function UploadPage() {
     return `${mins}:${secs.toString().padStart(2, "0")}`;
   }
 
-  const activeJobs = jobs.filter(j => !["completed", "failed"].includes(j.status));
+  const activePreset = presets.find(p => p.id === preset) ?? null;
 
   return (
     <div className="container max-w-4xl mx-auto py-12 px-6 space-y-12">
       <header className="space-y-2">
-        <h1 className="text-3xl font-bold tracking-tight">AI Media Editor</h1>
-        <p className="text-muted-foreground">Minimalist media editing powered by AI.</p>
+        <h1 className="text-3xl font-bold tracking-tight">CleanCut</h1>
+        <p className="text-muted-foreground">Describe what to find in plain English. Review it on a waveform. Export a surgically edited file.</p>
       </header>
 
       <Card>
@@ -138,22 +148,47 @@ export default function UploadPage() {
           <div className="space-y-4">
             <div className="space-y-2">
               <label htmlFor="prompt" className="text-sm font-medium">
-                Instructions {bsmMode && <span className="text-xs font-normal text-muted-foreground">(disabled — strict preset active)</span>}
+                Instructions {activePreset && <span className="text-xs font-normal text-muted-foreground">(disabled — {activePreset.name} preset active)</span>}
               </label>
               <textarea
                 id="prompt"
-                placeholder={bsmMode ? "Strict rulebook compliance analysis is active." : "E.g., Remove filler words and silences..."}
-                value={bsmMode ? "" : prompt}
+                placeholder={activePreset ? `The ${activePreset.name} rulebook is driving this analysis.` : "E.g., Remove filler words and silences..."}
+                value={activePreset ? "" : prompt}
                 onChange={(e) => setPrompt(e.target.value)}
-                disabled={bsmMode}
+                disabled={!!activePreset}
                 className={cn(
                   "w-full min-h-[100px] p-3 rounded-md border border-input bg-background text-sm focus:ring-1 focus:ring-primary outline-none transition-all",
-                  bsmMode && "opacity-50 cursor-not-allowed"
+                  activePreset && "opacity-50 cursor-not-allowed"
                 )}
               />
             </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            {presets.length > 0 && (
+              <div className="space-y-2">
+                <label htmlFor="preset" className="text-sm font-medium">Rule preset</label>
+                <select
+                  id="preset"
+                  value={preset ?? ""}
+                  onChange={(e) => setPreset(e.target.value || null)}
+                  className={cn(
+                    "w-full p-3 rounded-md border bg-background text-sm focus:ring-1 focus:ring-primary outline-none transition-all",
+                    activePreset ? "border-primary bg-primary/5" : "border-input"
+                  )}
+                >
+                  <option value="">None — use my instructions</option>
+                  {presets.map((p) => (
+                    <option key={p.id} value={p.id}>{p.name}</option>
+                  ))}
+                </select>
+                {activePreset && (
+                  <div className="text-xs text-muted-foreground px-1">
+                    {activePreset.description} The custom prompt is ignored while a preset is selected.
+                  </div>
+                )}
+              </div>
+            )}
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <label className="flex items-center gap-3 p-3 border rounded-md cursor-pointer hover:bg-muted/50 transition-colors">
                 <input
                   type="checkbox"
@@ -172,24 +207,7 @@ export default function UploadPage() {
                 />
                 <span className="text-sm font-medium">Scrubber mode</span>
               </label>
-              <label className={cn(
-                "flex items-center gap-3 p-3 border rounded-md cursor-pointer transition-colors",
-                bsmMode ? "border-primary bg-primary/5" : "hover:bg-muted/50"
-              )}>
-                <input
-                  type="checkbox"
-                  checked={bsmMode}
-                  onChange={(e) => setBsmMode(e.target.checked)}
-                  className="w-4 h-4 rounded border-input"
-                />
-                <span className="text-sm font-medium">Strict Compliance Mode</span>
-              </label>
             </div>
-            {bsmMode && (
-              <div className="text-xs text-muted-foreground px-1">
-                Strict marketing-guidelines analysis. The custom prompt is ignored while this is on.
-              </div>
-            )}
           </div>
 
           <div

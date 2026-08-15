@@ -11,7 +11,51 @@ from typing import List, Optional
 
 from openai import OpenAI
 
-from transcriber import TranscriptResult, Segment
+from .transcriber import TranscriptResult, Segment
+
+
+# Built-in rule presets. A preset swaps the free-form user prompt for a curated
+# rulebook plus a stricter, category-aware system prompt.
+PRESETS_DIR = Path(__file__).parent / "presets"
+
+PRESETS: dict[str, dict[str, str]] = {
+    "income-claims": {
+        "name": "Income & Lifestyle Claims",
+        "description": "FTC-style earnings and lifestyle claim review for direct-selling material.",
+        "rules_file": "income-claims.md",
+        "default_action": "cut",
+        "example_category": "Income Claims",
+        "categories": (
+            '"Income Claims", "Lifestyle Claims", "Political/Religious", '
+            '"Medical/Health Claims", "Business Opportunity Misrepresentation", '
+            '"Competitive Disparagement"'
+        ),
+    },
+    "pii-redaction": {
+        "name": "PII Redaction",
+        "description": "Flags spoken personal, financial, and credential data for muting.",
+        "rules_file": "pii-redaction.md",
+        "default_action": "mute",
+        "example_category": "Direct Identifiers",
+        "categories": (
+            '"Direct Identifiers", "Government/Financial Identifiers", '
+            '"Credentials & Access", "Health & Protected Categories", '
+            '"Confidential Business Information"'
+        ),
+    },
+}
+
+
+def is_valid_preset(preset: str | None) -> bool:
+    """True when `preset` is None (prompt mode) or a known preset id."""
+    return preset is None or preset in PRESETS
+
+
+def load_preset_rules(preset: str) -> str:
+    """Read the rulebook backing a preset id."""
+    meta = PRESETS[preset]
+    with open(PRESETS_DIR / meta["rules_file"]) as f:
+        return f.read()
 
 
 @dataclass
@@ -23,8 +67,8 @@ class Violation:
     label: str  # e.g., "Filler Word", "Income Claim", "Silence"
     action: str  # "cut" or "mute"
     reasoning: str
-    rule_violated: str | None = None  # Populated in strict mode
-    severity: str | None = None  # "high" | "medium" | "low", populated in strict mode
+    rule_violated: str | None = None  # Populated in preset mode
+    severity: str | None = None  # "high" | "medium" | "low", populated in preset mode
 
 
 @dataclass
@@ -56,7 +100,8 @@ class PromptAnalyzer:
         Initialize the analyzer.
 
         Args:
-            rules_path: Path to default rules file.
+            rules_path: Optional path to a rules file used as baseline context in
+                prompt mode. Preset mode loads its own rulebook instead.
             chunk_size: Number of segments per chunk.
             overlap: Number of segments to overlap between chunks.
         """
@@ -64,35 +109,35 @@ class PromptAnalyzer:
         self.chunk_size = chunk_size
         self.overlap = overlap if overlap is not None else self.DEFAULT_OVERLAP
 
-        # Load default rules as a baseline context
-        if rules_path is None:
-            rules_path = Path(__file__).parent / "bsm_rules.txt"
-        
-        try:
-            with open(rules_path) as f:
-                self.default_rules = f.read()
-        except FileNotFoundError:
-            self.default_rules = "No default rules provided."
+        self.default_rules = ""
+        if rules_path:
+            try:
+                with open(rules_path) as f:
+                    self.default_rules = f.read()
+            except FileNotFoundError:
+                self.default_rules = ""
 
     def analyze(
         self,
         transcript: TranscriptResult,
         prompt: Optional[str] = None,
-        bsm_mode: bool = False,
+        preset: str | None = None,
     ) -> AnalysisResult:
         """
-        Analyze a transcript for suggested edits based on a user prompt, or in
-        strict rulebook compliance mode.
+        Analyze a transcript for suggested edits, driven either by a free-form
+        user prompt or by a built-in rule preset.
 
         Args:
             transcript: TranscriptResult from transcriber
-            prompt: User-defined editing instructions (ignored when bsm_mode=True)
-            bsm_mode: If True, use the strict compliance system prompt and
-                extract rule_violated + severity fields.
+            prompt: User-defined editing instructions (ignored when a preset is set)
+            preset: Preset id from PRESETS, or None for prompt mode. Preset mode
+                uses the preset's rulebook and extracts rule_violated + severity.
 
         Returns:
             AnalysisResult with list of suggested edits
         """
+        if not is_valid_preset(preset):
+            raise ValueError(f"Unknown preset: {preset!r}")
         total_segments = len(transcript.segments)
 
         # Determine if we should chunk
@@ -105,7 +150,11 @@ class PromptAnalyzer:
         chunks = self._chunk_segments_with_overlap(transcript.segments, chunk_size, overlap)
         num_chunks = len(chunks)
 
-        mode_label = "strict compliance" if bsm_mode else f"prompt: '{prompt or 'Default'}'"
+        mode_label = (
+            f"preset: '{PRESETS[preset]['name']}'"
+            if preset
+            else f"prompt: '{prompt or 'Default'}'"
+        )
         if num_chunks == 1:
             print(f"Analyzing transcript with {mode_label}...")
         else:
@@ -129,13 +178,13 @@ class PromptAnalyzer:
 
             # Format and analyze this chunk
             transcript_text = self._format_transcript_for_analysis(chunk_transcript)
-            chunk_violations = self._call_llm(transcript_text, prompt, bsm_mode=bsm_mode)
+            chunk_violations = self._call_llm(transcript_text, prompt, preset=preset)
 
             if num_chunks > 1:
                 print(f"    Found {len(chunk_violations)} suggested edit(s)")
 
             # Map violations back to precise timestamps
-            mapped = self._map_to_timestamps(chunk_violations, chunk_transcript, bsm_mode=bsm_mode)
+            mapped = self._map_to_timestamps(chunk_violations, chunk_transcript, preset=preset)
             all_violations.extend(mapped)
 
         # Deduplicate violations from overlapping chunks
@@ -208,16 +257,18 @@ class PromptAnalyzer:
     def _prompt_system_prompt(self, user_prompt: Optional[str]) -> str:
         """Generic prompt-driven system prompt (default mode)."""
         instructions = user_prompt if user_prompt else "Identify all segments that should be removed or muted for clarity and compliance."
+        baseline = (
+            f"\n## BASELINE COMPLIANCE CONTEXT (If relevant):\n{self.default_rules}\n"
+            if self.default_rules
+            else ""
+        )
         return f"""You are an expert audio/video editor and compliance officer.
 
 ## EDITING INSTRUCTIONS:
 {instructions}
-
-## BASELINE COMPLIANCE CONTEXT (If relevant):
-{self.default_rules}
-
+{baseline}
 ## YOUR TASK
-Scan the transcript and extract EVERY segment that matches the editing instructions or violates the baseline compliance rules.
+Scan the transcript and extract EVERY segment that matches the editing instructions.
 
 Return your response as a JSON array of objects with this structure:
 ```json
@@ -242,12 +293,13 @@ IMPORTANT:
 - Choose 'mute' if the segment should remain but be silenced (e.g. sensitive info, background noise).
 """
 
-    def _bsm_system_prompt(self) -> str:
-        """Strict rulebook compliance system prompt (lifted from legacy ComplianceAnalyzer)."""
-        return f"""{self.default_rules}
+    def _preset_system_prompt(self, preset: str) -> str:
+        """Strict rulebook-driven system prompt used when a preset is selected."""
+        meta = PRESETS[preset]
+        return f"""{load_preset_rules(preset)}
 
 ## YOUR TASK
-You are a forensic compliance auditor. Your job is to meticulously scan the ENTIRE transcript and extract EVERY SINGLE instance of content that violates the marketing guidelines.
+You are a forensic compliance auditor. Your job is to meticulously scan the ENTIRE transcript and extract EVERY SINGLE instance of content that violates the guidelines above.
 
 CRITICAL INSTRUCTIONS:
 1. You MUST read the ENTIRE transcript from start to finish
@@ -262,7 +314,7 @@ Return your response as a JSON array with this exact structure:
   {{
     "text": "exact quote from transcript",
     "approximate_time": "57.1s",
-    "rule_violated": "Income Claims",
+    "rule_violated": "{meta['example_category']}",
     "severity": "high",
     "reasoning": "brief explanation"
   }}
@@ -275,7 +327,7 @@ IMPORTANT:
 - Quote the EXACT text that violates guidelines
 - Include the approximate timestamp (e.g. "57.1s")
 - severity must be "high", "medium", or "low"
-- rule_violated must be one of the rulebook categories (e.g. "Income Claims", "Lifestyle Claims", "Political/Religious", "Medical/Health Claims", "Business Opportunity Misrepresentation", "Competitive Disparagement")
+- rule_violated must be one of the categories in the guidelines above (e.g. {meta['categories']})
 - Be EXHAUSTIVE - scan every sentence for potential violations
 - Flag actual violations, not borderline cases
 - Do NOT summarize or combine multiple violations into one entry
@@ -285,12 +337,12 @@ IMPORTANT:
         self,
         transcript_text: str,
         user_prompt: Optional[str],
-        bsm_mode: bool = False,
+        preset: str | None = None,
     ) -> list[dict]:
-        """Call GPT-4o to analyze the transcript based on the user prompt or compliance rules."""
+        """Call GPT-4o to analyze the transcript using the preset rulebook or the user prompt."""
 
-        if bsm_mode:
-            system_prompt = self._bsm_system_prompt()
+        if preset:
+            system_prompt = self._preset_system_prompt(preset)
         else:
             system_prompt = self._prompt_system_prompt(user_prompt)
 
@@ -322,7 +374,7 @@ IMPORTANT:
         self,
         raw_violations: list[dict],
         transcript: TranscriptResult,
-        bsm_mode: bool = False,
+        preset: str | None = None,
     ) -> list[Violation]:
         """Map violation text to precise timestamps using transcript data."""
         violations = []
@@ -343,11 +395,12 @@ IMPORTANT:
             rule_violated = v.get("rule_violated")
             severity = v.get("severity")
 
-            # In strict mode the model returns rule_violated/severity and no label/action.
-            # Map rule_violated onto the label field so the existing review UI renders.
-            if bsm_mode:
-                label = rule_violated or v.get("label") or "Rule Violation"
-                action = v.get("action", "cut")
+            # In preset mode the model returns rule_violated/severity and no label/action.
+            # Map rule_violated onto the label field so the existing review UI renders,
+            # and fall back to the preset's own default action (mute for redaction).
+            if preset:
+                label = rule_violated or v.get("label") or PRESETS[preset]["name"]
+                action = v.get("action") or PRESETS[preset]["default_action"]
             else:
                 label = v.get("label") or rule_violated or "Marker"
                 action = v.get("action", "cut")

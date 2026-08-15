@@ -12,7 +12,8 @@ from sqlalchemy.orm import Session
 
 from ..database import get_db
 from ..models import Job
-from ..schemas import JobResponse, JobListResponse
+from ..schemas import JobResponse, JobListResponse, PresetResponse
+from ..services.processor import PRESETS, is_valid_preset
 from ..services.worker import enqueue_job
 
 router = APIRouter()
@@ -31,7 +32,7 @@ async def create_job(
     media_type: str = Form("audio"),
     auto_fix: bool = Form(False),
     auto_scrub: bool = Form(False),
-    bsm_mode: bool = Form(False),
+    preset: str | None = Form(None),
     db: Session = Depends(get_db)
 ):
     """
@@ -39,6 +40,15 @@ async def create_job(
     Returns immediately after saving the file; processing runs in a sequential background queue.
     Poll GET /api/jobs/{id} to track progress.
     """
+    # Treat an empty preset field as "no preset" - HTML forms send "" for an
+    # unselected <select>, and that should mean prompt mode, not a bad request.
+    preset = preset or None
+    if not is_valid_preset(preset):
+        raise HTTPException(
+            status_code=400,
+            detail=f"Unknown preset '{preset}'. Available: {', '.join(PRESETS)}"
+        )
+
     # Validate file type
     allowed_extensions = {".mp3", ".wav", ".m4a", ".flac", ".ogg", ".webm", ".aif", ".aiff", ".mp4", ".mov"}
     file_ext = Path(file.filename).suffix.lower()
@@ -63,7 +73,7 @@ async def create_job(
         status="pending",
         auto_fix=auto_fix,
         auto_scrub=auto_scrub,
-        bsm_mode=bsm_mode
+        preset=preset
     )
     db.add(job)
     db.commit()
@@ -100,12 +110,21 @@ def list_jobs(db: Session = Depends(get_db)):
             status=job.status,
             auto_fix=job.auto_fix,
             auto_scrub=job.auto_scrub,
-            bsm_mode=job.bsm_mode,
+            preset=job.preset,
             duration_seconds=job.duration_seconds,
             created_at=job.created_at,
             violation_count=len(job.violations)
         )
         for job in jobs
+    ]
+
+
+@router.get("/presets", response_model=List[PresetResponse])
+def list_presets():
+    """List the built-in rule presets. Declared before /{job_id} so it isn't shadowed."""
+    return [
+        PresetResponse(id=pid, name=meta["name"], description=meta["description"])
+        for pid, meta in PRESETS.items()
     ]
 
 
@@ -151,7 +170,7 @@ def _build_job_response(job: Job, db: Session) -> JobResponse:
         status=job.status,
         auto_fix=job.auto_fix,
         auto_scrub=job.auto_scrub,
-        bsm_mode=job.bsm_mode,
+        preset=job.preset,
         duration_seconds=job.duration_seconds,
         language=job.language,
         created_at=job.created_at,

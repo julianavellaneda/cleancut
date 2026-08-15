@@ -22,8 +22,8 @@ from .routes import jobs, violations, audio, admin
 from .services.worker import start_worker
 
 app = FastAPI(
-    title="AI Media Editor API",
-    description="AI-powered audio/video editing with optional rulebook compliance mode.",
+    title="CleanCut API",
+    description="Describe what to find in plain English, review it on a waveform, export a surgically edited file.",
     version="1.0.0",
 )
 

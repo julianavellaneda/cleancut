@@ -1,18 +1,22 @@
 # GEMINI.md
 
-This file provides foundational mandates and contextual guidance for Gemini CLI when working in this repository.
+This file provides foundational mandates and contextual guidance for Gemini CLI when working in this
+repository. It mirrors `CLAUDE.md`; keep the two in sync when the architecture changes.
 
 ## Project Overview
 
-**AI Audio Editing & Compliance Review** is an AI-powered tool designed for compliance with a direct-sales company's marketing guidelines. It transcribes audio recordings, analyzes them against specific marketing guidelines using LLMs (GPT-4o), and provides a dashboard for human review and surgical audio editing (cut/mute).
+**CleanCut** is a prompt-driven audio and video editor. Describe what to find in plain English, review
+the AI's suggestions on a waveform, export a surgically edited file. It transcribes media with
+word-level timestamps, analyzes the transcript with an LLM, and renders accepted edits with FFmpeg.
 
 ### Core Philosophy: "Copilot, not Autopilot"
-The system is designed to assist human reviewers, not replace them. The AI flags potential violations with reasoning and timestamps, allowing the user to make the final decision on whether to cut or mute the segment.
+The system assists human reviewers rather than replacing them. The AI flags segments with reasoning
+and timestamps; the user decides whether to cut, mute, or ignore each one.
 
 ### Technology Stack
-- **Backend**: FastAPI (Python 3.10+), SQLAlchemy (SQLite), `faster-whisper` (Transcription), `pydub` (Audio Processing), OpenAI API (Analysis).
-- **Frontend**: Next.js 14/15 (TypeScript, App Router), Tailwind CSS v4, `wavesurfer.js` (Waveform visualization).
-- **POC**: Modular Python CLI scripts for independent verification of the transcription and analysis pipeline.
+- **Backend**: FastAPI (Python 3.10+), SQLAlchemy (SQLite), `faster-whisper` (transcription),
+  FFmpeg (editing), OpenAI API (analysis).
+- **Frontend**: Next.js 15 (TypeScript, App Router), Tailwind CSS v4, `wavesurfer.js`.
 
 ---
 
@@ -20,26 +24,24 @@ The system is designed to assist human reviewers, not replace them. The AI flags
 
 ```text
 .
-├── backend/                # FastAPI application
-│   ├── app/                # Main application logic
-│   │   ├── routes/         # API endpoints (jobs, violations, audio, admin)
-│   │   ├── services/       # Core logic (processor.py, audio_editor.py)
-│   │   ├── models.py       # SQLAlchemy database models
-│   │   └── main.py         # Entry point & CORS configuration
-│   ├── uploads/            # Temporary storage for uploaded audio
-│   ├── exports/            # Storage for processed/edited audio
-│   └── requirements.txt    # Python dependencies
-├── frontend/               # Next.js React application
-│   ├── src/app/            # App router pages (Upload, Job Review, Admin)
-│   ├── src/components/     # UI components (Waveform, ViolationList)
-│   └── package.json        # Node.js dependencies & scripts
-├── poc/                    # Proof of Concept CLI tools
-│   ├── analyze.py          # Main CLI entry point
-│   ├── transcriber.py      # Whisper-based transcription service
-│   ├── compliance.py       # LLM-based compliance analysis
-│   └── bsm_rules.txt       # Hardcoded compliance guidelines
-├── tests/                  # Test datasets and scripts
-└── audio/                  # Sample audio files for testing
+├── backend/                    # FastAPI application
+│   ├── app/
+│   │   ├── analysis/           # transcriber.py, prompt_analyzer.py, analyze.py (CLI)
+│   │   │   └── presets/        # Rule preset markdown rulebooks
+│   │   ├── routes/             # jobs, violations, audio, admin
+│   │   ├── services/           # worker.py, processor.py, scrubber.py, media_editor.py
+│   │   ├── models.py           # SQLAlchemy models
+│   │   ├── database.py         # SQLite setup + additive migrations
+│   │   └── main.py             # Entry point & CORS
+│   ├── tests/                  # pytest suite
+│   ├── uploads/                # Uploaded media
+│   └── exports/                # Edited output
+├── frontend/                   # Next.js application
+│   ├── src/app/                # Upload, job review, admin pages
+│   ├── src/components/         # Waveform, ViolationList, ViolationCard
+│   └── src/lib/api.ts          # Typed API client
+├── docs/                       # Architecture, spec, roadmap
+└── tests/                      # Media fixtures (synthetic only)
 ```
 
 ---
@@ -47,61 +49,73 @@ The system is designed to assist human reviewers, not replace them. The AI flags
 ## Building and Running
 
 ### Prerequisites
-- Python 3.10+
-- Node.js 18+
-- FFmpeg (`brew install ffmpeg`)
-- OpenAI API Key (configured in `poc/.env`)
+- Python 3.10+, Node.js 18+, FFmpeg (`brew install ffmpeg`)
+- An `OPENAI_API_KEY` in a `.env` at the **repo root**
 
-### Backend Setup
+### Backend
 ```bash
 cd backend
 python3 -m venv .venv
 source .venv/bin/activate
 pip install -r requirements.txt
-uvicorn app.main:app --reload # Runs on http://localhost:8000
+uvicorn app.main:app --reload   # http://localhost:8000
 ```
 
-### Frontend Setup
+### Frontend
 ```bash
 cd frontend
 npm install
-npm run dev # Runs on http://localhost:3000
+npm run dev                      # http://localhost:3000
 ```
 
-### POC CLI Usage
+Both at once: `./start.sh`. Containerized: `docker compose up --build`.
+
+### CLI
 ```bash
-# From root with active venv
-python poc/analyze.py path/to/audio.mp3
+cd backend && source .venv/bin/activate
+python -m app.analysis.analyze path/to/audio.mp3 --prompt "flag every income claim"
+python -m app.analysis.analyze path/to/audio.mp3 --preset income-claims
 ```
+
+The CLI is a module, not a script: `analysis/` imports are package-relative, so
+`python app/analysis/analyze.py` cannot resolve them.
 
 ---
 
 ## Development Conventions
 
 ### Coding Standards
-- **Backend**: 
+- **Backend**:
   - Use Pydantic for request/response validation (`schemas.py`).
   - Follow the service-layer pattern (logic in `services/`, routing in `routes/`).
-  - Use `faster-whisper` with `int8` quantization for efficient local inference on Mac (M-series).
-- **Frontend**: 
-  - Use Functional Components and Tailwind CSS v4 for styling.
-  - Use `wavesurfer.js` regions for visualizing violation intervals.
+  - Use `faster-whisper` with `int8` quantization for efficient local inference on M-series Macs.
+  - Multipart upload fields must be declared as `Form(...)`, never bare defaults — a bare default
+    makes FastAPI read them as query params and they silently never arrive.
+- **Frontend**:
+  - Functional components, Tailwind CSS v4.
+  - `wavesurfer.js` regions to visualize suggested-edit intervals.
   - Strictly type all API interactions and component props.
+  - Read the API base from `NEXT_PUBLIC_API_URL`; never hardcode a host.
 
 ### Workflow
-0.  **Conversion**: AIFF/AIF files are automatically converted to MP3 using `pydub` before processing.
-1.  **Transcription**: Handled by `faster-whisper` to get word-level timestamps.
-2.  **Analysis**: Transcripts are chunked (50 segments with 10 overlap) before being sent to GPT-4o to stay within context limits and ensure detail.
-3.  **Deduplication**: Violations are deduplicated based on rule similarity and timestamp proximity.
-4.  **Editing**: Audio editing is done via `pydub`, applying crossfades to avoid audible clicks in the final export.
+0. **Conversion**: AIFF/AIF is converted to MP3, and video has its audio extracted, via FFmpeg.
+1. **Transcription**: `faster-whisper` produces word-level timestamps.
+2. **Analysis**: transcripts are chunked (50 segments, 10 overlap) before going to the LLM, either
+   with the user's prompt or with a preset rulebook from `analysis/presets/`.
+3. **Deduplication**: suggestions are deduplicated by label and timestamp proximity.
+4. **Scrubbing**: silence and filler words are detected deterministically, without the LLM.
+5. **Export**: a single FFmpeg `trim`/`atrim` + `concat` filter graph applies mutes then cuts,
+   keeping video in sync with its audio.
 
 ### Testing
-- Sample transcripts are located in `tests/transcripts/`.
-- Use `poc/analyze.py --transcript <file>` to test compliance analysis without re-running transcription.
+- `cd backend && pytest`.
+- Fixtures in `tests/` must be synthetic. Never commit a real customer recording or transcript.
 
 ---
 
 ## Safety & Security
-- **API Keys**: Never commit `poc/.env`. Ensure `.gitignore` protects all secret files.
-- **Audio Privacy**: Audio files in `uploads/` and `exports/` should be handled as sensitive user data.
-- **Admin Dashboard**: The `/admin` route and `/api/admin` endpoints are currently **unauthenticated**. Access should be restricted to authorized personnel. Implementing a proper Auth provider (e.g., Clerk, NextAuth) is a priority for production.
+- **API Keys**: never commit `.env`. Ensure `.gitignore` covers all secret files.
+- **Media Privacy**: files in `uploads/` and `exports/` are sensitive user data. Transcription runs
+  locally; only transcript text reaches the LLM provider.
+- **Admin Dashboard**: `/admin` and `/api/admin` are currently **unauthenticated** and destructive.
+  Restrict access before any deployment; adding a real auth provider is a prerequisite for hosting.
