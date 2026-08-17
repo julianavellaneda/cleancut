@@ -45,3 +45,16 @@
 - [x] `bsm_mode` boolean renamed to a `preset` string field, with a backfilling migration
 - [x] Name picked: **CleanCut**
 - [x] Client references purged from `README.md`, `CLAUDE.md`, `GEMINI.md`, `proj.md`, `docs/`, UI copy
+
+## Phase 2: Fresh-clone truth
+- [x] `README.md` and `CLAUDE.md` describe the real layout (no `poc/`, root `.env`, module-form CLI)
+- [x] Missing `OPENAI_API_KEY` / `ffmpeg` / `ffprobe` fail at startup via `app/preflight.py`,
+      listing every unmet requirement at once. `SKIP_PREFLIGHT=1` overrides.
+- [x] Unreadable LLM responses raise `AnalysisError` instead of returning `[]`. One bad chunk
+      completes the job with a partial-analysis warning; all chunks failing fails the job.
+- [x] `worker.py` unbound-`job` masking bug fixed — failures report their real cause
+- [x] Failed jobs render their reason in the review UI; partial analyses show a warning banner
+- [x] Upload guardrails: `MAX_UPLOAD_MB` (streamed, 413) and `MAX_DURATION_MINUTES` (ffprobe, 413)
+- [x] `@app.on_event("startup")` replaced with a lifespan context
+
+Remaining: Phase 3 (synthetic demo clip, demo video, README hero, case study) is content work.

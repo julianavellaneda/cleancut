@@ -18,8 +18,10 @@ without a human accepting it.
 ai-audio-editing/
 ├── backend/                        # FastAPI backend
 │   ├── app/
-│   │   ├── main.py                 # FastAPI entry, CORS, startup
+│   │   ├── main.py                 # FastAPI entry, CORS, lifespan startup
 │   │   ├── config.py               # Root .env discovery
+│   │   ├── preflight.py            # Startup checks: OPENAI_API_KEY, ffmpeg/ffprobe
+│   │   ├── limits.py               # Upload size + duration caps
 │   │   ├── database.py             # SQLite setup + hand-rolled column migrations
 │   │   ├── models.py               # SQLAlchemy: Job, Violation
 │   │   ├── schemas.py              # Pydantic request/response
@@ -168,6 +170,9 @@ OPENAI_API_KEY=your_key_here
 CORS_ORIGINS=http://localhost:3000
 DATABASE_PATH=            # optional; Docker sets this to a mounted volume
 NEXT_PUBLIC_API_URL=      # optional; baked into the frontend build
+MAX_UPLOAD_MB=500         # optional; upload size cap
+MAX_DURATION_MINUTES=120  # optional; media length cap, probed with ffprobe (fails closed)
+SKIP_PREFLIGHT=           # optional; 1 to boot past a failed startup check
 ```
 
 System dependency: `brew install ffmpeg`.
@@ -197,8 +202,22 @@ System dependency: `brew install ffmpeg`.
 
 ## Common Issues
 
-**"Unexpected response format" from the LLM**: `_call_llm` swallows `JSONDecodeError` and returns
-`[]`, so a malformed response looks identical to "nothing found". Check the raw response.
+**Unreadable LLM response**: `_parse_llm_response` raises `AnalysisError` with an excerpt of the raw
+response instead of returning `[]`. `_validate_entries` then checks each item: non-object entries,
+missing/empty `text`, non-string fields, and unknown `action`/`severity` values all raise too — an
+unusable entry used to become an empty-text `cut` on the first segment, which `auto_fix` applied.
+A single bad chunk leaves the job `completed` with a partial-analysis warning in `error_message`;
+if every chunk fails, the job fails with the reason. `AnalysisResult.total_segments_analyzed`
+counts only segments a chunk answered for (`total_segments` is the denominator), and `to_json`
+serializes `is_partial` + `failed_chunks`; the CLI prints the warning and exits 2.
+
+**Upload rejections**: `POST /api/jobs` is a sync `def` on purpose — it streams to disk and runs
+ffprobe, so FastAPI must schedule it in the thread pool rather than on the event loop. Over the
+size cap is a 413, over the duration cap is a 413, and an unprobeable duration is a **422**:
+`enforce_duration_limit` fails closed rather than letting an unbounded stream past the cap.
+
+**Server won't start**: `preflight.verify_environment()` runs first in the lifespan and lists every
+unmet requirement (`OPENAI_API_KEY`, `ffmpeg`, `ffprobe`). `SKIP_PREFLIGHT=1` boots anyway.
 
 **Slow transcription**: use `--model medium` or `--model small` on the CLI for faster, less accurate
 transcription.

@@ -3,6 +3,7 @@ FastAPI application entry point.
 """
 
 import os
+from contextlib import asynccontextmanager
 
 from dotenv import load_dotenv
 from fastapi import FastAPI
@@ -18,13 +19,31 @@ if _ROOT_ENV:
     load_dotenv(_ROOT_ENV)
 
 from .database import init_db
+from .preflight import verify_environment
 from .routes import jobs, violations, audio, admin
 from .services.worker import start_worker
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """
+    Check the environment, then bring up the database and worker.
+
+    Preflight runs first and raises, so a missing OPENAI_API_KEY or ffmpeg stops
+    the server at boot with an actionable message instead of surfacing minutes
+    later as a mysteriously failed job.
+    """
+    verify_environment()
+    init_db()
+    start_worker()
+    yield
+
 
 app = FastAPI(
     title="CleanCut API",
     description="Describe what to find in plain English, review it on a waveform, export a surgically edited file.",
     version="1.0.0",
+    lifespan=lifespan,
 )
 
 # CORS configuration — comma-separated origins via CORS_ORIGINS env var.
@@ -46,14 +65,7 @@ app.include_router(audio.router, prefix="/api/jobs", tags=["audio"])
 app.include_router(admin.router, prefix="/api/admin", tags=["admin"])
 
 
-@app.on_event("startup")
-def startup_event():
-    """Initialize database and start background worker on startup."""
-    init_db()
-    start_worker()
-
-
 @app.get("/")
 def root():
     """Health check endpoint."""
-    return {"status": "ok", "message": "Audio Compliance API is running"}
+    return {"status": "ok", "message": "CleanCut API is running"}

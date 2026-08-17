@@ -143,6 +143,31 @@ Set in `.env` at the repo root:
 | `CORS_ORIGINS` | `http://localhost:3000` | Comma-separated allowed origins |
 | `DATABASE_PATH` | `backend/audio_compliance.db` | SQLite file location |
 | `NEXT_PUBLIC_API_URL` | `http://localhost:8000/api` | Backend URL baked into the frontend build |
+| `MAX_UPLOAD_MB` | `500` | Upload size cap; larger uploads are rejected with a 413 |
+| `MAX_DURATION_MINUTES` | `120` | Media length cap, measured with `ffprobe` before queueing; media whose duration cannot be read is rejected |
+| `SKIP_PREFLIGHT` | unset | Boot despite a failed startup check (jobs will still fail) |
+
+## Failure modes
+
+The backend runs a preflight at startup and refuses to boot if `OPENAI_API_KEY` is missing or
+`ffmpeg`/`ffprobe` are not on PATH — both are otherwise only reached minutes into a job, where a
+missing line in `.env` looks like an application bug.
+
+Uploads are capped by size and by duration; both come back as a 413 with the limit named, and the
+rejected job is not left behind in the jobs list. The duration cap fails closed — a file `ffprobe`
+cannot read a duration from is rejected with a 422, since a limit that any unprobeable stream can
+skip is not a limit.
+
+When the model returns something that isn't a readable list of suggestions, that is reported rather
+than silently treated as "nothing found" — a distinction that matters when the output is a
+compliance review. A single unreadable chunk of a long transcript leaves the job completed with a
+partial-analysis warning naming the unanalyzed timespans; if every chunk fails, the job fails. The
+same applies to entries that parse but say nothing actionable — an item with no quoted text or an
+unknown action fails its chunk rather than becoming an empty edit that `auto_fix` would apply.
+
+The CLI carries the same status: the saved JSON includes `is_partial` and `failed_chunks`,
+`total_segments_analyzed` counts only segments a chunk actually answered for, and a partial run
+exits 2 so a script cannot read it as clean.
 
 ## Privacy
 

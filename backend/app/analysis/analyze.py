@@ -8,6 +8,9 @@ Run it as a module from the `backend/` directory so the `app` package resolves:
     python -m app.analysis.analyze audio.mp3 --prompt "Find all filler words"
     python -m app.analysis.analyze audio.mp3 --output results.json
     python -m app.analysis.analyze --transcript transcript.txt --prompt "..."
+
+Exit codes: 0 on a complete analysis, 2 when one or more chunks failed and the
+transcript was only partially analyzed, 1 on a usage or input error.
 """
 
 import argparse
@@ -48,6 +51,23 @@ def print_marker(v, index: int) -> None:
     print(f"    Time: {v.start_time:.1f}s - {v.end_time:.1f}s")
     print(f"    Text: \"{v.text}\"")
     print(f"    Reason: {v.reasoning}")
+
+
+def print_partial_warning(result: AnalysisResult) -> None:
+    """Warn that the analysis did not cover the whole transcript."""
+    yellow, reset = "\033[93m", "\033[0m"
+    covered = result.total_segments_analyzed
+    total = result.total_segments
+
+    print(f"\n{yellow}  WARNING: PARTIAL ANALYSIS{reset}")
+    if total:
+        print(f"  {covered} of {total} segment(s) were analyzed "
+              f"({len(result.failed_chunks)} chunk(s) failed).")
+    else:
+        print(f"  {len(result.failed_chunks)} chunk(s) failed.")
+    print("  These spans were NOT checked - findings below are incomplete:")
+    for message in result.failed_chunks:
+        print(f"    - {message}")
 
 
 def main():
@@ -171,8 +191,17 @@ def main():
 
     print_header("RESULTS")
 
+    # Say this before the findings, not after. "No segments found" reads as a
+    # clean recording, and the reader has to know up front that part of the
+    # transcript was never looked at.
+    if result.is_partial:
+        print_partial_warning(result)
+
     if not result.violations:
-        print("\n  No segments matching the prompt were found.")
+        if result.is_partial:
+            print("\n  No segments matching the prompt were found in the analyzed portion.")
+        else:
+            print("\n  No segments matching the prompt were found.")
     else:
         print(f"\n  Found {len(result.violations)} matching segment(s):")
         for i, v in enumerate(result.violations, 1):
@@ -188,6 +217,12 @@ def main():
         with open(transcript_output, "w") as f:
             f.write(transcriber.to_timestamped_text(transcript))
         print(f"  Transcript saved to: {transcript_output}")
+
+    if result.is_partial:
+        # Exit non-zero so a script that pipes this cannot mistake an
+        # incomplete review for a clean one.
+        print("\nDone, but the analysis was PARTIAL - see the warning above.")
+        sys.exit(2)
 
     print("\nDone!")
     sys.exit(0)

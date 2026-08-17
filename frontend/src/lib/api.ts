@@ -1,5 +1,5 @@
 /**
- * API client for the Audio Compliance backend.
+ * API client for the CleanCut backend.
  */
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000/api";

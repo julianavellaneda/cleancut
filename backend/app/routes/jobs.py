@@ -2,7 +2,6 @@
 Job routes - upload, list, and status endpoints.
 """
 
-import shutil
 import uuid
 from pathlib import Path
 from typing import List
@@ -11,6 +10,15 @@ from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
 from sqlalchemy.orm import Session
 
 from ..database import get_db
+from ..limits import (
+    MediaDurationUnknown,
+    MediaTooLong,
+    UploadTooLarge,
+    enforce_duration_limit,
+    max_duration_seconds,
+    max_upload_bytes,
+    save_within_limit,
+)
 from ..models import Job
 from ..schemas import JobResponse, JobListResponse, PresetResponse
 from ..services.processor import PRESETS, is_valid_preset
@@ -25,8 +33,22 @@ EXPORT_DIR = Path(__file__).parent.parent.parent / "exports"
 EXPORT_DIR.mkdir(exist_ok=True)
 
 
+def _discard_job(db: Session, job: Job, file_path: Path) -> None:
+    """
+    Drop a job that was rejected by a guardrail, along with anything on disk.
+
+    The row is created before the file is streamed (it owns the id the file is
+    named after), so a rejected upload has to be rolled back rather than left as
+    a `failed` job. A guardrail rejection is a 4xx the client can act on, not a
+    processing failure worth keeping in the jobs list.
+    """
+    file_path.unlink(missing_ok=True)
+    db.delete(job)
+    db.commit()
+
+
 @router.post("", response_model=JobResponse)
-async def create_job(
+def create_job(
     file: UploadFile = File(...),
     prompt: str | None = Form(None),
     media_type: str = Form("audio"),
@@ -39,6 +61,12 @@ async def create_job(
     Upload media file and start background processing.
     Returns immediately after saving the file; processing runs in a sequential background queue.
     Poll GET /api/jobs/{id} to track progress.
+
+    Deliberately a plain `def`: this handler streams the upload to disk and
+    shells out to ffprobe, both blocking calls. Declared `async` they ran on the
+    event loop, so a single large upload stalled every status poll and every
+    other request for its whole duration. FastAPI runs a sync handler in its
+    thread pool instead.
     """
     # Treat an empty preset field as "no preset" - HTML forms send "" for an
     # unselected <select>, and that should mean prompt mode, not a bad request.
@@ -78,16 +106,33 @@ async def create_job(
     db.add(job)
     db.commit()
 
-    # Save uploaded file
+    # Save uploaded file, enforcing the size cap as it streams in.
     file_path = UPLOAD_DIR / f"{job_id}{file_ext}"
     try:
-        with open(file_path, "wb") as f:
-            shutil.copyfileobj(file.file, f)
+        save_within_limit(file.file, file_path, max_upload_bytes())
+    except UploadTooLarge as e:
+        _discard_job(db, job, file_path)
+        raise HTTPException(status_code=413, detail=str(e))
     except Exception as e:
         job.status = "failed"
         job.error_message = f"Failed to save file: {str(e)}"
         db.commit()
         raise HTTPException(status_code=500, detail=str(e))
+
+    # Duration cap, enforced fail-closed. A duration ffprobe cannot read is not
+    # "short enough" - accepting it is how an unbounded stream gets past the cap
+    # and holds the sequential worker for hours.
+    try:
+        duration = enforce_duration_limit(file_path, max_duration_seconds())
+    except MediaTooLong as e:
+        _discard_job(db, job, file_path)
+        raise HTTPException(status_code=413, detail=str(e))
+    except MediaDurationUnknown as e:
+        _discard_job(db, job, file_path)
+        raise HTTPException(status_code=422, detail=str(e))
+
+    job.duration_seconds = duration
+    db.commit()
 
     # Enqueue job for sequential processing
     enqueue_job(job_id, str(file_path))

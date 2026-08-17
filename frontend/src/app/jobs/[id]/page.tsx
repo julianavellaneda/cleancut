@@ -131,6 +131,26 @@ export default function ReviewPage() {
   if (isLoading) return <div className="h-screen flex items-center justify-center text-sm font-medium animate-pulse">Initializing Terminal...</div>;
   if (!job) return <div className="h-screen flex items-center justify-center"><Link href="/"><Button>Back to Home</Button></Link></div>;
 
+  // A failed job has no violations and no waveform worth showing. Render the
+  // reason instead of an empty review UI, which otherwise looks like a clean
+  // recording rather than a job that never ran.
+  if (job.status === "failed") {
+    return (
+      <div className="h-screen flex flex-col items-center justify-center gap-4 px-8 text-center">
+        <h1 className="text-lg font-bold tracking-tight">Processing failed</h1>
+        <p className="text-sm text-muted-foreground max-w-xl">
+          {job.original_filename || job.filename} could not be processed.
+        </p>
+        {job.error_message && (
+          <pre className="max-w-2xl w-full overflow-auto rounded-lg border bg-muted/40 p-4 text-left text-xs whitespace-pre-wrap">
+            {job.error_message}
+          </pre>
+        )}
+        <Link href="/"><Button size="sm">Back to Projects</Button></Link>
+      </div>
+    );
+  }
+
   return (
     <div className="h-screen flex flex-col bg-background">
       <header className="border-b px-8 py-4 flex items-center justify-between">
@@ -148,6 +168,12 @@ export default function ReviewPage() {
           )}
         </div>
       </header>
+
+      {job.error_message && (
+        <div className="border-b border-amber-500/40 bg-amber-500/10 px-8 py-3 text-xs text-amber-900 dark:text-amber-200">
+          <span className="font-bold uppercase tracking-wide">Partial analysis</span> — {job.error_message}
+        </div>
+      )}
 
       <div className="flex-1 flex overflow-hidden">
         <aside className="w-80 border-r bg-muted/20">

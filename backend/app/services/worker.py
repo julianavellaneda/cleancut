@@ -53,6 +53,28 @@ def _worker_loop():
             logger.error(f"Worker loop error: {str(e)}")
 
 
+def _mark_failed(db, job_id: str, message: str):
+    """
+    Record a failure on the job row, from a session of unknown health.
+
+    The exception that got us here may have left the session mid-transaction, so
+    roll back and re-query rather than reusing whatever object the caller had.
+    A secondary failure here is logged and swallowed: losing the error message is
+    bad, but crashing the worker thread over it is worse.
+    """
+    try:
+        db.rollback()
+        job = db.query(Job).filter(Job.id == job_id).first()
+        if job is None:
+            logger.error(f"Job {job_id} failed and its row is gone; cannot record: {message}")
+            return
+        job.status = "failed"
+        job.error_message = message
+        db.commit()
+    except Exception:
+        logger.exception(f"Could not record the failure of job {job_id}")
+
+
 def _process_job_sequentially(job_id: str, file_path: str):
     """Run transcription and semantic analysis for a single job."""
     db = SessionLocal()
@@ -103,6 +125,19 @@ def _process_job_sequentially(job_id: str, file_path: str):
             prompt=job.prompt,
             preset=job.preset,
         )
+
+        # A partial analysis still completes - the suggestions it did produce
+        # are reviewable - but the job carries a warning naming the spans that
+        # went unanalyzed, so "no violations there" is never assumed.
+        if getattr(analysis, "failed_chunks", None):
+            skipped = len(analysis.failed_chunks)
+            job.error_message = (
+                f"Partial analysis: {skipped} section(s) of the transcript could not be "
+                f"analyzed and may contain unflagged content. "
+                + " | ".join(analysis.failed_chunks[:3])
+            )
+            db.commit()
+            logger.warning(f"Job {job_id} analyzed with {skipped} failed chunk(s).")
 
         # Step 2.5: Deterministic Scrubbing (Silence & Fillers)
         scrubber_violations = []
@@ -183,9 +218,9 @@ def _process_job_sequentially(job_id: str, file_path: str):
         logger.info(f"Job {job_id} completed successfully.")
 
     except Exception as e:
-        job.status = "failed"
-        job.error_message = str(e)
-        db.commit()
-        logger.error(f"Job {job_id} failed: {str(e)}")
+        # Never touch `job` here - if the initial query is what threw, it is
+        # unbound, and the resulting NameError would mask the real cause.
+        logger.error(f"Job {job_id} failed: {e}", exc_info=True)
+        _mark_failed(db, job_id, str(e))
     finally:
         db.close()

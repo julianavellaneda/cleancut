@@ -28,12 +28,18 @@ def client(monkeypatch):
     """
     TestClient without entering the lifespan context, so the background worker
     never starts and no job is actually transcribed.
+
+    The duration probe is stubbed to a plausible length: these fixtures are a
+    handful of bytes, not real media, and the route now rejects an unprobeable
+    upload. That rejection is covered in `test_upload_limits.py`; here it would
+    only get in the way of testing multipart field handling.
     """
     enqueued = []
     monkeypatch.setattr(
         "app.routes.jobs.enqueue_job",
         lambda job_id, path: enqueued.append((job_id, path)),
     )
+    monkeypatch.setattr("app.limits.probe_duration_seconds", lambda path: 30.0)
     c = TestClient(app)
     c.enqueued = enqueued
     return c
