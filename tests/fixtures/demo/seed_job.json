@@ -1,0 +1,171 @@
+{
+  "job": {
+    "filename": "04773df3-233b-4f1f-a3b3-f93b7a2dc6fa.mp3",
+    "original_filename": "demo_seminar.mp3",
+    "media_type": "audio",
+    "prompt": "Find every income, lifestyle, and health claim, then cut the filler words and dead air",
+    "auto_fix": false,
+    "auto_scrub": false,
+    "preset": null,
+    "duration_seconds": 74.0,
+    "language": "en",
+    "error_message": null,
+    "waveform_data": "[0.016, 0.606, 0.604, 0.376, 0.243, 0.173, 0.153, 0.148, 0.138, 0.125, 0.072, 0.696, 0.768, 0.52, 0.319, 0.334, 0.593, 0.606, 0.1, 0.167, 0.228, 0.183, 0.084, 0.259, 0.312, 0.321, 0.275, 0.014, 0.01, 0.025, 0.457, 0.148, 0.378, 0.413, 0.046, 0.616, 0.706, 0.474, 0.445, 0.42, 0.362, 0.305, 0.229, 0.234, 0.167, 0.251, 0.227, 0.137, 0.086, 0.193, 0.123, 0.096, 0.033, 0.0, 0.199, 0.232, 0.226, 0.16, 0.005, 0.002, 0.001, 0.001, 0.185, 0.409, 0.271, 0.033, 0.001, 0.0, 0.0, 0.003, 0.006, 0.005, 0.01, 0.329, 0.365, 0.136, 0.236, 0.242, 0.193, 0.232, 0.074, 0.181, 0.235, 0.234, 0.101, 0.282, 0.215, 0.043, 0.005, 0.004, 0.002, 0.232, 0.286, 0.154, 0.328, 0.197, 0.037, 0.164, 0.196, 0.082, 0.055, 0.091, 0.1, 0.24, 0.198, 0.115, 0.312, 0.273, 0.177, 0.176, 0.102, 0.005, 0.211, 0.238, 0.204, 0.142, 0.16, 0.269, 0.295, 0.133, 0.032, 0.005, 0.001, 0.001, 0.007, 0.006, 0.002, 0.193, 0.083, 0.355, 0.376, 0.062, 0.042, 0.224, 0.278, 0.136, 0.097, 0.006, 0.134, 0.361, 0.195, 0.136, 0.083, 0.022, 0.001, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.03, 0.909, 1.0, 0.15, 0.373, 0.311, 0.262, 0.122, 0.131, 0.046, 0.003, 0.001, 0.001, 0.001, 0.001, 0.001, 0.376, 0.557, 0.095, 0.334, 0.44, 0.432, 0.097, 0.255, 0.292, 0.305, 0.407, 0.321, 0.152, 0.263, 0.203, 0.154, 0.035, 0.025, 0.005, 0.001, 0.227, 0.273, 0.198, 0.011, 0.066, 0.038, 0.001, 0.001, 0.0, 0.005, 0.005, 0.002, 0.04, 0.335, 0.224, 0.227, 0.189, 0.19, 0.175, 0.212, 0.197, 0.187, 0.204, 0.048, 0.028, 0.264, 0.064, 0.15, 0.148, 0.226, 0.22, 0.121, 0.008, 0.003, 0.004, 0.004, 0.031, 0.416, 0.35, 0.123, 0.192, 0.343, 0.315, 0.195, 0.212, 0.03, 0.072, 0.017, 0.005, 0.001, 0.001, 0.001, 0.001, 0.235, 0.138, 0.105, 0.056, 0.287, 0.237, 0.034, 0.178, 0.192, 0.133, 0.203, 0.183, 0.098, 0.029, 0.0, 0.001, 0.001, 0.207, 0.243, 0.193, 0.096, 0.039, 0.006, 0.002, 0.001, 0.001, 0.001, 0.319, 0.326, 0.3, 0.135, 0.039, 0.002, 0.001, 0.004, 0.004, 0.002, 0.002, 0.069, 0.102, 0.159, 0.114, 0.237, 0.186, 0.037, 0.068, 0.206, 0.154, 0.088, 0.078, 0.007, 0.002, 0.002, 0.164, 0.232, 0.164, 0.156, 0.06, 0.28, 0.25, 0.12, 0.119, 0.183, 0.119, 0.097, 0.011, 0.277, 0.225, 0.009, 0.068, 0.22, 0.188, 0.005, 0.145, 0.119, 0.126, 0.122, 0.225, 0.169, 0.222, 0.25, 0.126, 0.116, 0.078, 0.022, 0.001, 0.0, 0.001, 0.043, 0.179, 0.23, 0.121, 0.133, 0.164, 0.086, 0.021, 0.001, 0.04, 0.116, 0.075, 0.037, 0.23, 0.227, 0.109, 0.05, 0.037, 0.002, 0.001, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.001, 0.001, 0.001, 0.001, 0.001, 0.002, 0.08, 0.324, 0.356, 0.347, 0.322, 0.269, 0.312, 0.309, 0.263, 0.305, 0.587, 0.372, 0.311, 0.464, 0.43, 0.071, 0.35, 0.284, 0.363, 0.355, 0.234, 0.192, 0.254, 0.341, 0.157, 0.008, 0.005, 0.006, 0.005, 0.004, 0.227, 0.295, 0.299, 0.518, 0.344, 0.406, 0.292, 0.285, 0.261, 0.211, 0.352, 0.367, 0.238, 0.063, 0.348, 0.338, 0.085, 0.008, 0.022, 0.273, 0.177, 0.068, 0.008, 0.001, 0.001, 0.001, 0.002, 0.005, 0.003, 0.087, 0.122, 0.113, 0.079, 0.008, 0.001, 0.001, 0.001, 0.001, 0.131, 0.275, 0.214, 0.289, 0.237, 0.204, 0.115, 0.251, 0.214, 0.142, 0.24, 0.173, 0.114, 0.114, 0.282, 0.01, 0.013, 0.149, 0.229, 0.249, 0.15, 0.193, 0.201, 0.143, 0.083, 0.006, 0.037, 0.232, 0.227, 0.13, 0.051, 0.072, 0.012, 0.217, 0.22, 0.194, 0.124, 0.162, 0.16, 0.208, 0.256, 0.126, 0.129, 0.008, 0.107, 0.102, 0.016, 0.003, 0.002, 0.001, 0.002, 0.003, 0.003, 0.214, 0.032, 0.032, 0.096, 0.379, 0.286, 0.157, 0.158, 0.132, 0.085, 0.056, 0.048, 0.038, 0.243, 0.267, 0.218, 0.195, 0.166, 0.024, 0.021, 0.001, 0.001, 0.075, 0.146, 0.15, 0.136, 0.113, 0.141, 0.137, 0.117, 0.003, 0.002, 0.112, 0.118, 0.014, 0.133, 0.164, 0.121, 0.077, 0.267, 0.288, 0.15, 0.164, 0.22, 0.193, 0.07, 0.01, 0.1, 0.163, 0.202, 0.125, 0.074, 0.02, 0.001, 0.0, 0.0, 0.0, 0.002, 0.002, 0.002, 0.001, 0.001, 0.001, 0.232, 0.329, 0.334, 0.294, 0.24, 0.004, 0.059, 0.329, 0.426, 0.134, 0.455, 0.431, 0.41, 0.221, 0.004, 0.002, 0.002, 0.015, 0.583, 0.58, 0.452, 0.489, 0.44, 0.11, 0.565, 0.527, 0.43, 0.4, 0.298, 0.296, 0.259, 0.348, 0.319, 0.509, 0.367, 0.4, 0.385, 0.367, 0.308, 0.202, 0.079, 0.001, 0.001, 0.001, 0.002, 0.209, 0.304, 0.387, 0.017, 0.382, 0.384, 0.02, 0.251, 0.17, 0.301, 0.112, 0.017, 0.015, 0.001, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.001, 0.002, 0.001, 0.26, 0.272, 0.238, 0.206, 0.05, 0.002, 0.122, 0.173, 0.154, 0.105, 0.002, 0.001, 0.253, 0.28, 0.288, 0.273, 0.196, 0.209, 0.07, 0.095, 0.226, 0.191, 0.018, 0.011, 0.002, 0.002, 0.16, 0.189, 0.019, 0.017, 0.08, 0.367, 0.438, 0.403, 0.448, 0.162, 0.003, 0.01, 0.076, 0.427, 0.196, 0.012, 0.011, 0.428, 0.406, 0.199, 0.068, 0.022, 0.002, 0.002, 0.233, 0.302, 0.008, 0.064, 0.216, 0.178, 0.254, 0.083, 0.242, 0.238, 0.151, 0.065, 0.027, 0.249, 0.184, 0.03, 0.156, 0.169, 0.13, 0.094, 0.069, 0.226, 0.162, 0.05, 0.262, 0.157, 0.032, 0.004, 0.002, 0.001, 0.0, 0.0, 0.002, 0.001, 0.435, 0.347, 0.07, 0.394, 0.501, 0.21, 0.167, 0.158, 0.094, 0.002, 0.002, 0.002, 0.005, 0.032, 0.409, 0.415, 0.42, 0.429, 0.102, 0.361, 0.326, 0.304, 0.047, 0.012, 0.002, 0.001, 0.003, 0.002]"
+  },
+  "violations": [
+    {
+      "text": "um,",
+      "start_time": 0.6,
+      "end_time": 1.12,
+      "label": "Filler Word",
+      "rule_violated": null,
+      "severity": null,
+      "reasoning": "Detected common filler word 'um'.",
+      "status": "pending",
+      "action": "cut"
+    },
+    {
+      "text": "Uh, yeah. So in my fourth month I brought home $11,400 and that changed everything.",
+      "start_time": 5.38,
+      "end_time": 12.82,
+      "label": "Income Claim",
+      "rule_violated": null,
+      "severity": null,
+      "reasoning": "This segment makes a specific income claim which may not be typical or verifiable.",
+      "status": "pending",
+      "action": "cut"
+    },
+    {
+      "text": "Uh,",
+      "start_time": 5.38,
+      "end_time": 5.38,
+      "label": "Filler Word",
+      "rule_violated": null,
+      "severity": null,
+      "reasoning": "Detected common filler word 'uh'.",
+      "status": "pending",
+      "action": "cut"
+    },
+    {
+      "text": "[Gap]",
+      "start_time": 13.32,
+      "end_time": 16.29,
+      "label": "Dead Air",
+      "rule_violated": null,
+      "severity": null,
+      "reasoning": "Silence gap of 3.0s detected between segments.",
+      "status": "pending",
+      "action": "cut"
+    },
+    {
+      "text": "Honestly, by December I quit my job right before Christmas and it felt unreal.",
+      "start_time": 19.67,
+      "end_time": 25.71,
+      "label": "Lifestyle Claim",
+      "rule_violated": null,
+      "severity": null,
+      "reasoning": "This segment implies a significant lifestyle change based on income claims, which may not be typical.",
+      "status": "pending",
+      "action": "cut"
+    },
+    {
+      "text": "And, ah, three months later there was a shiny little sports car sitting in my driveway.",
+      "start_time": 26.39,
+      "end_time": 32.19,
+      "label": "Lifestyle Claim",
+      "rule_violated": null,
+      "severity": null,
+      "reasoning": "This segment suggests a luxury purchase resulting from income claims, which may not be typical.",
+      "status": "pending",
+      "action": "cut"
+    },
+    {
+      "text": "ah,",
+      "start_time": 26.83,
+      "end_time": 27.43,
+      "label": "Filler Word",
+      "rule_violated": null,
+      "severity": null,
+      "reasoning": "Detected common filler word 'ah'.",
+      "status": "pending",
+      "action": "cut"
+    },
+    {
+      "text": "Paid for in cash.",
+      "start_time": 32.21,
+      "end_time": 34.47,
+      "label": "Lifestyle Claim",
+      "rule_violated": null,
+      "severity": null,
+      "reasoning": "This segment reinforces the previous lifestyle claim about a luxury purchase.",
+      "status": "pending",
+      "action": "cut"
+    },
+    {
+      "text": "[Gap]",
+      "start_time": 34.47,
+      "end_time": 38.32,
+      "label": "Dead Air",
+      "rule_violated": null,
+      "severity": null,
+      "reasoning": "Silence gap of 3.9s detected between segments.",
+      "status": "pending",
+      "action": "cut"
+    },
+    {
+      "text": "Yeah. Hmm. My mother's migraines just disappeared after she started on the wellness pack.",
+      "start_time": 42.42,
+      "end_time": 48.5,
+      "label": "Health Claim",
+      "rule_violated": null,
+      "severity": null,
+      "reasoning": "This segment makes a health claim about a product that may not be substantiated.",
+      "status": "pending",
+      "action": "cut"
+    },
+    {
+      "text": "It genuinely cleared them up.",
+      "start_time": 49.06,
+      "end_time": 51.0,
+      "label": "Health Claim",
+      "rule_violated": null,
+      "severity": null,
+      "reasoning": "This segment reinforces the previous health claim about a product.",
+      "status": "pending",
+      "action": "cut"
+    },
+    {
+      "text": "[Gap]",
+      "start_time": 60.2,
+      "end_time": 63.61,
+      "label": "Dead Air",
+      "rule_violated": null,
+      "severity": null,
+      "reasoning": "Silence gap of 3.4s detected between segments.",
+      "status": "pending",
+      "action": "cut"
+    },
+    {
+      "text": "um,",
+      "start_time": 64.09,
+      "end_time": 64.73,
+      "label": "Filler Word",
+      "rule_violated": null,
+      "severity": null,
+      "reasoning": "Detected common filler word 'um'.",
+      "status": "pending",
+      "action": "cut"
+    },
+    {
+      "text": "like",
+      "start_time": 65.51,
+      "end_time": 66.09,
+      "label": "Filler Word",
+      "rule_violated": null,
+      "severity": null,
+      "reasoning": "Detected common filler word 'like'.",
+      "status": "pending",
+      "action": "cut"
+    }
+  ]
+}

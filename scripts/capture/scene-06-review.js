@@ -9,7 +9,7 @@ async page => {
   const JOB = 'demo-0000-0000-0000-cleancut';
   // The label of the marker to open. Verify against the seeded data before a
   // take - prompt mode lets the model choose its own labels.
-  const MARKER = 'Income Claims';
+  const MARKER = 'Income Claim';
 
   const ring = async (locator, pad = 8) => {
     const b = await locator.boundingBox();

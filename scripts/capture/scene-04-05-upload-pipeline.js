@@ -14,7 +14,7 @@ async page => {
   const APP = 'http://localhost:3000';
   const API = 'http://localhost:8000/api';
   const FIXTURE = 'tests/fixtures/demo/demo_seminar.mp3';
-  const INSTRUCTION = 'Find every income claim, then cut the filler words and dead air';
+  const INSTRUCTION = 'Find every income, lifestyle, and health claim, then cut the filler words and dead air';
 
   const ring = async (locator, pad = 8) => {
     const b = await locator.boundingBox();

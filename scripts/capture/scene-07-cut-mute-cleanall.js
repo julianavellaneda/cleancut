@@ -4,7 +4,7 @@
 
 async page => {
   const JOB = 'demo-0000-0000-0000-cleancut';
-  const MARKER = 'Income Claims';
+  const MARKER = 'Income Claim';
 
   const ring = async (locator, pad = 8) => {
     const b = await locator.boundingBox();

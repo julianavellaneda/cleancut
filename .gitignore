@@ -80,3 +80,6 @@ tests/fixtures/demo/.cache/
 
 # Screencast originals: re-encodable, kept local only. The H.264 captures commit.
 docs/demo/captures/raw/
+
+# playwright-cli session state
+.playwright-cli/

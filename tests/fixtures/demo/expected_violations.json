@@ -1,0 +1,123 @@
+{
+  "source": "demo_seminar.mp3",
+  "generated_with": "gpt-4o-mini-tts",
+  "total_duration": 74.0,
+  "lines": [
+    {
+      "index": 0,
+      "speaker": "HOST",
+      "voice": "alloy",
+      "text": "So, um, welcome back, and, you know, let's just dive right into today's story.",
+      "start": 0.0,
+      "end": 5.0
+    },
+    {
+      "index": 1,
+      "speaker": "GUEST",
+      "voice": "ballad",
+      "text": "Uh, yeah, so in my fourth month I brought home eleven thousand four hundred dollars, and that changed everything.",
+      "start": 5.0,
+      "end": 13.55
+    },
+    {
+      "index": 2,
+      "speaker": "HOST",
+      "voice": "alloy",
+      "text": "That's amazing. What changed for you after that?",
+      "start": 16.25,
+      "end": 19.4
+    },
+    {
+      "index": 3,
+      "speaker": "GUEST",
+      "voice": "ballad",
+      "text": "Honestly, by December I quit my job, right before Christmas, and it felt unreal.",
+      "start": 19.4,
+      "end": 25.85
+    },
+    {
+      "index": 4,
+      "speaker": "GUEST",
+      "voice": "ballad",
+      "text": "And, ah, three months later there was a shiny little sports car sitting in my driveway, paid for in cash.",
+      "start": 25.85,
+      "end": 34.4
+    },
+    {
+      "index": 5,
+      "speaker": "HOST",
+      "voice": "alloy",
+      "text": "Er, and it wasn't just financial, right? There was something with your mom too.",
+      "start": 37.2,
+      "end": 42.3
+    },
+    {
+      "index": 6,
+      "speaker": "GUEST",
+      "voice": "ballad",
+      "text": "Yeah, hm, my mother's migraines just disappeared after she started on the wellness pack, it genuinely cleared them up.",
+      "start": 42.3,
+      "end": 51.05
+    },
+    {
+      "index": 7,
+      "speaker": "GUEST",
+      "voice": "ballad",
+      "text": "Mi mamá está muy feliz ahora.",
+      "start": 51.05,
+      "end": 54.35
+    },
+    {
+      "index": 8,
+      "speaker": "HOST",
+      "voice": "alloy",
+      "text": "Now, to be fair, some people try this and earn nothing at all, and that's just the truth.",
+      "start": 54.35,
+      "end": 60.45
+    },
+    {
+      "index": 9,
+      "speaker": "HOST",
+      "voice": "alloy",
+      "text": "If you want, uh, more details, you know, just call us at five five five, oh one three three.",
+      "start": 63.35,
+      "end": 63.65
+    },
+    {
+      "index": 10,
+      "speaker": "GUEST",
+      "voice": "ballad",
+      "text": "Or, um, email us, like, at grow dot spark at lumenrise dash living dot com.",
+      "start": 63.65,
+      "end": 71.3
+    },
+    {
+      "index": 11,
+      "speaker": "HOST",
+      "voice": "alloy",
+      "text": "Thanks for listening. See you at the next event.",
+      "start": 71.3,
+      "end": 74.0
+    }
+  ],
+  "pauses": [
+    {
+      "after_line": 1,
+      "start": 13.55,
+      "end": 16.25,
+      "duration": 2.7
+    },
+    {
+      "after_line": 4,
+      "start": 34.4,
+      "end": 37.2,
+      "duration": 2.8
+    },
+    {
+      "after_line": 8,
+      "start": 60.45,
+      "end": 63.35,
+      "duration": 2.9
+    }
+  ]
+}
