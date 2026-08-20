@@ -83,3 +83,6 @@ docs/demo/captures/raw/
 
 # playwright-cli session state
 .playwright-cli/
+
+# Exported demo result, handed to the video edit as a loose asset
+!docs/demo/*.mp3
