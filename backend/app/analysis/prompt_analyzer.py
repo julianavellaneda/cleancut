@@ -3,8 +3,10 @@ Prompt-based semantic analysis module using GPT-4o.
 Analyzes transcripts based on user-defined editing instructions.
 """
 
+import difflib
 import json
 import os
+import re
 from dataclasses import dataclass, asdict, field
 from pathlib import Path
 from typing import List, Optional
@@ -89,6 +91,61 @@ _STRING_FIELDS = (
     "text", "label", "action", "reasoning",
     "rule_violated", "severity", "approximate_time",
 )
+
+
+# Word-shaped runs, used to compare a model's quote against the transcript
+# without tripping over punctuation, casing, or the commas Whisper sprinkles at
+# segment boundaries.
+_WORD_RE = re.compile(r"[a-z0-9']+")
+
+# Below this many words a quote is too short to align safely across a segment
+# boundary - a two-word needle matches half the transcript.
+_MIN_CROSS_SEGMENT_WORDS = 4
+
+# How much of a quote must survive the fuzzy pass before the span it points at
+# is trusted. Below this the alignment is guesswork and the caller is better
+# off with the model's own approximate timestamp.
+_MIN_FUZZY_MATCH_RATIO = 0.6
+
+# Words in an editing instruction that mean "leave it in place and silence it"
+# rather than "take it out".
+_REDACTION_HINTS = (
+    "redact", "mute", "silence", "silenced", "bleep", "beep out", "censor",
+    "anonymize", "anonymise", "obscure", "pii", "personally identifiable",
+)
+
+# Words that mean "take it out". An instruction carrying both kinds is a mixed
+# brief, and mixed briefs default to the more common edit.
+_REMOVAL_HINTS = (
+    "cut", "remove", "delete", "trim", "strip", "take out", "excise", "drop",
+)
+
+
+def _normalize_words(text: str) -> list[str]:
+    """Lowercased word-shaped tokens, punctuation discarded."""
+    return _WORD_RE.findall(text.lower())
+
+
+def _prompt_default_action(prompt: str | None) -> str:
+    """
+    The cut/mute default for prompt mode, derived from the instruction.
+
+    Prompt mode has no rulebook to inherit a default from, so the model used to
+    pick per suggestion and the same sentence could come back "cut" on one run
+    and "mute" on the next. The instruction is the only stated intent there is,
+    so it decides: an instruction that asks to redact, bleep, or silence
+    defaults to ``mute``, anything else to ``cut``.
+
+    A mixed instruction ("cut the filler and bleep the phone numbers") names
+    both kinds of edit; it defaults to ``cut`` and relies on the model to mark
+    the individual redactions, which the system prompt asks it to do.
+    """
+    text = (prompt or "").lower()
+    wants_redaction = any(hint in text for hint in _REDACTION_HINTS)
+    wants_removal = any(hint in text for hint in _REMOVAL_HINTS)
+    if wants_redaction and not wants_removal:
+        return "mute"
+    return "cut"
 
 
 def _excerpt(content: str | None) -> str:
@@ -361,7 +418,9 @@ class PromptAnalyzer:
                 print(f"    Found {len(chunk_violations)} suggested edit(s)")
 
             # Map violations back to precise timestamps
-            mapped = self._map_to_timestamps(chunk_violations, chunk_transcript, preset=preset)
+            mapped = self._map_to_timestamps(
+                chunk_violations, chunk_transcript, preset=preset, prompt=prompt
+            )
             all_violations.extend(mapped)
 
         # Every chunk failed: there is no analysis at all, so fail loudly
@@ -474,27 +533,39 @@ class PromptAnalyzer:
 ## YOUR TASK
 Scan the transcript and extract EVERY segment that matches the editing instructions.
 
-Return your response as a JSON array of objects with this structure:
+Return a JSON OBJECT with a single key "violations", holding an ARRAY with one
+entry per matching segment:
 ```json
-[
-  {{
-    "text": "exact quote from transcript",
-    "approximate_time": "5.2s",
-    "label": "Short descriptive label (e.g. Filler Word, Income Claim, Off-topic)",
-    "action": "cut or mute",
-    "reasoning": "brief explanation of why this segment was flagged"
-  }}
-]
+{{
+  "violations": [
+    {{
+      "text": "exact quote from transcript",
+      "approximate_time": "5.2s",
+      "label": "Short descriptive label (e.g. Filler Word, Income Claim, Off-topic)",
+      "action": "cut or mute",
+      "reasoning": "brief explanation of why this segment was flagged"
+    }}
+  ]
+}}
 ```
 
-If no segments match the criteria, return an empty array: []
+If no segments match the criteria, return {{"violations": []}}.
 
 IMPORTANT:
 - Quote the EXACT text from the transcript.
 - Include the approximate timestamp (e.g., "12.5s").
 - Be EXHAUSTIVE - find all matching segments.
-- Choose 'cut' if the segment should be physically removed (e.g. filler words, mistakes).
-- Choose 'mute' if the segment should remain but be silenced (e.g. sensitive info, background noise).
+- One entry per match. Never merge several matches into one entry, and never
+  return a single match as a bare object instead of a one-entry array.
+
+## CHOOSING "action"
+- The default is "cut". Removing the segment is the normal edit; use it unless
+  there is a specific reason to keep the segment on the timeline.
+- Use "mute" ONLY when the audio must stay in place but be silenced: spoken
+  personal, financial, or credential data being redacted, a name being
+  anonymized, profanity being bleeped, or because the editing instructions above
+  explicitly ask you to redact, censor, bleep, or silence rather than remove.
+- Be consistent. Two segments flagged for the same reason get the same action.
 """
 
     def _preset_system_prompt(self, preset: str) -> str:
@@ -512,20 +583,25 @@ CRITICAL INSTRUCTIONS:
 4. Do NOT stop after finding one or two violations - continue scanning until the end
 5. Each violation must be reported separately, even if they are similar
 
-Return your response as a JSON array with this exact structure:
+Return a JSON OBJECT with a single key "violations", holding an ARRAY with one
+entry per violation:
 ```json
-[
-  {{
-    "text": "exact quote from transcript",
-    "approximate_time": "57.1s",
-    "rule_violated": "{meta['example_category']}",
-    "severity": "high",
-    "reasoning": "brief explanation"
-  }}
-]
+{{
+  "violations": [
+    {{
+      "text": "exact quote from transcript",
+      "approximate_time": "57.1s",
+      "rule_violated": "{meta['example_category']}",
+      "severity": "high",
+      "reasoning": "brief explanation"
+    }}
+  ]
+}}
 ```
 
-If no violations are found, return an empty array: []
+If no violations are found, return {{"violations": []}}.
+Never return a single violation as a bare object - a lone violation is still an
+array of one.
 
 IMPORTANT:
 - Quote the EXACT text that violates guidelines
@@ -567,9 +643,17 @@ IMPORTANT:
         raw_violations: list[dict],
         transcript: TranscriptResult,
         preset: str | None = None,
+        prompt: str | None = None,
     ) -> list[Violation]:
-        """Map violation text to precise timestamps using transcript data."""
+        """
+        Map violation text to precise timestamps using transcript data.
+
+        ``prompt`` is the free-form instruction, used only in prompt mode to
+        pick the cut/mute default when the model omits one. Preset mode ignores
+        it and uses the preset's own default_action.
+        """
         violations = []
+        prompt_default_action = _prompt_default_action(prompt)
 
         for v in raw_violations:
             text = v.get("text", "")
@@ -595,7 +679,7 @@ IMPORTANT:
                 action = v.get("action") or PRESETS[preset]["default_action"]
             else:
                 label = v.get("label") or rule_violated or "Marker"
-                action = v.get("action") or "cut"
+                action = v.get("action") or prompt_default_action
             action = action.strip().lower()
 
             violations.append(Violation(
@@ -634,7 +718,83 @@ IMPORTANT:
                     return start, end
             return best_seg.start, best_seg.end
 
+        # No single segment contains the quote. That is the normal shape of a
+        # sentence Whisper split at a pause - "you could quit your job" ends one
+        # segment and "by Christmas" starts the next - and the model quotes the
+        # whole sentence because that is what the sentence means. Align the
+        # quote against the transcript's words instead of its segments.
+        span = self._find_text_across_segments(text, transcript, approx_time)
+        if span is not None:
+            return span
+
         return max(0, approx_time - 2), approx_time + 2
+
+    def _find_text_across_segments(
+        self,
+        text: str,
+        transcript: TranscriptResult,
+        approx_time: float,
+    ) -> tuple[float, float] | None:
+        """
+        Align a quote spanning a segment boundary onto word-level timestamps.
+
+        Returns ``None`` when the transcript carries no word timings, the quote
+        is too short to place safely, or too little of it survives the fuzzy
+        pass - in every one of those cases the caller's approximate window is
+        the more honest answer than a confident wrong span.
+        """
+        needle = _normalize_words(text)
+        if len(needle) < _MIN_CROSS_SEGMENT_WORDS:
+            return None
+
+        words = [w for seg in transcript.segments for w in (seg.words or [])]
+        if not words:
+            return None
+
+        # One entry per token, remembering which Word it came from - a Word can
+        # normalize to two tokens ("job.by") or to none at all (bare punctuation).
+        haystack: list[str] = []
+        owners: list[int] = []
+        for index, word in enumerate(words):
+            for token in _normalize_words(word.text):
+                haystack.append(token)
+                owners.append(index)
+        if not haystack:
+            return None
+
+        def span_for(start_idx: int, end_idx: int) -> tuple[float, float]:
+            return words[owners[start_idx]].start, words[owners[end_idx]].end
+
+        # Exact run of words, the common case once punctuation is dropped.
+        exact = [
+            i
+            for i in range(len(haystack) - len(needle) + 1)
+            if haystack[i:i + len(needle)] == needle
+        ]
+        if exact:
+            best = min(exact, key=lambda i: abs(words[owners[i]].start - approx_time))
+            return span_for(best, best + len(needle) - 1)
+
+        # Otherwise the model paraphrased slightly, or Whisper's words differ
+        # from its own segment text. Find the region of the transcript that best
+        # accounts for the quote and take its outer bounds.
+        blocks = [
+            b for b in difflib.SequenceMatcher(None, haystack, needle).get_matching_blocks()
+            if b.size > 0
+        ]
+        if not blocks:
+            return None
+
+        anchor = max(blocks, key=lambda b: b.size)
+        reach = max(len(needle) * 2, 10)
+        nearby = [b for b in blocks if abs(b.a - anchor.a) <= reach]
+        matched = sum(b.size for b in nearby)
+        if matched / len(needle) < _MIN_FUZZY_MATCH_RATIO:
+            return None
+
+        start_idx = min(b.a for b in nearby)
+        end_idx = max(b.a + b.size - 1 for b in nearby)
+        return span_for(start_idx, end_idx)
 
     def _find_words_in_segment(
         self,

@@ -8,6 +8,7 @@ import { Badge } from "@/components/ui/badge";
 import { Waveform, WaveformHandle } from "@/components/Waveform";
 import { ViolationList, SCRUB_LABELS } from "@/components/ViolationList";
 import { ViolationCard } from "@/components/ViolationCard";
+import { ProcessingView } from "@/components/ProcessingView";
 import { api, Job, Violation } from "@/lib/api";
 
 function isProcessing(status: string): boolean {
@@ -128,8 +129,14 @@ export default function ReviewPage() {
     }
   };
 
-  if (isLoading) return <div className="h-screen flex items-center justify-center text-sm font-medium animate-pulse">Initializing Terminal...</div>;
+  if (isLoading) return <div className="h-screen flex items-center justify-center text-sm text-muted-foreground">Loading…</div>;
   if (!job) return <div className="h-screen flex items-center justify-center"><Link href="/"><Button>Back to Home</Button></Link></div>;
+
+  // While the worker is on the job there is nothing to review: no violations,
+  // and a waveform pointed at a file that has not been processed. Show the
+  // pipeline instead. `isProcessing` already drives the poll above; this is the
+  // rendering half it was missing.
+  if (isProcessing(job.status)) return <ProcessingView job={job} />;
 
   // A failed job has no violations and no waveform worth showing. Render the
   // reason instead of an empty review UI, which otherwise looks like a clean
@@ -195,7 +202,9 @@ export default function ReviewPage() {
               {selectedViolation ? (
                 <ViolationCard violation={selectedViolation} onAccept={() => handleStatusUpdate("accepted")} onReject={() => handleStatusUpdate("rejected")} onActionChange={handleActionChange} onPlayClip={() => waveformRef.current?.playClip(selectedViolation.start_time, selectedViolation.end_time)} isUpdating={isUpdating} />
               ) : (
-                <div className="h-full flex items-center justify-center text-muted-foreground text-sm italic">Select an edit to review</div>
+                <div className="h-full flex items-center justify-center text-muted-foreground text-sm">
+                  {violations.length === 0 ? "No edits suggested for this recording" : "Select an edit to review"}
+                </div>
               )}
             </div>
           </div>

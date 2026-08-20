@@ -81,3 +81,24 @@
     @apply bg-background text-foreground font-sans antialiased;
   }
 }
+
+/*
+ * Processing view (ProcessingView.tsx). A slow sweep under the active pipeline
+ * stage: enough motion that a still frame reads as "working", slow enough not
+ * to pull the eye off the stage labels.
+ */
+@keyframes stage-sweep {
+  0% { transform: translateX(-110%); }
+  100% { transform: translateX(510%); }
+}
+
+.animate-stage-sweep {
+  animation: stage-sweep 2.6s cubic-bezier(0.45, 0, 0.55, 1) infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .animate-stage-sweep {
+    animation: none;
+    transform: translateX(180%);
+  }
+}

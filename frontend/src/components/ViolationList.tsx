@@ -77,7 +77,7 @@ export function ViolationList({
           >
             {isCleaning
               ? "Cleaning..."
-              : `✨ Clean All (${pendingScrubCount})`}
+              : `Clean All (${pendingScrubCount})`}
           </Button>
         )}
       </div>

@@ -10,7 +10,7 @@ export interface Job {
   original_filename: string | null;
   media_type: "audio" | "video";
   prompt: string | null;
-  status: "pending" | "processing" | "transcribing" | "analyzing" | "exporting" | "completed" | "failed";
+  status: "pending" | "converting" | "transcribing" | "analyzing" | "exporting" | "completed" | "failed";
   auto_fix: boolean;
   auto_scrub: boolean;
   preset: string | null;
