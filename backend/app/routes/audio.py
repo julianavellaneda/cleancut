@@ -22,12 +22,34 @@ EXPORT_DIR = Path(__file__).parent.parent.parent / "exports"
 EXPORT_DIR.mkdir(exist_ok=True)
 
 
+MEDIA_TYPES = {
+    ".mp3": "audio/mpeg",
+    ".wav": "audio/wav",
+    ".m4a": "audio/mp4",
+    ".flac": "audio/flac",
+    ".ogg": "audio/ogg",
+    ".webm": "audio/webm",
+    ".mp4": "video/mp4",
+    ".mov": "video/quicktime",
+}
+
+
 def _get_audio_path(job_id: str) -> Path | None:
     """Find the audio/video file for a job."""
     for ext in [".mp3", ".wav", ".m4a", ".flac", ".ogg", ".webm", ".mp4", ".mov", ".aif", ".aiff"]:
         path = UPLOAD_DIR / f"{job_id}{ext}"
         if path.exists():
             return path
+    return None
+
+
+def _get_export_path(job_id: str, job: Job) -> Path | None:
+    """Find the exported file for a job, or None if no export has been generated."""
+    audio_path = _get_audio_path(job_id)
+    export_ext = audio_path.suffix if (audio_path and job.media_type == "video") else ".mp3"
+    for candidate in (EXPORT_DIR / f"{job_id}_edited{export_ext}", EXPORT_DIR / f"{job_id}_edited.mp3"):
+        if candidate.exists():
+            return candidate
     return None
 
 
@@ -42,18 +64,7 @@ def stream_audio(job_id: str, db: Session = Depends(get_db)):
     if not audio_path:
         raise HTTPException(status_code=404, detail="Audio file not found")
 
-    # Determine media type
-    media_types = {
-        ".mp3": "audio/mpeg",
-        ".wav": "audio/wav",
-        ".m4a": "audio/mp4",
-        ".flac": "audio/flac",
-        ".ogg": "audio/ogg",
-        ".webm": "audio/webm",
-        ".mp4": "video/mp4",
-        ".mov": "video/quicktime"
-    }
-    media_type = media_types.get(audio_path.suffix.lower(), "application/octet-stream")
+    media_type = MEDIA_TYPES.get(audio_path.suffix.lower(), "application/octet-stream")
 
     return FileResponse(
         audio_path,
@@ -168,33 +179,44 @@ def export_media(
 
 @router.get("/{job_id}/export/download")
 def download_export(job_id: str, db: Session = Depends(get_db)):
-    """Download the exported media file."""
+    """Download the exported media file as an attachment."""
+    job, export_path, export_filename = _resolve_export(job_id, db)
+
+    return FileResponse(
+        export_path,
+        media_type=MEDIA_TYPES.get(export_path.suffix.lower(), "application/octet-stream"),
+        filename=export_filename,
+        headers={"Content-Disposition": f'attachment; filename="{export_filename}"'}
+    )
+
+
+@router.get("/{job_id}/export/stream")
+def stream_export(job_id: str, db: Session = Depends(get_db)):
+    """Stream the exported media inline, so the result can be played back in the browser.
+
+    Same file as /export/download, served without the attachment disposition.
+    """
+    _job, export_path, export_filename = _resolve_export(job_id, db)
+
+    return FileResponse(
+        export_path,
+        media_type=MEDIA_TYPES.get(export_path.suffix.lower(), "application/octet-stream"),
+        filename=export_filename,
+        headers={"Content-Disposition": f'inline; filename="{export_filename}"'}
+    )
+
+
+def _resolve_export(job_id: str, db: Session) -> tuple[Job, Path, str]:
+    """Look up a job and its generated export, raising 404 if either is missing."""
     job = db.query(Job).filter(Job.id == job_id).first()
     if not job:
         raise HTTPException(status_code=404, detail="Job not found")
 
-    # Try different possible edited extensions
-    audio_path = _get_audio_path(job_id)
-    export_ext = audio_path.suffix if (audio_path and job.media_type == "video") else ".mp3"
-    export_path = EXPORT_DIR / f"{job_id}_edited{export_ext}"
-    
-    if not export_path.exists():
-        # Fallback to .mp3 if exact match not found
-        export_path = EXPORT_DIR / f"{job_id}_edited.mp3"
-
-    if not export_path.exists():
+    export_path = _get_export_path(job_id, job)
+    if not export_path:
         raise HTTPException(
             status_code=404,
             detail="Export not found. Generate export first with POST /export"
         )
 
-    export_filename = f"{Path(job.filename).stem}_edited{export_path.suffix}"
-
-    media_type = "video/mp4" if export_path.suffix == ".mp4" else "audio/mpeg"
-
-    return FileResponse(
-        export_path,
-        media_type=media_type,
-        filename=export_filename,
-        headers={"Content-Disposition": f'attachment; filename="{export_filename}"'}
-    )
+    return job, export_path, f"{Path(job.filename).stem}_edited{export_path.suffix}"

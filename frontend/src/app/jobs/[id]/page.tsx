@@ -194,6 +194,17 @@ export default function ReviewPage() {
                 <video ref={videoRef} src={api.getAudioUrl(jobId)} className="w-full aspect-video rounded-lg border mb-8 bg-black" controls />
               )}
               <Waveform ref={waveformRef} audioUrl={api.getAudioUrl(jobId)} violations={violations} selectedViolation={selectedViolation} onViolationClick={setSelectedViolation} mediaRef={job.media_type === "video" ? videoRef : undefined} />
+
+              {exportReady && (
+                <div className="mt-8 rounded-lg border bg-background p-4">
+                  <div className="mb-3 text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Result</div>
+                  {job.media_type === "video" ? (
+                    <video src={api.getExportStreamUrl(jobId)} className="w-full aspect-video rounded-md border bg-black" controls />
+                  ) : (
+                    <audio src={api.getExportStreamUrl(jobId)} className="w-full" controls />
+                  )}
+                </div>
+              )}
             </div>
           </div>
 

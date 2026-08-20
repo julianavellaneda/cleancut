@@ -215,6 +215,10 @@ export const api = {
     return `${API_BASE}/jobs/${jobId}/export/download`;
   },
 
+  getExportStreamUrl(jobId: string): string {
+    return `${API_BASE}/jobs/${jobId}/export/stream`;
+  },
+
   // Admin
   async getAdminStats(): Promise<AdminStats> {
     const response = await fetch(`${API_BASE}/admin/stats`);
