@@ -61,9 +61,13 @@ async page => {
   await page.waitForTimeout(700);
   await r.dispose();
 
-  await prompt.click();
-  await prompt.pressSequentially(INSTRUCTION, { delay: 45 });
-  await page.waitForTimeout(900);
+  // Restoring the preset to None re-enables the textarea with the typed
+  // instruction still in it, so there is nothing to re-type. Ring it instead,
+  // to show the instruction is live again.
+  r = await ring(prompt);
+  await page.waitForTimeout(1400);
+  await r.dispose();
+  await page.waitForTimeout(400);
 
   const scrubber = page.getByRole('checkbox', { name: 'Scrubber mode' });
   r = await ring(scrubber, 6);

@@ -21,8 +21,14 @@ async page => {
     `);
   };
 
-  // Download Master calls window.open(). A popup backgrounds this tab and CDP
-  // stops emitting screencast frames mid-scene, so close it the moment it opens.
+  // Download Master calls window.open(). A popup backgrounds this tab, and
+  // closing it again shrinks this tab's viewport, which letterboxes the rest of
+  // the take inside the fixed 1440x900 screencast. Stub window.open to fetch the
+  // same URL instead: the download request really goes out, no window is ever
+  // created, and nothing on screen differs - the popup was never in frame.
+  await page.addInitScript(() => {
+    window.open = url => { fetch(url).catch(() => {}); return null; };
+  });
   page.context().on('page', p => p.close().catch(() => {}));
 
   await page.goto(`http://localhost:3000/jobs/${JOB}`);
