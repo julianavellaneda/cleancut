@@ -1,5 +1,7 @@
 "use client";
 
+import { useEffect, useRef } from "react";
+
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -27,6 +29,13 @@ export function ViolationList({
   const pendingScrubCount = violations.filter(
     (v) => v.status === "pending" && v.label && SCRUB_LABELS.includes(v.label)
   ).length;
+
+  // J/K can move the selection past the fold, where the reviewer cannot see
+  // what they just landed on. Follow it.
+  const selectedRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    selectedRef.current?.scrollIntoView({ block: "nearest" });
+  }, [selectedViolation?.id]);
 
   function formatTime(seconds: number): string {
     const mins = Math.floor(seconds / 60);
@@ -83,7 +92,7 @@ export function ViolationList({
       </div>
 
       <ScrollArea className="flex-1">
-        <div className="p-2 space-y-1">
+        <div className="p-2 space-y-1" role="listbox" aria-label="Suggested edits">
           {violations.length === 0 ? (
             <div className="p-4 text-center text-muted-foreground text-sm">
               No edits suggested
@@ -92,13 +101,21 @@ export function ViolationList({
             violations.map((v) => (
               <div
                 key={v.id}
+                ref={selectedViolation?.id === v.id ? selectedRef : undefined}
+                role="option"
+                tabIndex={0}
+                aria-selected={selectedViolation?.id === v.id}
                 className={cn(
-                  "p-3 rounded-md cursor-pointer transition-colors border",
+                  "p-3 rounded-md cursor-pointer transition-colors border outline-none",
+                  "focus-visible:ring-2 focus-visible:ring-ring",
                   selectedViolation?.id === v.id
                     ? "bg-accent border-accent-foreground/20"
                     : "border-transparent hover:bg-muted"
                 )}
                 onClick={() => onSelect(v)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") onSelect(v);
+                }}
               >
                 <div className="flex items-center justify-between mb-1">
                   <span className="text-[10px] text-muted-foreground font-mono">

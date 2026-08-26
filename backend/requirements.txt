@@ -6,10 +6,9 @@ pydantic>=2.5.3
 python-dotenv>=1.0.0
 ffmpeg-python>=0.2.0
 openai>=1.0.0
+# Brings onnxruntime and a bundled Silero VAD model (assets/silero_vad_v6.onnx)
+# with it - transcriber.py already runs that VAD via vad_filter=True. Do not add
+# silero-vad/torch/torchaudio back: that installs a second copy of the same
+# model under a different runtime for ~2GB and no new capability.
 faster-whisper>=0.10.0
-aiofiles>=23.2.1
 numpy>=1.24.0
-silero-vad>=5.1.0
-onnxruntime>=1.16.0
-torch>=2.1.0
-torchaudio>=2.1.0

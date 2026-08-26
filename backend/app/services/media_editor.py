@@ -8,10 +8,18 @@ import json
 import logging
 import ffmpeg
 import subprocess
+import numpy as np
 from pathlib import Path
 from typing import List, Tuple
 
 logger = logging.getLogger(__name__)
+
+# Every analysis pass over a whole file decodes it here first. 8 kHz mono is
+# plenty for both jobs that need it - waveform peaks and an RMS level pass care
+# about envelope, not about anything above 4 kHz - and it keeps a 74s clip under
+# 600 KB of float32 instead of tens of MB.
+DECODE_SAMPLE_RATE = 8000
+
 
 class MediaEditor:
     """
@@ -156,6 +164,27 @@ class MediaEditor:
         return merged
 
 
+def decode_pcm_mono(media_path: str, sample_rate: int = DECODE_SAMPLE_RATE) -> np.ndarray:
+    """
+    Decode any FFmpeg-readable media to mono float32 PCM at ``sample_rate``.
+
+    Raises rather than swallowing the failure, because the two callers need
+    different answers to it. The waveform route can shrug and draw a flat line;
+    dead-air detection cannot, since "I could not decode this" and "this file is
+    silent" would otherwise be the same empty result - and one of those means
+    deleting audio nobody confirmed was empty.
+    """
+    out, _ = (
+        ffmpeg
+        .input(media_path)
+        .output('-', format='f32le', acodec='pcm_f32le', ac=1, ar=str(sample_rate))
+        .run(capture_stdout=True, capture_stderr=True)
+    )
+    # frombuffer gives a read-only view over the bytes; copy so callers may
+    # reshape or scale it without tripping over the immutable buffer.
+    return np.frombuffer(out, dtype=np.float32).copy()
+
+
 def generate_waveform_peaks(
     audio_path: str,
     num_peaks: int = 800
@@ -163,20 +192,9 @@ def generate_waveform_peaks(
     """
     Generate waveform peaks using FFmpeg and numpy (no pydub).
     """
-    import numpy as np
-
     try:
-        # Extract raw PCM audio data using FFmpeg
-        out, _ = (
-            ffmpeg
-            .input(audio_path)
-            .output('-', format='f32le', acodec='pcm_f32le', ac=1, ar='8000')
-            .run(capture_stdout=True, capture_stderr=True)
-        )
-        
-        # Convert byte data to numpy array
-        samples = np.frombuffer(out, dtype=np.float32)
-        
+        samples = decode_pcm_mono(audio_path)
+
         if len(samples) == 0:
             return [0.0] * num_peaks
 

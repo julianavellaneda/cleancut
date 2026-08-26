@@ -18,6 +18,8 @@ export interface Job {
   language: string | null;
   created_at: string;
   error_message: string | null;
+  export_status: ExportStatus;
+  export_error: string | null;
   violation_count: number;
   pending_count: number;
   accepted_count: number;
@@ -53,16 +55,37 @@ export interface Violation {
   action: "cut" | "mute";
 }
 
+/** One line of the stored transcript, with the timing the panel seeks to. */
+export interface TranscriptSegment {
+  start: number;
+  end: number;
+  text: string;
+}
+
+export interface Transcript {
+  job_id: string;
+  language: string | null;
+  duration: number | null;
+  segments: TranscriptSegment[];
+}
+
 export interface Preset {
   id: string;
   name: string;
   description: string;
 }
 
+/**
+ * Export runs on the worker queue, so a job's export has its own lifecycle
+ * independent of `status`: a failed render leaves a completed job completed.
+ */
+export type ExportStatus = "none" | "queued" | "exporting" | "ready" | "failed";
+
 export interface ExportResponse {
   job_id: string;
   export_filename: string;
   message: string;
+  export_status: ExportStatus;
 }
 
 export interface AdminStats {
@@ -72,6 +95,40 @@ export interface AdminStats {
   total_uploads_size_mb: number;
   total_exports_size_mb: number;
   files_count: number;
+}
+
+const ADMIN_TOKEN_KEY = "cleancut.adminToken";
+
+/**
+ * The admin secret, if the operator has entered one.
+ *
+ * The backend only requires this when ADMIN_TOKEN is set server-side, so an
+ * absent token is the normal local-dev case, not an error. The header is simply
+ * omitted then.
+ */
+export function getAdminToken(): string {
+  if (typeof window === "undefined") return "";
+  try {
+    return window.localStorage.getItem(ADMIN_TOKEN_KEY) ?? "";
+  } catch {
+    return "";
+  }
+}
+
+export function setAdminToken(token: string): void {
+  if (typeof window === "undefined") return;
+  try {
+    const trimmed = token.trim();
+    if (trimmed) window.localStorage.setItem(ADMIN_TOKEN_KEY, trimmed);
+    else window.localStorage.removeItem(ADMIN_TOKEN_KEY);
+  } catch {
+    // A browser with storage blocked still gets a working read-only dashboard.
+  }
+}
+
+function adminHeaders(): HeadersInit {
+  const token = getAdminToken();
+  return token ? { "X-Admin-Token": token } : {};
 }
 
 class APIError extends Error {
@@ -87,6 +144,12 @@ class APIError extends Error {
 async function handleResponse<T>(response: Response): Promise<T> {
   if (!response.ok) {
     const error = await response.json().catch(() => ({ detail: "Unknown error" }));
+    if (response.status === 401) {
+      throw new APIError(
+        401,
+        "This server requires an admin token. Enter the configured ADMIN_TOKEN above and try again."
+      );
+    }
     throw new APIError(response.status, error.detail || "Request failed");
   }
   return response.json();
@@ -184,6 +247,19 @@ export const api = {
     return handleResponse<{ message: string }>(response);
   },
 
+  /**
+   * The transcript the analysis ran on, or null when there isn't one.
+   *
+   * A 404 here is the normal case for a job processed before transcripts were
+   * persisted, so it is not surfaced as an error - the panel just stays hidden.
+   * Any other failure still throws, because that one is worth seeing.
+   */
+  async getTranscript(jobId: string): Promise<Transcript | null> {
+    const response = await fetch(`${API_BASE}/jobs/${jobId}/transcript`);
+    if (response.status === 404) return null;
+    return handleResponse<Transcript>(response);
+  },
+
   // Audio
   getAudioUrl(jobId: string): string {
     return `${API_BASE}/jobs/${jobId}/audio`;
@@ -228,6 +304,7 @@ export const api = {
   async resetDatabase(): Promise<{ message: string }> {
     const response = await fetch(`${API_BASE}/admin/reset-database`, {
       method: "POST",
+      headers: adminHeaders(),
     });
     return handleResponse<{ message: string }>(response);
   },
@@ -235,6 +312,7 @@ export const api = {
   async clearStorage(): Promise<{ message: string }> {
     const response = await fetch(`${API_BASE}/admin/clear-storage`, {
       method: "POST",
+      headers: adminHeaders(),
     });
     return handleResponse<{ message: string }>(response);
   },
@@ -242,6 +320,7 @@ export const api = {
   async resetAll(): Promise<{ message: string; database: string; storage: string }> {
     const response = await fetch(`${API_BASE}/admin/reset-all`, {
       method: "POST",
+      headers: adminHeaders(),
     });
     return handleResponse<{ message: string; database: string; storage: string }>(response);
   },

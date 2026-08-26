@@ -12,8 +12,10 @@ segments land in which bucket, and under which auto_fix/auto_scrub flags.
 
 import uuid
 
+import numpy as np
 import pytest
 
+import app.services.exports as exports
 import app.services.worker as worker
 from app.analysis.prompt_analyzer import AnalysisResult, Violation
 from app.analysis.transcriber import TranscriptResult
@@ -60,7 +62,7 @@ def run_job(monkeypatch, tmp_path):
     def _run(llm_violations=(), scrubber_violations=(), auto_fix=False,
              auto_scrub=False, media_type="audio"):
         RecordingEditor.last = None
-        monkeypatch.setattr(worker, "MediaEditor", RecordingEditor)
+        monkeypatch.setattr(exports, "MediaEditor", RecordingEditor)
         monkeypatch.setattr(worker, "EXPORT_DIR", tmp_path)
 
         transcript = TranscriptResult(segments=[], language="en", duration=60.0)
@@ -77,10 +79,14 @@ def run_job(monkeypatch, tmp_path):
                 )
 
         monkeypatch.setattr(worker, "get_processor", lambda: StubProcessor())
+        # The media here is a placeholder string of bytes; skip the real
+        # level pass rather than spawn an ffmpeg that can only fail.
+        monkeypatch.setattr(worker, "decode_pcm_mono",
+                            lambda path, sr=8000: np.zeros(sr, dtype=np.float32))
         monkeypatch.setattr(
             worker.Scrubber, "detect_silence",
-            staticmethod(lambda t: [v for v in scrubber_violations
-                                    if v.label == "Dead Air"]),
+            staticmethod(lambda t, *a, **k: [v for v in scrubber_violations
+                                             if v.label == "Dead Air"]),
         )
         monkeypatch.setattr(
             worker.Scrubber, "detect_filler_words",
@@ -89,6 +95,9 @@ def run_job(monkeypatch, tmp_path):
         )
         # Nothing was selected -> the worker transcodes the original instead.
         monkeypatch.setattr(worker, "ffmpeg", _StubFfmpeg())
+        # The no-edits passthrough moved to `exports` along with the rest of
+        # the render path; both modules reach for ffmpeg, so both are stubbed.
+        monkeypatch.setattr(exports, "ffmpeg", _StubFfmpeg())
 
         job_id = str(uuid.uuid4())
         media = tmp_path / f"{job_id}.mp3"
@@ -126,6 +135,14 @@ def _job_status(job_id):
     db = SessionLocal()
     try:
         return db.query(Job).filter(Job.id == job_id).first().status
+    finally:
+        db.close()
+
+
+def _export_status(job_id):
+    db = SessionLocal()
+    try:
+        return db.query(Job).filter(Job.id == job_id).first().export_status
     finally:
         db.close()
 
@@ -193,7 +210,19 @@ def test_no_auto_flags_means_no_export(run_job):
     )
 
     assert _job_status(job_id) == "completed"
+    assert _export_status(job_id) == "none"
     assert RecordingEditor.last is None
+
+
+def test_auto_applied_job_lands_with_its_export_ready(run_job):
+    """The download must be live the moment an auto-applied job appears."""
+    job_id = run_job(
+        llm_violations=[_violation(1.0, 2.0, "Income Claims", "cut")],
+        auto_fix=True,
+    )
+
+    assert _job_status(job_id) == "completed"
+    assert _export_status(job_id) == "ready"
 
 
 def test_auto_fix_with_nothing_found_still_completes(run_job):

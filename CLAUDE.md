@@ -20,6 +20,7 @@ ai-audio-editing/
 │   ├── app/
 │   │   ├── main.py                 # FastAPI entry, CORS, lifespan startup
 │   │   ├── config.py               # Root .env discovery
+│   │   ├── auth.py                 # ADMIN_TOKEN gate for the destructive admin routes
 │   │   ├── preflight.py            # Startup checks: OPENAI_API_KEY, ffmpeg/ffprobe
 │   │   ├── limits.py               # Upload size + duration caps
 │   │   ├── database.py             # SQLite setup + hand-rolled column migrations
@@ -30,6 +31,10 @@ ai-audio-editing/
 │   │   │   ├── prompt_analyzer.py  # Chunked LLM analysis + preset registry
 │   │   │   ├── analyze.py          # Standalone CLI
 │   │   │   └── presets/            # Rule preset markdown (income-claims, pii-redaction)
+│   │   ├── eval/
+│   │   │   ├── spec.py             # Ground truth: authored labels + measured offsets
+│   │   │   ├── scoring.py          # Match suggestions to labels, precision/recall
+│   │   │   └── run.py              # CLI: score a saved run, or --live
 │   │   ├── routes/
 │   │   │   ├── jobs.py             # Upload, list, presets, status, delete
 │   │   │   ├── violations.py       # List, update, bulk-update
@@ -38,7 +43,10 @@ ai-audio-editing/
 │   │   └── services/
 │   │       ├── worker.py           # Threaded job queue, per-stage status
 │   │       ├── processor.py        # Wraps transcriber + analyzer
+│   │       ├── exports.py          # Export naming, cut/mute partition, render
+│   │       ├── retention.py        # RETENTION_HOURS sweeper: expired jobs + orphan media
 │   │       ├── scrubber.py         # Deterministic silence + filler detection
+│   │       ├── transcripts.py      # Transcript JSON <-> the jobs.transcript column
 │   │       └── media_editor.py     # FFmpeg trim/atrim + concat filter graphs
 │   ├── tests/                      # pytest suite
 │   ├── uploads/                    # Uploaded media
@@ -51,11 +59,13 @@ ai-audio-editing/
 │       │   └── jobs/[id]/page.tsx  # Review interface
 │       ├── components/
 │       │   ├── Waveform.tsx        # wavesurfer + region markers
+│       │   ├── KeyboardLegend.tsx  # Review shortcut reference
 │       │   ├── ViolationList.tsx   # Sidebar list + Clean All
+│       │   ├── TranscriptPanel.tsx # Readable transcript, click-to-seek
 │       │   └── ViolationCard.tsx   # Detail, accept/reject, cut/mute toggle
 │       └── lib/api.ts              # API client
 ├── docs/                           # Architecture, spec, roadmap
-└── tests/                          # Media fixtures (synthetic only)
+└── tests/                          # Media fixtures (synthetic only) + the eval labels
 ```
 
 **Data flow:**
@@ -98,6 +108,25 @@ python -m app.analysis.analyze audio.mp3 --preset income-claims
 python -m app.analysis.analyze --transcript path/to/transcript.txt --prompt "find filler words"
 ```
 
+**Eval** (how accurate the detectors are, as a number):
+
+```bash
+cd backend && source .venv/bin/activate
+# Grade a recorded run. Free and deterministic - this checks the scorer, not the detectors.
+python -m app.eval.run ../tests/fixtures/demo/seed_job.json
+
+# Grade the deterministic detectors as they stand. Free: no model, no API key. What CI gates on.
+python -m app.eval.run --detectors ../tests/fixtures/demo/demo_seminar.mp3 --suite scrub
+
+# Grade the whole pipeline. Transcribes and calls the LLM, so it stays opt-in.
+python -m app.eval.run --live ../tests/fixtures/demo/demo_seminar.mp3
+
+python -m app.eval.run ../tests/fixtures/demo/seed_job.json --json --min-recall 0.75
+
+# Regenerate the committed word-level transcript the --detectors mode reads (local, free).
+python ../scripts/dump_demo_transcript.py
+```
+
 ## API Endpoints
 
 | Method | Endpoint | Purpose |
@@ -107,17 +136,18 @@ python -m app.analysis.analyze --transcript path/to/transcript.txt --prompt "fin
 | GET | `/api/jobs/presets` | List built-in rule presets |
 | GET | `/api/jobs/{id}` | Job details + violation counts |
 | DELETE | `/api/jobs/{id}` | Delete job and files |
+| GET | `/api/jobs/{id}/transcript` | Stored transcript (404 when the job has none) |
 | GET | `/api/jobs/{id}/violations` | List suggested edits |
 | PATCH | `/api/jobs/{id}/violations/{vid}` | Update status or action |
 | POST | `/api/jobs/{id}/violations/bulk-update` | Bulk update, optionally filtered by label |
 | GET | `/api/jobs/{id}/audio` | Stream original media |
 | GET | `/api/jobs/{id}/audio/waveform` | Waveform peaks JSON |
-| POST | `/api/jobs/{id}/export` | Generate edited media |
+| POST | `/api/jobs/{id}/export` | Queue an edited render (202; poll `export_status`) |
 | GET | `/api/jobs/{id}/export/download` | Download edited file |
 | GET | `/api/admin/stats` | System-wide statistics |
-| POST | `/api/admin/reset-database` | Wipe all database records |
-| POST | `/api/admin/clear-storage` | Delete all media files |
-| POST | `/api/admin/reset-all` | Wipe database + storage |
+| POST | `/api/admin/reset-database` | Wipe all database records (gated by `ADMIN_TOKEN`) |
+| POST | `/api/admin/clear-storage` | Delete all media files (gated by `ADMIN_TOKEN`) |
+| POST | `/api/admin/reset-all` | Wipe database + storage (gated by `ADMIN_TOKEN`) |
 
 **Note:** `/api/jobs/presets` must stay declared before `/api/jobs/{job_id}` in `routes/jobs.py`,
 or the path-param route shadows it.
@@ -140,7 +170,10 @@ CREATE TABLE jobs (
     language TEXT,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     error_message TEXT,
-    waveform_data TEXT                 -- JSON cached peaks
+    waveform_data TEXT,                -- JSON cached peaks
+    transcript TEXT,                   -- JSON transcript segments, NULL on old rows
+    export_status TEXT DEFAULT 'none', -- none, queued, exporting, ready, failed
+    export_error TEXT
 );
 
 CREATE TABLE violations (
@@ -172,6 +205,11 @@ DATABASE_PATH=            # optional; Docker sets this to a mounted volume
 NEXT_PUBLIC_API_URL=      # optional; baked into the frontend build
 MAX_UPLOAD_MB=500         # optional; upload size cap
 MAX_DURATION_MINUTES=120  # optional; media length cap, probed with ffprobe (fails closed)
+DEAD_AIR_FLOOR_DB=-50     # optional; dBFS below which audio counts as silence
+DEAD_AIR_MIN_SECONDS=0.75 # optional; shortest dead-air span worth suggesting
+ADMIN_TOKEN=              # optional; when set, destructive /api/admin/* needs X-Admin-Token
+RETENTION_HOURS=          # optional; delete jobs + media older than this. Unset = keep forever
+RETENTION_SWEEP_MINUTES=15 # optional; sweeper interval
 SKIP_PREFLIGHT=           # optional; 1 to boot past a failed startup check
 ```
 
@@ -189,10 +227,77 @@ System dependency: `brew install ffmpeg`.
   - LLM-quoted text is remapped onto word-level timestamps via `_find_text_timestamps`.
 - **Adding a preset**: drop a markdown rulebook in `analysis/presets/` and add an entry to `PRESETS`
   in `prompt_analyzer.py`. It surfaces automatically via `GET /api/jobs/presets`.
-- **Scrubber**: deterministic silence + filler detection off word timestamps, no LLM.
+- **Scrubber**: deterministic filler detection off word timestamps, no LLM. Dead air needs *two*
+  signals to agree: the transcript proposes a span nobody speaks over, and an RMS pass
+  (`services/levels.py`) has to confirm it is below `DEAD_AIR_FLOOR_DB`. The confirmed sub-interval
+  is what gets emitted, which also trims Whisper's loose boundaries off the next line's onset.
+  Gap-detection alone flagged room tone, applause and music beds as Dead Air, and `auto_scrub` cut
+  them unreviewed; VAD makes the same mistake, since it answers the same question. If the level pass
+  cannot run, silence detection is **skipped** and the job carries a warning - never downgraded back
+  to gaps.
+- **decode_pcm_mono** (`services/media_editor.py`): one shared FFmpeg decode to 8 kHz mono f32le,
+  used by both the waveform peaks and the level pass. Do not add a second decode.
 - **MediaEditor**: FFmpeg `trim`/`atrim` + `concat`, single pass, A/V sync preserved. Mutes are
   applied before cuts, since cutting shifts the timeline under the mute timestamps.
+- **exports.py**: the single owner of the `{job_id}_edited{ext}` naming rule, the cut/mute
+  partition, and the render call. Both the queued export and the worker's auto-fix branch go
+  through it; do not re-derive an export path anywhere else. Tests swap `exports.MediaEditor`.
+- **Retention** (`services/retention.py`): off unless `RETENTION_HOURS` is set - an unparseable
+  value also leaves it off, because a typo in `.env` must not start deleting media on a schedule
+  nobody chose (the opposite of `limits.py`, which fails closed). The sweeper is a daemon thread
+  started in the lifespan; it deletes expired jobs whose status is terminal, their media, and any
+  file on disk with no live job behind it. Jobs still in the pipeline are skipped however old they
+  are - the queue is sequential, so age alone does not mean abandoned. `delete_job_files` is the
+  single owner of "remove a job's media"; `DELETE /api/jobs/{id}` calls it too, which is what fixed
+  that route leaving the export behind.
 - **Worker**: threaded queue, sequential processing, per-stage job status polled by the frontend.
+  Queue items are `QueuedTask(kind, job_id, ...)` with `kind` either `"process"` or `"export"`.
+- **Export is asynchronous**: `POST /export` validates synchronously (404 unknown job, 400 not
+  completed, 404 missing source, 400 nothing accepted), sets `export_status="queued"`, enqueues and
+  returns **202**. `export_status`/`export_error` are deliberately separate from `job.status`: a
+  failed render must not mark a reviewed job `failed` and strand the user's work.
+- **Admin auth** (`app/auth.py`): `require_admin` is a no-op when `ADMIN_TOKEN` is unset and a 401
+  otherwise. It is declared on all three destructive routes individually — `reset_all` calls the
+  other two as plain Python functions, so a `Depends` on those never runs for it.
+- **Transcript persistence** (`services/transcripts.py`): the worker stores the transcript on the
+  job *before* analysis runs, so a partial or failed analysis still leaves the text behind - the
+  LLM is the stage that fails, and re-running it is cheap next to re-transcribing. Stored as
+  segments only: word timing is what makes the timestamp mapping precise, but it is ~20x the bytes
+  and nothing reads it back. `GET /api/jobs/{id}/transcript` is a **404** for an unknown job, a job
+  that never got that far, and a row from before the column existed - all three mean "nothing to
+  read", where an empty segment list would claim the recording was silent. `from_json` is lenient
+  by design: a truncated or hand-edited row reads as absent rather than raising.
+- **Eval harness** (`app/eval/`): scores a run's suggestions against the labelled demo clip and
+  reports precision, recall and per-category coverage. Ground truth is two files on purpose -
+  `tests/fixtures/demo/expected_violations.json` is *generated* on every re-render and holds only
+  timing, `eval_labels.json` is *authored* and holds the judgements, joined by line/pause index so
+  the labels survive a re-render. Matching has to be loose in three specific ways: labels are
+  free-form in prompt mode so a category is identified by declared substrings, coverage is measured
+  against the *shorter* span so a model quoting one tight clause is not punished for cutting less,
+  and a second suggestion on an already-matched label is a **duplicate** rather than a false
+  positive. Fillers are matched by the word rather than the window, since word timestamps drift
+  against the script's line offsets. Recall is per **suite** - a run told to find income claims is
+  not marked down for missing an email address, so an out-of-scope hit is set aside and not graded
+  either way - but only a label the clip *contains*: a suggestion landing on one marked
+  `present: false` invented it, and counts as a false positive. The `controls` are the real
+  assertion: an honest earnings disclaimer sitting between two income claims must never be flagged,
+  and a control hit fails the run regardless of the aggregate numbers. Adding a label means editing
+  `eval_labels.json`, not the scorer; a label whose span has no slot of its own (silence at a clip
+  seam) names two line indices, and its boundary error is not reported since the window is a
+  stand-in.
+  Three input modes measure three different things: a saved run grades a **snapshot** (the scorer
+  and the labels), `--detectors MEDIA` grades the **scrubber** against the real audio plus the
+  committed `transcript_words.json` for free, and `--live MEDIA` grades the **whole pipeline** at
+  the cost of a transcription and a completion. CI runs the first two. Exit codes are `0` pass,
+  `1` a flagged control or a missed floor, and `2` the analysis was partial and `--allow-partial`
+  was not given - a partial run's numbers can clear every floor, since the chunks that answered are
+  graded as if they were the whole transcript.
+- **Keyboard review**: the review page binds `J`/`K`, `A`/`R` (decide and advance), `M`, `Space`,
+  `P`, `T` (transcript panel) and `?` on `window`, guarded against modifier keys and text inputs.
+  `Space` also defers to a focused `<button>`, since the transcript's lines are buttons and the
+  browser's activate-on-space would otherwise fire alongside play/pause. `WaveformHandle` exposes
+  `playClip`, `togglePlayPause` and `seekTo` (which the transcript panel drives); the auto-pause timer for `playClip` is held in a ref and
+  cleared per call, since a keyboard-driven clip is easy to retrigger mid-playback.
 
 ## Conventions
 

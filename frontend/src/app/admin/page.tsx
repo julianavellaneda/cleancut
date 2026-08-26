@@ -4,7 +4,7 @@ import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { api, AdminStats } from "@/lib/api";
+import { api, AdminStats, getAdminToken, setAdminToken } from "@/lib/api";
 
 export default function AdminDashboard() {
   const router = useRouter();
@@ -13,8 +13,13 @@ export default function AdminDashboard() {
   const [error, setError] = useState<string | null>(null);
   const [resetting, setResetting] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
+  const [token, setToken] = useState("");
 
   useEffect(() => { loadStats(); }, []);
+
+  // Read on mount rather than in the initial state so the server render and the
+  // first client render agree; localStorage does not exist on the server.
+  useEffect(() => { setToken(getAdminToken()); }, []);
 
   async function loadStats() {
     setLoading(true);
@@ -38,8 +43,8 @@ export default function AdminDashboard() {
       else result = await api.resetAll();
       setMessage(result.message);
       await loadStats();
-    } catch {
-      setError("Reset failed");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Reset failed");
     } finally {
       setResetting(false);
     }
@@ -54,6 +59,33 @@ export default function AdminDashboard() {
         </div>
         <Button variant="outline" size="sm" onClick={() => router.push("/")}>Exit Admin</Button>
       </header>
+
+      {/* Destructive actions are gated when the server sets ADMIN_TOKEN. It is
+          usually unset in local development, so this is a blank field rather
+          than a login wall. */}
+      <div className="rounded-md border p-4 space-y-2">
+        <label htmlFor="admin-token" className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+          Admin token
+        </label>
+        <div className="flex gap-2">
+          <input
+            id="admin-token"
+            type="password"
+            value={token}
+            placeholder="Only needed if the server sets ADMIN_TOKEN"
+            onChange={(e) => {
+              setToken(e.target.value);
+              setAdminToken(e.target.value);
+              setError(null);
+            }}
+            className="flex-1 rounded-md border bg-background px-3 py-2 text-sm"
+          />
+        </div>
+        <p className="text-xs text-muted-foreground">
+          Sent as <code className="font-mono">X-Admin-Token</code> on reset requests. Stored in this
+          browser only.
+        </p>
+      </div>
 
       {error && <div className="p-4 bg-destructive/10 text-destructive text-sm rounded-md font-medium">{error}</div>}
       {message && <div className="p-4 bg-primary/10 text-primary text-sm rounded-md font-medium">{message}</div>}
