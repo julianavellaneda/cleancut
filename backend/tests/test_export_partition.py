@@ -8,6 +8,10 @@ ExportRequest.edit_action available as an optional global override.
 
 MediaEditor is stubbed here - the filter graphs themselves are covered by
 test_media_editor.py. What matters is which segments land in which bucket.
+
+Export is queued rather than rendered inline, so each test posts (expecting 202)
+and then drives `worker._process_export` synchronously, the way the worker tests
+call `_process_job_sequentially` directly. The queue and the thread stay out of it.
 """
 
 import uuid
@@ -16,6 +20,8 @@ import pytest
 from fastapi.testclient import TestClient
 
 import app.routes.audio as audio_routes
+import app.services.exports as exports
+import app.services.worker as worker
 from app.database import SessionLocal, init_db
 from app.main import app
 from app.models import Job, Violation
@@ -43,10 +49,28 @@ class RecordingEditor:
 
 @pytest.fixture
 def client(monkeypatch, tmp_path):
-    monkeypatch.setattr(audio_routes, "MediaEditor", RecordingEditor)
+    # The editor is swapped on `exports`, the single module that now owns
+    # rendering for both the queued export and the worker's auto-fix branch.
+    monkeypatch.setattr(exports, "MediaEditor", RecordingEditor)
     monkeypatch.setattr(audio_routes, "EXPORT_DIR", tmp_path)
+    monkeypatch.setattr(worker, "EXPORT_DIR", tmp_path)
+    monkeypatch.setattr(worker, "UPLOAD_DIR", tmp_path)
+    # Keep the live worker thread out of it; the tests drive the export directly.
+    monkeypatch.setattr(audio_routes, "enqueue_export", lambda *a, **k: None)
     RecordingEditor.last = None
     return TestClient(app)
+
+
+@pytest.fixture
+def do_export(client):
+    """POST the export, then run the queued render synchronously."""
+    def _do(job_id, payload=None):
+        payload = {} if payload is None else payload
+        response = client.post(f"/api/jobs/{job_id}/export", json=payload)
+        if response.status_code == 202:
+            worker._process_export(job_id, payload.get("edit_action"))
+        return response
+    return _do
 
 
 @pytest.fixture
@@ -74,23 +98,23 @@ def make_job(monkeypatch, tmp_path):
     return _make
 
 
-def test_all_cut_violations_go_to_the_cut_bucket(client, make_job):
+def test_all_cut_violations_go_to_the_cut_bucket(do_export, make_job):
     job_id = make_job([(1.0, 2.0, "cut", "accepted"), (5.0, 6.0, "cut", "accepted")])
 
-    assert client.post(f"/api/jobs/{job_id}/export", json={}).status_code == 200
+    assert do_export(job_id, {}).status_code == 202
     assert RecordingEditor.last["cuts"] == [(1.0, 2.0), (5.0, 6.0)]
     assert RecordingEditor.last["mutes"] == []
 
 
-def test_all_mute_violations_go_to_the_mute_bucket(client, make_job):
+def test_all_mute_violations_go_to_the_mute_bucket(do_export, make_job):
     job_id = make_job([(1.0, 2.0, "mute", "accepted"), (5.0, 6.0, "mute", "accepted")])
 
-    assert client.post(f"/api/jobs/{job_id}/export", json={}).status_code == 200
+    assert do_export(job_id, {}).status_code == 202
     assert RecordingEditor.last["cuts"] == []
     assert RecordingEditor.last["mutes"] == [(1.0, 2.0), (5.0, 6.0)]
 
 
-def test_mixed_actions_are_partitioned(client, make_job):
+def test_mixed_actions_are_partitioned(do_export, make_job):
     """The headline fix - both actions honored in one export."""
     job_id = make_job([
         (1.0, 2.0, "cut", "accepted"),
@@ -98,72 +122,72 @@ def test_mixed_actions_are_partitioned(client, make_job):
         (8.0, 9.0, "cut", "accepted"),
     ])
 
-    assert client.post(f"/api/jobs/{job_id}/export", json={}).status_code == 200
+    assert do_export(job_id, {}).status_code == 202
     assert RecordingEditor.last["cuts"] == [(1.0, 2.0), (8.0, 9.0)]
     assert RecordingEditor.last["mutes"] == [(5.0, 6.0)]
 
 
-def test_only_accepted_violations_are_exported(client, make_job):
+def test_only_accepted_violations_are_exported(do_export, make_job):
     job_id = make_job([
         (1.0, 2.0, "cut", "accepted"),
         (3.0, 4.0, "cut", "rejected"),
         (5.0, 6.0, "mute", "pending"),
     ])
 
-    assert client.post(f"/api/jobs/{job_id}/export", json={}).status_code == 200
+    assert do_export(job_id, {}).status_code == 202
     assert RecordingEditor.last["cuts"] == [(1.0, 2.0)]
     assert RecordingEditor.last["mutes"] == []
 
 
-def test_global_override_forces_mute(client, make_job):
+def test_global_override_forces_mute(do_export, make_job):
     job_id = make_job([(1.0, 2.0, "cut", "accepted"), (5.0, 6.0, "mute", "accepted")])
 
-    response = client.post(f"/api/jobs/{job_id}/export", json={"edit_action": "mute"})
+    response = do_export(job_id, {"edit_action": "mute"})
 
-    assert response.status_code == 200
+    assert response.status_code == 202
     assert RecordingEditor.last["cuts"] == []
     assert RecordingEditor.last["mutes"] == [(1.0, 2.0), (5.0, 6.0)]
 
 
-def test_global_override_forces_cut(client, make_job):
+def test_global_override_forces_cut(do_export, make_job):
     job_id = make_job([(1.0, 2.0, "cut", "accepted"), (5.0, 6.0, "mute", "accepted")])
 
-    response = client.post(f"/api/jobs/{job_id}/export", json={"edit_action": "cut"})
+    response = do_export(job_id, {"edit_action": "cut"})
 
-    assert response.status_code == 200
+    assert response.status_code == 202
     assert RecordingEditor.last["cuts"] == [(1.0, 2.0), (5.0, 6.0)]
     assert RecordingEditor.last["mutes"] == []
 
 
-def test_null_override_honors_per_violation_actions(client, make_job):
+def test_null_override_honors_per_violation_actions(do_export, make_job):
     """What the frontend now sends: an explicit null, not a default of 'cut'."""
     job_id = make_job([(1.0, 2.0, "cut", "accepted"), (5.0, 6.0, "mute", "accepted")])
 
-    response = client.post(f"/api/jobs/{job_id}/export", json={"edit_action": None})
+    response = do_export(job_id, {"edit_action": None})
 
-    assert response.status_code == 200
+    assert response.status_code == 202
     assert RecordingEditor.last["cuts"] == [(1.0, 2.0)]
     assert RecordingEditor.last["mutes"] == [(5.0, 6.0)]
 
 
-def test_missing_action_defaults_to_cut(client, make_job):
+def test_missing_action_defaults_to_cut(do_export, make_job):
     job_id = make_job([(1.0, 2.0, None, "accepted")])
 
-    assert client.post(f"/api/jobs/{job_id}/export", json={}).status_code == 200
+    assert do_export(job_id, {}).status_code == 202
     assert RecordingEditor.last["cuts"] == [(1.0, 2.0)]
 
 
-def test_export_rejects_job_with_no_accepted_violations(client, make_job):
+def test_export_rejects_job_with_no_accepted_violations(do_export, make_job):
     job_id = make_job([(1.0, 2.0, "cut", "pending")])
 
-    response = client.post(f"/api/jobs/{job_id}/export", json={})
+    response = do_export(job_id, {})
 
     assert response.status_code == 400
     assert "No accepted edits" in response.json()["detail"]
     assert RecordingEditor.last is None
 
 
-def test_export_rejects_incomplete_job(client, make_job, tmp_path):
+def test_export_rejects_incomplete_job(do_export, make_job, tmp_path):
     job_id = make_job([(1.0, 2.0, "cut", "accepted")])
     db = SessionLocal()
     try:
@@ -172,7 +196,7 @@ def test_export_rejects_incomplete_job(client, make_job, tmp_path):
     finally:
         db.close()
 
-    response = client.post(f"/api/jobs/{job_id}/export", json={})
+    response = do_export(job_id, {})
 
     assert response.status_code == 400
     assert "not completed" in response.json()["detail"].lower()
@@ -182,21 +206,30 @@ def test_export_404_for_unknown_job(client):
     assert client.post(f"/api/jobs/{uuid.uuid4()}/export", json={}).status_code == 404
 
 
-def test_media_type_is_passed_through(client, make_job):
+def test_media_type_is_passed_through(do_export, make_job):
     job_id = make_job([(1.0, 2.0, "cut", "accepted")], media_type="video")
 
-    assert client.post(f"/api/jobs/{job_id}/export", json={}).status_code == 200
+    assert do_export(job_id, {}).status_code == 202
     assert RecordingEditor.last["media_type"] == "video"
 
 
-def test_export_message_counts_both_kinds(client, make_job):
+def test_queued_response_names_the_accepted_count(do_export, make_job):
+    """The POST answers before FFmpeg runs, so it reports what was queued."""
     job_id = make_job([
         (1.0, 2.0, "cut", "accepted"),
         (5.0, 6.0, "mute", "accepted"),
-        (8.0, 9.0, "mute", "accepted"),
+        (8.0, 9.0, "mute", "rejected"),
     ])
 
-    message = client.post(f"/api/jobs/{job_id}/export", json={}).json()["message"]
+    body = do_export(job_id, {}).json()
+
+    assert body["export_status"] == "queued"
+    assert "2 accepted edit(s)" in body["message"]
+
+
+def test_describe_edits_counts_both_kinds():
+    """The cut/mute summary moved to `exports` when export became asynchronous."""
+    message = exports.describe_edits([(1.0, 2.0)], [(5.0, 6.0), (8.0, 9.0)])
 
     assert "1 cut" in message
     assert "2 muted" in message

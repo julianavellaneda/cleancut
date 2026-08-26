@@ -12,7 +12,9 @@ from sqlalchemy.orm import Session
 from ..database import get_db
 from ..models import Job, Violation
 from ..schemas import ExportRequest, ExportResponse
-from ..services.media_editor import MediaEditor, generate_waveform_peaks
+from ..services import exports
+from ..services.media_editor import generate_waveform_peaks
+from ..services.worker import enqueue_export
 
 router = APIRouter()
 
@@ -46,7 +48,7 @@ def _get_audio_path(job_id: str) -> Path | None:
 def _get_export_path(job_id: str, job: Job) -> Path | None:
     """Find the exported file for a job, or None if no export has been generated."""
     audio_path = _get_audio_path(job_id)
-    export_ext = audio_path.suffix if (audio_path and job.media_type == "video") else ".mp3"
+    export_ext = exports.export_suffix(job, audio_path) if audio_path else ".mp3"
     for candidate in (EXPORT_DIR / f"{job_id}_edited{export_ext}", EXPORT_DIR / f"{job_id}_edited.mp3"):
         if candidate.exists():
             return candidate
@@ -101,13 +103,21 @@ def get_waveform(job_id: str, db: Session = Depends(get_db)):
         raise HTTPException(status_code=500, detail=f"Failed to generate waveform: {str(e)}")
 
 
-@router.post("/{job_id}/export", response_model=ExportResponse)
+@router.post("/{job_id}/export", response_model=ExportResponse, status_code=202)
 def export_media(
     job_id: str,
     request: ExportRequest = ExportRequest(),
     db: Session = Depends(get_db)
 ):
-    """Generate edited media with accepted violations removed/muted."""
+    """
+    Queue an edited render of the accepted suggestions.
+
+    Every cheap rejection below still happens synchronously, so a caller with
+    nothing accepted gets an immediate, specific 400 rather than a queued job
+    that fails minutes later. Only the FFmpeg pass itself is deferred: it can
+    run for the length of the media, and holding the request open for that long
+    left the UI unable to tell a slow export from a dead one.
+    """
     job = db.query(Job).filter(Job.id == job_id).first()
     if not job:
         raise HTTPException(status_code=404, detail="Job not found")
@@ -119,62 +129,30 @@ def export_media(
     if not audio_path:
         raise HTTPException(status_code=404, detail="Audio file not found")
 
-    # Get accepted violations
-    violations = (
+    accepted = (
         db.query(Violation)
         .filter(Violation.job_id == job_id, Violation.status == "accepted")
-        .order_by(Violation.start_time)
-        .all()
+        .count()
     )
-
-    if not violations:
+    if not accepted:
         raise HTTPException(
             status_code=400,
             detail="No accepted edits to remove. Accept some suggested edits first."
         )
 
-    # Partition by per-violation action. request.edit_action, when supplied,
-    # overrides every violation's own action.
-    cuts = []
-    mutes = []
-    for v in violations:
-        action = request.edit_action or v.action or "cut"
-        if action == "mute":
-            mutes.append((v.start_time, v.end_time))
-        else:
-            cuts.append((v.start_time, v.end_time))
+    job.export_status = "queued"
+    job.export_error = None
+    db.commit()
 
-    # Process media
-    try:
-        editor = MediaEditor()
+    enqueue_export(job_id, request.edit_action)
 
-        # Export filename and path
-        export_ext = audio_path.suffix if job.media_type == "video" else ".mp3"
-        export_filename = f"{Path(job.filename).stem}_edited{export_ext}"
-        export_path = EXPORT_DIR / f"{job_id}_edited{export_ext}"
-
-        editor.apply_edits(
-            str(audio_path),
-            str(export_path),
-            segments_to_cut=cuts,
-            segments_to_mute=mutes,
-            media_type=job.media_type
-        )
-
-        parts = []
-        if cuts:
-            parts.append(f"{len(cuts)} cut")
-        if mutes:
-            parts.append(f"{len(mutes)} muted")
-
-        return ExportResponse(
-            job_id=job_id,
-            export_filename=export_filename,
-            message=f"Exported with {' and '.join(parts)} edit(s)"
-        )
-
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Export failed: {str(e)}")
+    export_filename = exports.export_filename_for(job, exports.export_suffix(job, audio_path))
+    return ExportResponse(
+        job_id=job_id,
+        export_filename=export_filename,
+        message=f"Export queued for {accepted} accepted edit(s). Poll the job for export_status.",
+        export_status="queued",
+    )
 
 
 @router.get("/{job_id}/export/download")

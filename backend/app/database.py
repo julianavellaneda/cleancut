@@ -57,6 +57,16 @@ def _apply_migrations():
                 conn.execute(
                     text("UPDATE jobs SET preset = 'income-claims' WHERE bsm_mode = 1")
                 )
+
+        # Export moved onto the worker queue and needs its own state, kept apart
+        # from `status` so a failed export cannot destroy a completed review.
+        if "export_status" not in existing:
+            conn.execute(text("ALTER TABLE jobs ADD COLUMN export_status VARCHAR DEFAULT 'none'"))
+            # Rows created before this column existed may already have an export
+            # on disk; the filesystem probe in routes/audio.py still finds it.
+            conn.execute(text("UPDATE jobs SET export_status = 'none' WHERE export_status IS NULL"))
+        if "export_error" not in existing:
+            conn.execute(text("ALTER TABLE jobs ADD COLUMN export_error TEXT"))
     if "bsm_mode" in existing:
         try:
             with engine.begin() as conn:

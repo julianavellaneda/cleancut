@@ -17,6 +17,7 @@ interface WaveformProps {
 
 export interface WaveformHandle {
   playClip: (startTime: number, endTime: number) => void;
+  togglePlayPause: () => void;
 }
 
 export const Waveform = forwardRef<WaveformHandle, WaveformProps>(function Waveform(
@@ -37,14 +38,24 @@ export const Waveform = forwardRef<WaveformHandle, WaveformProps>(function Wavef
   const [currentTime, setCurrentTime] = useState(0);
   const [duration, setDuration] = useState(0);
   const [isReady, setIsReady] = useState(false);
+  // The auto-pause timer for playClip. Held in a ref and cleared on every new
+  // clip: with the clip playable from a keypress, calls overlap easily, and an
+  // uncleared timer from an earlier clip would pause a later one mid-playback.
+  const clipTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  // Expose playClip method to parent
+  const togglePlayPause = useCallback(() => {
+    wavesurferRef.current?.playPause();
+  }, []);
+
+  // Expose playback control to the parent, which drives it from the keyboard.
   useImperativeHandle(ref, () => ({
     playClip: (startTime: number, endTime: number) => {
       if (!wavesurferRef.current || duration === 0) return;
 
+      if (clipTimerRef.current) clearTimeout(clipTimerRef.current);
+
       const start = Math.max(0, startTime - 0.5);
-      
+
       if (mediaRef?.current) {
         mediaRef.current.currentTime = start;
         mediaRef.current.play();
@@ -55,7 +66,8 @@ export const Waveform = forwardRef<WaveformHandle, WaveformProps>(function Wavef
 
       // Pause automatically after the clip
       const clipDuration = (endTime + 0.5 - start) * 1000;
-      setTimeout(() => {
+      clipTimerRef.current = setTimeout(() => {
+        clipTimerRef.current = null;
         if (mediaRef?.current) {
           mediaRef.current.pause();
         } else {
@@ -63,7 +75,12 @@ export const Waveform = forwardRef<WaveformHandle, WaveformProps>(function Wavef
         }
       }, clipDuration);
     },
-  }), [duration, mediaRef]);
+    togglePlayPause,
+  }), [duration, mediaRef, togglePlayPause]);
+
+  useEffect(() => () => {
+    if (clipTimerRef.current) clearTimeout(clipTimerRef.current);
+  }, []);
 
   // Initialize WaveSurfer
   useEffect(() => {
@@ -154,10 +171,6 @@ export const Waveform = forwardRef<WaveformHandle, WaveformProps>(function Wavef
     // Seek to the violation (with small buffer)
     wavesurferRef.current.seekTo(Math.max(0, selectedViolation.start_time - 0.2) / duration);
   }, [selectedViolation, isReady, duration]);
-
-  const togglePlayPause = useCallback(() => {
-    wavesurferRef.current?.playPause();
-  }, []);
 
   const skipBackward = useCallback(() => {
     if (!wavesurferRef.current || duration === 0) return;

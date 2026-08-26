@@ -7,6 +7,8 @@ Two generations of schema drift are covered here:
    on startup rather than erroring on every query.
 2. A database carrying the older boolean `bsm_mode` column must have its rows
    carried over to the `preset` id that replaced it.
+3. A database from before export moved onto the worker queue must gain
+   `export_status` and `export_error`, defaulting to "no export yet".
 """
 
 import sqlite3
@@ -110,6 +112,38 @@ def test_migration_is_idempotent(legacy_db):
     database._apply_migrations()
     database._apply_migrations()
     assert "preset" in _columns(legacy_db)
+
+
+def test_legacy_db_is_missing_the_export_columns(legacy_db):
+    """Precondition for the export-state migration below."""
+    assert "export_status" not in _columns(legacy_db)
+    assert "export_error" not in _columns(legacy_db)
+
+
+def test_migration_adds_the_export_columns(legacy_db):
+    database._apply_migrations()
+    assert {"export_status", "export_error"} <= _columns(legacy_db)
+
+
+def test_existing_rows_default_to_no_export(legacy_db):
+    """
+    An old row may well have an export sitting on disk, but the column cannot
+    know that; "none" is the honest answer and the filesystem probe behind
+    /export/download still serves the file.
+    """
+    database._apply_migrations()
+    with legacy_db.begin() as conn:
+        row = conn.execute(
+            text("SELECT export_status, export_error FROM jobs WHERE id = 'old-job'")
+        ).fetchone()
+    assert row[0] == "none"
+    assert row[1] is None
+
+
+def test_export_column_migration_is_idempotent(legacy_db):
+    database._apply_migrations()
+    database._apply_migrations()
+    assert {"export_status", "export_error"} <= _columns(legacy_db)
 
 
 def test_bsm_mode_rows_are_backfilled_to_a_preset(bsm_db):

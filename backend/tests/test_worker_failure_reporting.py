@@ -9,6 +9,7 @@ while the frontend polled it.
 
 import uuid
 
+import numpy as np
 import pytest
 
 import app.services.worker as worker
@@ -65,8 +66,17 @@ def _stub_processor(monkeypatch, *, transcribe=None, analyze=None):
                                   transcript_language="en")
 
     monkeypatch.setattr(worker, "get_processor", lambda: StubProcessor())
-    monkeypatch.setattr(worker.Scrubber, "detect_silence", staticmethod(lambda t: []))
+    # The queued job's media is a few bytes of nonsense, so the real level pass
+    # would fail and attach its own "dead air detection skipped" warning. These
+    # tests are about how *analysis* failures are reported, so stub the decode
+    # out; the skip warning itself is covered below.
+    monkeypatch.setattr(worker, "decode_pcm_mono", lambda path, sr=8000: np.zeros(sr, dtype=np.float32))
+    monkeypatch.setattr(worker.Scrubber, "detect_silence", staticmethod(lambda t, *a, **k: []))
     monkeypatch.setattr(worker.Scrubber, "detect_filler_words", staticmethod(lambda t: []))
+
+
+def _raising_decode(path, sr=8000):
+    raise RuntimeError("could not decode")
 
 
 def _raise(exc):
@@ -178,3 +188,43 @@ def test_clean_analysis_leaves_no_warning(monkeypatch, queued_job):
     job = _job(job_id)
     assert job.status == "completed"
     assert job.error_message is None
+
+
+def test_undecodable_media_warns_instead_of_failing_the_job(monkeypatch, queued_job):
+    """
+    The queued job's media really is undecodable, so the level pass fails for
+    real. Dead air detection is skipped rather than downgraded to transcript
+    gaps - offering a cut we could not confirm is what this whole change exists
+    to stop - and the job still completes, because a good transcript and
+    analysis should not be thrown away over it.
+    """
+    job_id, path = queued_job
+    _stub_processor(monkeypatch)
+    # Undo _stub_processor's decode stub - here the decode is the thing on trial.
+    monkeypatch.setattr(worker, "decode_pcm_mono", _raising_decode)
+
+    worker._process_job_sequentially(job_id, path)
+
+    job = _job(job_id)
+    assert job.status == "completed"
+    assert "Dead air detection skipped" in job.error_message
+
+
+def test_skip_warning_does_not_erase_a_partial_analysis_warning(monkeypatch, queued_job):
+    """
+    Both warnings share `error_message`. Overwriting would mean the second
+    problem silently erased the first, and the user would never learn that part
+    of their transcript went unanalyzed.
+    """
+    job_id, path = queued_job
+    _stub_processor(monkeypatch, analyze=lambda: AnalysisResult(
+        violations=[], total_segments_analyzed=0, transcript_language="en",
+        failed_chunks=["segments 0-49"],
+    ))
+    monkeypatch.setattr(worker, "decode_pcm_mono", _raising_decode)
+
+    worker._process_job_sequentially(job_id, path)
+
+    job = _job(job_id)
+    assert "Partial analysis" in job.error_message
+    assert "Dead air detection skipped" in job.error_message

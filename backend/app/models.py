@@ -32,6 +32,12 @@ class Job(Base):
     created_at = Column(DateTime, default=datetime.utcnow)
     error_message = Column(Text, nullable=True)
     waveform_data = Column(Text, nullable=True)  # JSON string of waveform peaks
+    # Export state is tracked separately from `status`. Folding it in would mean a
+    # failed re-encode marks the whole job "failed" and throws away the review the
+    # user just finished, and there would be no way to tell "never exported" from
+    # "export ready".
+    export_status = Column(String, default="none")  # none, queued, exporting, ready, failed
+    export_error = Column(Text, nullable=True)
 
     violations = relationship("Violation", back_populates="job", cascade="all, delete-orphan")
 

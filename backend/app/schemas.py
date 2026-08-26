@@ -58,6 +58,10 @@ class JobResponse(JobBase):
     language: str | None = None
     created_at: datetime
     error_message: str | None = None
+    # Export runs on the worker queue; the frontend polls these two the same way
+    # it polls `status` for the processing stages.
+    export_status: str = "none"  # none, queued, exporting, ready, failed
+    export_error: str | None = None
     violation_count: int = 0
     pending_count: int = 0
     accepted_count: int = 0
@@ -101,6 +105,9 @@ class ExportResponse(BaseModel):
     job_id: str
     export_filename: str
     message: str
+    # Export is queued, not rendered inline, so the POST answers with the state
+    # the caller should start polling rather than with a finished file.
+    export_status: str = "queued"
 
 
 class AdminStats(BaseModel):

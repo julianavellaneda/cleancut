@@ -10,6 +10,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import func
 from sqlalchemy.orm import Session
 
+from ..auth import require_admin
 from ..database import get_db
 from ..models import Job, Violation
 from ..schemas import AdminStats
@@ -64,7 +65,7 @@ def get_admin_stats(db: Session = Depends(get_db)):
     )
 
 
-@router.post("/reset-database")
+@router.post("/reset-database", dependencies=[Depends(require_admin)])
 def reset_database(db: Session = Depends(get_db)):
     """Wipe all data from the database."""
     try:
@@ -78,7 +79,7 @@ def reset_database(db: Session = Depends(get_db)):
         raise HTTPException(status_code=500, detail=f"Failed to reset database: {str(e)}")
 
 
-@router.post("/clear-storage")
+@router.post("/clear-storage", dependencies=[Depends(require_admin)])
 def clear_storage():
     """Delete all files from uploads and exports directories."""
     deleted_count = 0
@@ -95,7 +96,10 @@ def clear_storage():
         raise HTTPException(status_code=500, detail=f"Failed to clear storage: {str(e)}")
 
 
-@router.post("/reset-all")
+# `reset_all` calls reset_database/clear_storage as plain Python functions, not
+# over HTTP, so a dependency declared on *those* never runs for this route. The
+# gate has to be declared here too - it is the one that actually protects it.
+@router.post("/reset-all", dependencies=[Depends(require_admin)])
 def reset_all(db: Session = Depends(get_db)):
     """Wipe both database and storage."""
     db_res = reset_database(db)

@@ -7,14 +7,18 @@ import threading
 import shutil
 import logging
 import uuid
-import ffmpeg
+from dataclasses import dataclass
 from pathlib import Path
+
+import ffmpeg
 
 from ..database import SessionLocal
 from ..models import Job, Violation
 from ..services.processor import get_processor
-from ..services.media_editor import MediaEditor
+from ..services.media_editor import DECODE_SAMPLE_RATE, decode_pcm_mono
 from ..services.scrubber import Scrubber
+from ..services.levels import find_quiet_regions
+from ..services import exports
 
 # Logging
 logging.basicConfig(level=logging.INFO)
@@ -28,10 +32,37 @@ UPLOAD_DIR = Path(__file__).parent.parent.parent / "uploads"
 EXPORT_DIR = Path(__file__).parent.parent.parent / "exports"
 
 
+@dataclass(frozen=True)
+class QueuedTask:
+    """
+    One unit of background work.
+
+    A named record rather than a positional tuple: the queue now carries two
+    kinds of work, and "which element was the file path again" is not a question
+    worth re-answering at every unpack site.
+    """
+    kind: str  # "process" or "export"
+    job_id: str
+    file_path: str | None = None
+    edit_action: str | None = None
+
+
 def enqueue_job(job_id: str, file_path: str):
     """Add a job to the queue for sequential processing."""
-    job_queue.put((job_id, file_path))
+    job_queue.put(QueuedTask(kind="process", job_id=job_id, file_path=file_path))
     logger.info(f"Job {job_id} enqueued. Queue size: {job_queue.qsize()}")
+
+
+def enqueue_export(job_id: str, edit_action: str | None = None):
+    """
+    Queue an export render.
+
+    Export goes through the same single worker thread as everything else so a
+    two-hour re-encode cannot hold an HTTP request open, and so two exports
+    never contend for FFmpeg at once.
+    """
+    job_queue.put(QueuedTask(kind="export", job_id=job_id, edit_action=edit_action))
+    logger.info(f"Export for job {job_id} enqueued. Queue size: {job_queue.qsize()}")
 
 
 def start_worker():
@@ -42,15 +73,30 @@ def start_worker():
 
 
 def _worker_loop():
-    """Continuously pull and process jobs from the queue."""
+    """Continuously pull and process tasks from the queue."""
     while True:
         try:
-            job_id, file_path = job_queue.get()
-            logger.info(f"Worker picking up Job {job_id}...")
-            _process_job_sequentially(job_id, file_path)
+            task = job_queue.get()
+            logger.info(f"Worker picking up {task.kind} task for Job {task.job_id}...")
+            if task.kind == "export":
+                _process_export(task.job_id, task.edit_action)
+            else:
+                _process_job_sequentially(task.job_id, task.file_path)
             job_queue.task_done()
         except Exception as e:
             logger.error(f"Worker loop error: {str(e)}")
+
+
+def _append_job_warning(db, job, message: str):
+    """
+    Add a non-fatal warning to a job without clobbering an existing one.
+
+    ``error_message`` doubles as the warning banner on a completed job, so a
+    partial analysis and a skipped level pass have to be able to coexist there -
+    overwriting would mean the second problem silently erased the first.
+    """
+    job.error_message = f"{job.error_message} | {message}" if job.error_message else message
+    db.commit()
 
 
 def _mark_failed(db, job_id: str, message: str):
@@ -73,6 +119,78 @@ def _mark_failed(db, job_id: str, message: str):
         db.commit()
     except Exception:
         logger.exception(f"Could not record the failure of job {job_id}")
+
+
+def _mark_export_failed(db, job_id: str, message: str):
+    """
+    Record an export failure without touching ``job.status``.
+
+    A job whose export blew up is still a completed job with a reviewed edit
+    list. Marking it `failed` would strand the user's work behind an error
+    screen over an FFmpeg problem they can simply retry.
+    """
+    try:
+        db.rollback()
+        job = db.query(Job).filter(Job.id == job_id).first()
+        if job is None:
+            logger.error(f"Export for job {job_id} failed and its row is gone: {message}")
+            return
+        job.export_status = "failed"
+        job.export_error = message
+        db.commit()
+    except Exception:
+        logger.exception(f"Could not record the export failure of job {job_id}")
+
+
+def _process_export(job_id: str, edit_action: str | None = None):
+    """Render the accepted edits for an already-completed job."""
+    db = SessionLocal()
+    try:
+        job = db.query(Job).filter(Job.id == job_id).first()
+        if not job:
+            logger.error(f"Export requested for unknown job {job_id}")
+            return
+
+        source_path = _find_source_file(job_id)
+        if source_path is None:
+            _mark_export_failed(db, job_id, "Source media file not found.")
+            return
+
+        job.export_status = "exporting"
+        job.export_error = None
+        db.commit()
+
+        violations = (
+            db.query(Violation)
+            .filter(Violation.job_id == job_id, Violation.status == "accepted")
+            .order_by(Violation.start_time)
+            .all()
+        )
+        cuts, mutes = exports.partition_edits(violations, edit_action)
+        export_path = exports.export_path_for(job, source_path, EXPORT_DIR)
+        EXPORT_DIR.mkdir(parents=True, exist_ok=True)
+
+        exports.render_export(str(source_path), export_path, cuts, mutes, job.media_type)
+
+        job.export_status = "ready"
+        job.export_error = None
+        db.commit()
+        logger.info(f"Export for job {job_id} finished: {exports.describe_edits(cuts, mutes)}")
+
+    except Exception as e:
+        logger.error(f"Export for job {job_id} failed: {e}", exc_info=True)
+        _mark_export_failed(db, job_id, str(e))
+    finally:
+        db.close()
+
+
+def _find_source_file(job_id: str) -> Path | None:
+    """Locate the uploaded media for a job by probing the known extensions."""
+    for ext in (".mp3", ".wav", ".m4a", ".flac", ".ogg", ".webm", ".mp4", ".mov", ".aif", ".aiff"):
+        candidate = UPLOAD_DIR / f"{job_id}{ext}"
+        if candidate.exists():
+            return candidate
+    return None
 
 
 def _process_job_sequentially(job_id: str, file_path: str):
@@ -141,8 +259,36 @@ def _process_job_sequentially(job_id: str, file_path: str):
 
         # Step 2.5: Deterministic Scrubbing (Silence & Fillers)
         scrubber_violations = []
+
+        # Dead air is confirmed against amplitude, not just against the absence
+        # of a transcript - see Scrubber.detect_silence. One decode, reused; the
+        # RMS pass itself runs at roughly 1000x realtime.
+        #
+        # A decode failure is caught here rather than allowed to reach the
+        # job-wide handler, which would mark the job `failed` and throw away a
+        # perfectly good transcript and analysis. Silence detection is skipped
+        # (passing None), never quietly downgraded to transcript gaps, and the
+        # job carries a warning saying so. A missing ffmpeg binary cannot be the
+        # cause: preflight.verify_environment() refuses to start the server
+        # without one, so what lands here is a per-file problem.
+        quiet_regions = None
+        try:
+            samples = decode_pcm_mono(file_path_to_use, DECODE_SAMPLE_RATE)
+            quiet_regions = find_quiet_regions(samples, DECODE_SAMPLE_RATE)
+        except Exception as e:
+            # ffmpeg-python packs the real diagnosis into e.stderr; str(e) is
+            # only ever the generic "ffmpeg error (see stderr output for detail)".
+            stderr = getattr(e, "stderr", None)
+            lines = stderr.decode("utf-8", "replace").strip().splitlines() if stderr else []
+            reason = lines[-1] if lines else str(e)
+            logger.warning(f"Job {job_id}: level pass failed, skipping dead air detection: {reason}")
+            _append_job_warning(db, job, (
+                "Dead air detection skipped: the audio could not be decoded for a "
+                f"level check, so no silence was measured. ({reason})"
+            ))
+
         # Always run scrubber, but status depends on auto_scrub
-        scrubber_violations.extend(Scrubber.detect_silence(transcript))
+        scrubber_violations.extend(Scrubber.detect_silence(transcript, quiet_regions))
         scrubber_violations.extend(Scrubber.detect_filler_words(transcript))
 
         # Combine all violations
@@ -176,42 +322,24 @@ def _process_job_sequentially(job_id: str, file_path: str):
         # Step 4: Auto-fix if requested (LLM fixes or Scrubber fixes)
         if job.auto_fix or job.auto_scrub:
             job.status = "exporting"
+            job.export_status = "exporting"
             db.commit()
-            
-            # Use original extension for video, mp3 for audio
-            export_ext = file_path_obj.suffix if job.media_type == "video" else ".mp3"
-            export_path = EXPORT_DIR / f"{job_id}_edited{export_ext}"
-            
-            editor = MediaEditor()
-            
-            # Map accepted suggestions to time segments for editing.
-            # If auto_fix is on, we take all LLM violations.
-            # If auto_scrub is on, we take all scrubber violations.
-            # Each suggestion keeps its own action - a preset like pii-redaction
-            # defaults to mute, and auto-applying it as a cut would silently
-            # delete the audio instead of silencing it.
-            cuts = []
-            mutes = []
-            for v in all_suggestions:
-                is_scrubber = v.label in ["Dead Air", "Filler Word"]
-                if not ((is_scrubber and job.auto_scrub) or (not is_scrubber and job.auto_fix)):
-                    continue
-                if v.action == "mute":
-                    mutes.append((v.start_time, v.end_time))
-                else:
-                    cuts.append((v.start_time, v.end_time))
 
-            if cuts or mutes:
-                editor.apply_edits(
-                    file_path_to_use,
-                    str(export_path),
-                    segments_to_cut=cuts,
-                    segments_to_mute=mutes,
-                    media_type=job.media_type
-                )
-            else:
-                # No suggestions found, just copy/transcode original as edited version
-                ffmpeg.input(file_path_to_use).output(str(export_path)).run(overwrite_output=True, quiet=True)
+            export_path = exports.export_path_for(job, file_path_to_use, EXPORT_DIR)
+
+            # Map pre-accepted suggestions to time segments. auto_fix governs the
+            # LLM's suggestions, auto_scrub the deterministic ones. Each keeps its
+            # own action - a preset like pii-redaction defaults to mute, and
+            # auto-applying it as a cut would delete the audio instead of
+            # silencing it.
+            applied = [
+                v for v in all_suggestions
+                if (v.label in exports.SCRUBBER_LABELS and job.auto_scrub)
+                or (v.label not in exports.SCRUBBER_LABELS and job.auto_fix)
+            ]
+            cuts, mutes = exports.partition_edits(applied)
+            exports.render_export(file_path_to_use, export_path, cuts, mutes, job.media_type)
+            job.export_status = "ready"
 
         job.status = "completed"
         db.commit()

@@ -18,12 +18,15 @@ export a single re-encoded file.
   in place of a prompt.
 - **Deterministic scrubber** — silence and filler-word detection straight off the word timestamps,
   no LLM involved, plus a one-click "Clean All" for those.
-- **Interactive review** — a waveform with a marker per suggestion, keyboard-driven accept/reject.
+- **Interactive review** — a waveform with a marker per suggestion, and keyboard-driven
+  accept/reject (`J`/`K` to move, `A`/`R` to decide and advance, `M` to flip cut/mute,
+  `Space` to play, `P` to replay the selected clip, `?` for the full list).
 - **Per-edit cut or mute**, honored independently on export.
 - **A/V-sync-preserving export** — a single FFmpeg `trim`/`atrim` + `concat` filter graph, so video
   stays in sync with its audio across every cut.
 - **Background job queue** with per-stage status (`converting` → `transcribing` → `analyzing` →
-  `exporting` → `completed`), polled by the frontend.
+  `exporting` → `completed`), polled by the frontend. Export is queued the same way, so a long
+  re-encode never holds an HTTP request open.
 - **Multi-language**, including code-switching between English and Spanish mid-sentence.
 
 ## Architecture
@@ -112,9 +115,10 @@ Interactive Swagger docs at http://localhost:8000/docs.
 | POST | `/api/jobs/{id}/violations/bulk-update` | Bulk accept/reject, optionally filtered by label |
 | GET | `/api/jobs/{id}/audio` | Stream the original media |
 | GET | `/api/jobs/{id}/audio/waveform` | Cached waveform peaks |
-| POST | `/api/jobs/{id}/export` | Render the edited file |
+| POST | `/api/jobs/{id}/export` | Queue the edited render (202; poll `export_status`) |
 | GET | `/api/jobs/{id}/export/download` | Download the result |
 | GET | `/api/admin/stats` | System statistics |
+| POST | `/api/admin/reset-database`, `/clear-storage`, `/reset-all` | Destructive wipes; gated by `ADMIN_TOKEN` when one is set |
 
 ## Analysis modes
 
@@ -133,6 +137,26 @@ a new file plus an entry in `PRESETS` in `prompt_analyzer.py`.
 Long transcripts are chunked at 50 segments with a 10-segment overlap so nothing is missed at a
 boundary, then deduplicated by label and timestamp proximity.
 
+## Reviewing
+
+Every suggestion is reviewed by hand — nothing is removed until you accept it. The review screen is
+built for a keyboard pass: move down the list, decide, and the selection advances on its own.
+
+| Key | Action |
+|---|---|
+| `J` / `↓` | Next suggestion |
+| `K` / `↑` | Previous suggestion |
+| `A` | Accept and advance |
+| `R` | Reject and advance |
+| `M` | Toggle cut ↔ mute on the selected edit |
+| `Space` | Play / pause |
+| `P` | Replay just the selected clip |
+| `?` | Show or hide the shortcut list |
+
+The list scrolls to follow the selection, and the keys are ignored while a modifier is held or a
+text field has focus. Decision keys (`A`, `R`, `M`) are also ignored while an edit is still in
+flight, so holding one down cannot stack overlapping updates; navigation stays live throughout.
+
 ## Configuration
 
 Set in `.env` at the repo root:
@@ -145,6 +169,7 @@ Set in `.env` at the repo root:
 | `NEXT_PUBLIC_API_URL` | `http://localhost:8000/api` | Backend URL baked into the frontend build |
 | `MAX_UPLOAD_MB` | `500` | Upload size cap; larger uploads are rejected with a 413 |
 | `MAX_DURATION_MINUTES` | `120` | Media length cap, measured with `ffprobe` before queueing; media whose duration cannot be read is rejected |
+| `ADMIN_TOKEN` | unset | Shared secret for the destructive admin routes. Unset leaves them open (fine on localhost); set it and they require an `X-Admin-Token` header |
 | `SKIP_PREFLIGHT` | unset | Boot despite a failed startup check (jobs will still fail) |
 
 ## Failure modes
@@ -174,3 +199,6 @@ exits 2 so a script cannot read it as clean.
 Transcription runs locally on your machine. Only the resulting transcript text is sent to the LLM
 provider — never the audio. Jobs, uploads, and exports stay on local disk (SQLite plus
 `backend/uploads/` and `backend/exports/`). Use the admin dashboard at `/admin` to wipe both.
+
+The wipe endpoints delete everything and are open by default, which is only safe on a machine you
+control. Set `ADMIN_TOKEN` before putting the API anywhere else; the dashboard has a field for it.

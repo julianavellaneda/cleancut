@@ -27,8 +27,13 @@ The clip is written to give every layer of the tool something to catch: a specif
 a quit-your-job claim, a luxury-item claim, a health claim, a spoken phone number and email, ten
 filler words, three dead-air gaps of 2.7–2.9 s, and one Spanish sentence mid-conversation.
 
-The gaps are all comfortably over 2 s because `Scrubber.detect_silence` uses a 2.0 s floor and
-Whisper's segment boundaries move by a few tens of milliseconds between runs.
+The gaps are all comfortably over 2 s, which dates from when `Scrubber.detect_silence` used a
+2.0 s floor to absorb Whisper's segment-boundary jitter. The floor is now 0.75 s
+(`DEAD_AIR_MIN_SECONDS`) and the emitted boundaries come from an RMS pass rather than from Whisper,
+so that jitter no longer matters. Measured with `silencedetect` at -50 dB the three pauses are
+13.297->16.270, 34.202->37.914 and 60.160->63.656; `backend/tests/test_scrubber.py` asserts against
+exactly those numbers, and builds a room-tone variant of the clip to prove they are still rejected
+when something audible fills them.
 
 The filler words are drawn only from `Scrubber.FILLER_WORDS` and each stands alone as its own
 token, because the scrubber matches word-by-word after stripping punctuation.

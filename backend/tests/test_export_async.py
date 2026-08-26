@@ -1,0 +1,227 @@
+"""
+Tests for export having moved off the request thread and onto the worker queue.
+
+Regression: POST /{job_id}/export ran apply_edits inline, so a long re-encode
+held the HTTP request open for the length of the media with no timeout handling
+on the client - the UI sat on "Exporting..." with no way to tell a slow export
+from a dead one. The route now validates synchronously, queues the render, and
+answers 202; the frontend polls `export_status` the way it polls `status`.
+
+The queue and the worker thread are not exercised here - as in the other worker
+tests, `_process_export` is called directly and synchronously.
+"""
+
+import uuid
+
+import pytest
+from fastapi.testclient import TestClient
+
+import app.routes.audio as audio_routes
+import app.services.exports as exports
+import app.services.worker as worker
+from app.database import SessionLocal, init_db
+from app.main import app
+from app.models import Job, Violation
+
+
+@pytest.fixture(autouse=True)
+def db_ready():
+    init_db()
+    yield
+
+
+class RecordingEditor:
+    """Captures the render call instead of invoking FFmpeg."""
+
+    last = None
+
+    def apply_edits(self, input_path, output_path, segments_to_cut=None,
+                    segments_to_mute=None, media_type="audio"):
+        RecordingEditor.last = {
+            "cuts": sorted(segments_to_cut or []),
+            "mutes": sorted(segments_to_mute or []),
+        }
+
+
+class ExplodingEditor:
+    """Stands in for an FFmpeg pass that dies mid-render."""
+
+    def apply_edits(self, *args, **kwargs):
+        raise RuntimeError("ffmpeg fell over")
+
+
+@pytest.fixture
+def enqueued(monkeypatch):
+    """Record what the route hands to the queue, without running the worker."""
+    calls = []
+    monkeypatch.setattr(audio_routes, "enqueue_export",
+                        lambda job_id, edit_action=None: calls.append((job_id, edit_action)))
+    return calls
+
+
+@pytest.fixture
+def client(monkeypatch, tmp_path, enqueued):
+    monkeypatch.setattr(exports, "MediaEditor", RecordingEditor)
+    monkeypatch.setattr(audio_routes, "EXPORT_DIR", tmp_path)
+    monkeypatch.setattr(worker, "EXPORT_DIR", tmp_path)
+    monkeypatch.setattr(worker, "UPLOAD_DIR", tmp_path)
+    RecordingEditor.last = None
+    return TestClient(app)
+
+
+@pytest.fixture
+def make_job(monkeypatch, tmp_path):
+    def _make(violations=((1.0, 2.0, "cut", "accepted"),), status="completed"):
+        job_id = str(uuid.uuid4())
+        media = tmp_path / f"{job_id}.mp3"
+        media.write_bytes(b"not really audio")
+        monkeypatch.setattr(audio_routes, "_get_audio_path", lambda jid: media)
+
+        db = SessionLocal()
+        try:
+            db.add(Job(id=job_id, filename=f"{job_id}.mp3", status=status))
+            for start, end, action, vstatus in violations:
+                db.add(Violation(id=str(uuid.uuid4()), job_id=job_id, text="x",
+                                 start_time=start, end_time=end,
+                                 action=action, status=vstatus))
+            db.commit()
+        finally:
+            db.close()
+        return job_id
+    return _make
+
+
+def _job(job_id):
+    db = SessionLocal()
+    try:
+        return db.query(Job).filter(Job.id == job_id).first()
+    finally:
+        db.close()
+
+
+# --- the route answers immediately -----------------------------------------
+
+def test_export_returns_202_without_rendering(client, make_job, enqueued):
+    """The headline fix: the request returns before FFmpeg ever starts."""
+    job_id = make_job()
+
+    response = client.post(f"/api/jobs/{job_id}/export", json={})
+
+    assert response.status_code == 202
+    assert response.json()["export_status"] == "queued"
+    assert RecordingEditor.last is None, "the render must not run on the request thread"
+    assert enqueued == [(job_id, None)]
+
+
+def test_export_marks_the_job_queued(client, make_job):
+    job_id = make_job()
+
+    client.post(f"/api/jobs/{job_id}/export", json={})
+
+    assert _job(job_id).export_status == "queued"
+
+
+def test_global_override_is_carried_onto_the_queue(client, make_job, enqueued):
+    job_id = make_job()
+
+    client.post(f"/api/jobs/{job_id}/export", json={"edit_action": "mute"})
+
+    assert enqueued == [(job_id, "mute")]
+
+
+# --- validation still happens synchronously ---------------------------------
+
+def test_unknown_job_still_404s_without_queueing(client, enqueued):
+    assert client.post(f"/api/jobs/{uuid.uuid4()}/export", json={}).status_code == 404
+    assert enqueued == []
+
+
+def test_incomplete_job_still_400s_without_queueing(client, make_job, enqueued):
+    job_id = make_job(status="transcribing")
+
+    response = client.post(f"/api/jobs/{job_id}/export", json={})
+
+    assert response.status_code == 400
+    assert enqueued == []
+
+
+def test_nothing_accepted_still_400s_without_queueing(client, make_job, enqueued):
+    """A cheap rejection must stay immediate and specific, not become a queued failure."""
+    job_id = make_job(violations=((1.0, 2.0, "cut", "pending"),))
+
+    response = client.post(f"/api/jobs/{job_id}/export", json={})
+
+    assert response.status_code == 400
+    assert "No accepted edits" in response.json()["detail"]
+    assert enqueued == []
+
+
+# --- the worker side --------------------------------------------------------
+
+def test_worker_export_drives_the_job_to_ready(client, make_job):
+    job_id = make_job()
+    client.post(f"/api/jobs/{job_id}/export", json={})
+
+    worker._process_export(job_id)
+
+    job = _job(job_id)
+    assert job.export_status == "ready"
+    assert job.export_error is None
+    assert RecordingEditor.last["cuts"] == [(1.0, 2.0)]
+
+
+def test_worker_export_only_renders_accepted_edits(client, make_job):
+    job_id = make_job(violations=(
+        (1.0, 2.0, "cut", "accepted"),
+        (3.0, 4.0, "cut", "rejected"),
+        (5.0, 6.0, "mute", "accepted"),
+    ))
+
+    worker._process_export(job_id)
+
+    assert RecordingEditor.last["cuts"] == [(1.0, 2.0)]
+    assert RecordingEditor.last["mutes"] == [(5.0, 6.0)]
+
+
+def test_a_failed_render_does_not_fail_the_job(client, make_job, monkeypatch):
+    """
+    A completed job carries a review the user just spent real time on. An FFmpeg
+    problem is retryable; it must not mark the job `failed` and strand that work
+    behind an error screen.
+    """
+    monkeypatch.setattr(exports, "MediaEditor", ExplodingEditor)
+    job_id = make_job()
+
+    worker._process_export(job_id)
+
+    job = _job(job_id)
+    assert job.export_status == "failed"
+    assert "ffmpeg fell over" in job.export_error
+    assert job.status == "completed"
+
+
+def test_a_retry_clears_the_previous_export_error(client, make_job, monkeypatch):
+    monkeypatch.setattr(exports, "MediaEditor", ExplodingEditor)
+    job_id = make_job()
+    worker._process_export(job_id)
+    assert _job(job_id).export_status == "failed"
+
+    monkeypatch.setattr(exports, "MediaEditor", RecordingEditor)
+    worker._process_export(job_id)
+
+    job = _job(job_id)
+    assert job.export_status == "ready"
+    assert job.export_error is None
+
+
+def test_missing_source_media_is_an_export_failure_not_a_crash(client, make_job, monkeypatch, tmp_path):
+    job_id = make_job()
+    (tmp_path / f"{job_id}.mp3").unlink()
+
+    worker._process_export(job_id)
+
+    assert _job(job_id).export_status == "failed"
+
+
+def test_export_for_an_unknown_job_is_a_no_op(client):
+    worker._process_export(str(uuid.uuid4()))  # must not raise
