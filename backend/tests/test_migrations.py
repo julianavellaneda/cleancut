@@ -9,6 +9,8 @@ Two generations of schema drift are covered here:
    carried over to the `preset` id that replaced it.
 3. A database from before export moved onto the worker queue must gain
    `export_status` and `export_error`, defaulting to "no export yet".
+4. A database from before the transcript was persisted must gain `transcript`,
+   left NULL because it cannot be reconstructed without re-transcribing.
 """
 
 import sqlite3
@@ -144,6 +146,35 @@ def test_export_column_migration_is_idempotent(legacy_db):
     database._apply_migrations()
     database._apply_migrations()
     assert {"export_status", "export_error"} <= _columns(legacy_db)
+
+
+def test_legacy_db_is_missing_the_transcript_column(legacy_db):
+    """Precondition for the transcript migration below."""
+    assert "transcript" not in _columns(legacy_db)
+
+
+def test_migration_adds_the_transcript_column(legacy_db):
+    database._apply_migrations()
+    assert "transcript" in _columns(legacy_db)
+
+
+def test_existing_rows_have_no_transcript(legacy_db):
+    """
+    It cannot be backfilled without re-transcribing, so an old row keeps NULL
+    and the endpoint answers 404 rather than claiming the recording was silent.
+    """
+    database._apply_migrations()
+    with legacy_db.begin() as conn:
+        value = conn.execute(
+            text("SELECT transcript FROM jobs WHERE id = 'old-job'")
+        ).scalar()
+    assert value is None
+
+
+def test_transcript_column_migration_is_idempotent(legacy_db):
+    database._apply_migrations()
+    database._apply_migrations()
+    assert "transcript" in _columns(legacy_db)
 
 
 def test_bsm_mode_rows_are_backfilled_to_a_preset(bsm_db):

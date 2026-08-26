@@ -30,7 +30,7 @@ and timestamps; the user decides whether to cut, mute, or ignore each one.
 │   │   │   └── presets/        # Rule preset markdown rulebooks
 │   │   ├── routes/             # jobs, violations, audio, admin
 │   │   ├── services/           # worker.py, processor.py, scrubber.py, media_editor.py,
-│   │   │                       # exports.py, levels.py, retention.py
+│   │   │                       # exports.py, levels.py, retention.py, transcripts.py
 │   │   ├── models.py           # SQLAlchemy models
 │   │   ├── database.py         # SQLite setup + additive migrations
 │   │   └── main.py             # Entry point & CORS

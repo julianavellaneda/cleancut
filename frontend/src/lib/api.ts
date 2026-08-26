@@ -55,6 +55,20 @@ export interface Violation {
   action: "cut" | "mute";
 }
 
+/** One line of the stored transcript, with the timing the panel seeks to. */
+export interface TranscriptSegment {
+  start: number;
+  end: number;
+  text: string;
+}
+
+export interface Transcript {
+  job_id: string;
+  language: string | null;
+  duration: number | null;
+  segments: TranscriptSegment[];
+}
+
 export interface Preset {
   id: string;
   name: string;
@@ -231,6 +245,19 @@ export const api = {
       body: JSON.stringify(update),
     });
     return handleResponse<{ message: string }>(response);
+  },
+
+  /**
+   * The transcript the analysis ran on, or null when there isn't one.
+   *
+   * A 404 here is the normal case for a job processed before transcripts were
+   * persisted, so it is not surfaced as an error - the panel just stays hidden.
+   * Any other failure still throws, because that one is worth seeing.
+   */
+  async getTranscript(jobId: string): Promise<Transcript | null> {
+    const response = await fetch(`${API_BASE}/jobs/${jobId}/transcript`);
+    if (response.status === 404) return null;
+    return handleResponse<Transcript>(response);
   },
 
   // Audio

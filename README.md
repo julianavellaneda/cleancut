@@ -20,7 +20,9 @@ export a single re-encoded file.
   no LLM involved, plus a one-click "Clean All" for those.
 - **Interactive review** — a waveform with a marker per suggestion, and keyboard-driven
   accept/reject (`J`/`K` to move, `A`/`R` to decide and advance, `M` to flip cut/mute,
-  `Space` to play, `P` to replay the selected clip, `?` for the full list).
+  `Space` to play, `P` to replay the selected clip, `T` for the transcript, `?` for the full list).
+- **Searchable transcript panel** — the transcript the analysis actually ran on, kept with the job.
+  Click a line to seek there, watch it follow playback, and see which lines carry a suggested edit.
 - **Per-edit cut or mute**, honored independently on export.
 - **A/V-sync-preserving export** — a single FFmpeg `trim`/`atrim` + `concat` filter graph, so video
   stays in sync with its audio across every cut.
@@ -113,6 +115,7 @@ Interactive Swagger docs at http://localhost:8000/docs.
 | GET | `/api/jobs/presets` | List the built-in rule presets |
 | GET | `/api/jobs/{id}` | Job status and metadata |
 | DELETE | `/api/jobs/{id}` | Delete a job and its files |
+| GET | `/api/jobs/{id}/transcript` | The transcript the analysis ran on |
 | GET | `/api/jobs/{id}/violations` | List suggested edits |
 | PATCH | `/api/jobs/{id}/violations/{vid}` | Set status (accepted/rejected) or action (cut/mute) |
 | POST | `/api/jobs/{id}/violations/bulk-update` | Bulk accept/reject, optionally filtered by label |
@@ -154,7 +157,14 @@ built for a keyboard pass: move down the list, decide, and the selection advance
 | `M` | Toggle cut ↔ mute on the selected edit |
 | `Space` | Play / pause |
 | `P` | Replay just the selected clip |
+| `T` | Show or hide the transcript panel |
 | `?` | Show or hide the shortcut list |
+
+The transcript panel sits on the right, off by default. It scrolls to follow playback, clicking a
+line seeks the waveform to it, and lines overlapping a suggested edit are marked in that edit's
+colour — so a flagged quote can be read in context rather than judged from a marker alone. Jobs
+processed before transcripts were stored simply don't offer the panel; the transcript cannot be
+recovered without re-transcribing, and the API says so rather than returning an empty one.
 
 The list scrolls to follow the selection, and the keys are ignored while a modifier is held or a
 text field has focus. Decision keys (`A`, `R`, `M`) are also ignored while an edit is still in
@@ -202,8 +212,9 @@ exits 2 so a script cannot read it as clean.
 ## Privacy
 
 Transcription runs locally on your machine. Only the resulting transcript text is sent to the LLM
-provider — never the audio. Jobs, uploads, and exports stay on local disk (SQLite plus
-`backend/uploads/` and `backend/exports/`). Use the admin dashboard at `/admin` to wipe both.
+provider — never the audio. Jobs, uploads, exports, and the stored transcript stay on local disk
+(SQLite plus `backend/uploads/` and `backend/exports/`). Use the admin dashboard at `/admin` to
+wipe both.
 
 The wipe endpoints delete everything and are open by default, which is only safe on a machine you
 control. Set `ADMIN_TOKEN` before putting the API anywhere else; the dashboard has a field for it.

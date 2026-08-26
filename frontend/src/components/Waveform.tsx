@@ -18,6 +18,7 @@ interface WaveformProps {
 export interface WaveformHandle {
   playClip: (startTime: number, endTime: number) => void;
   togglePlayPause: () => void;
+  seekTo: (time: number) => void;
 }
 
 export const Waveform = forwardRef<WaveformHandle, WaveformProps>(function Waveform(
@@ -74,6 +75,21 @@ export const Waveform = forwardRef<WaveformHandle, WaveformProps>(function Wavef
           wavesurferRef.current?.pause();
         }
       }, clipDuration);
+    },
+    seekTo: (time: number) => {
+      if (!wavesurferRef.current || duration === 0) return;
+      // A pending clip timer belongs to the clip the user just left; letting it
+      // fire would pause playback a second or two after this seek.
+      if (clipTimerRef.current) {
+        clearTimeout(clipTimerRef.current);
+        clipTimerRef.current = null;
+      }
+      const target = Math.max(0, Math.min(duration, time));
+      if (mediaRef?.current) {
+        mediaRef.current.currentTime = target;
+      } else {
+        wavesurferRef.current.seekTo(target / duration);
+      }
     },
     togglePlayPause,
   }), [duration, mediaRef, togglePlayPause]);

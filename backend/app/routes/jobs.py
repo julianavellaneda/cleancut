@@ -20,9 +20,16 @@ from ..limits import (
     save_within_limit,
 )
 from ..models import Job
-from ..schemas import JobResponse, JobListResponse, PresetResponse
+from ..schemas import (
+    JobResponse,
+    JobListResponse,
+    PresetResponse,
+    TranscriptResponse,
+    TranscriptSegment,
+)
 from ..services.processor import PRESETS, is_valid_preset
 from ..services.retention import delete_job_files
+from ..services import transcripts
 from ..services.worker import enqueue_job
 
 router = APIRouter()
@@ -181,6 +188,37 @@ def get_job(job_id: str, db: Session = Depends(get_db)):
     if not job:
         raise HTTPException(status_code=404, detail="Job not found")
     return _build_job_response(job, db)
+
+
+@router.get("/{job_id}/transcript", response_model=TranscriptResponse)
+def get_transcript(job_id: str, db: Session = Depends(get_db)):
+    """
+    The transcript the analysis ran on.
+
+    404 covers three different absences on purpose - an unknown job, a job that
+    has not reached the transcribing stage yet, and a job from before the column
+    existed. All three mean "there is nothing to read here", and the panel that
+    consumes this hides itself either way. Returning an empty segment list
+    instead would read as "this recording is silent", which is a different and
+    much more misleading claim in a review tool.
+    """
+    job = db.query(Job).filter(Job.id == job_id).first()
+    if not job:
+        raise HTTPException(status_code=404, detail="Job not found")
+
+    stored = transcripts.from_json(job.transcript)
+    if stored is None:
+        raise HTTPException(status_code=404, detail="No transcript stored for this job.")
+
+    return TranscriptResponse(
+        job_id=job.id,
+        language=stored.language or job.language,
+        duration=stored.duration if stored.duration is not None else job.duration_seconds,
+        segments=[
+            TranscriptSegment(start=seg.start, end=seg.end, text=seg.text)
+            for seg in stored.segments
+        ],
+    )
 
 
 @router.delete("/{job_id}")

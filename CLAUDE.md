@@ -42,6 +42,7 @@ ai-audio-editing/
 │   │       ├── exports.py          # Export naming, cut/mute partition, render
 │   │       ├── retention.py        # RETENTION_HOURS sweeper: expired jobs + orphan media
 │   │       ├── scrubber.py         # Deterministic silence + filler detection
+│   │       ├── transcripts.py      # Transcript JSON <-> the jobs.transcript column
 │   │       └── media_editor.py     # FFmpeg trim/atrim + concat filter graphs
 │   ├── tests/                      # pytest suite
 │   ├── uploads/                    # Uploaded media
@@ -56,6 +57,7 @@ ai-audio-editing/
 │       │   ├── Waveform.tsx        # wavesurfer + region markers
 │       │   ├── KeyboardLegend.tsx  # Review shortcut reference
 │       │   ├── ViolationList.tsx   # Sidebar list + Clean All
+│       │   ├── TranscriptPanel.tsx # Readable transcript, click-to-seek
 │       │   └── ViolationCard.tsx   # Detail, accept/reject, cut/mute toggle
 │       └── lib/api.ts              # API client
 ├── docs/                           # Architecture, spec, roadmap
@@ -111,6 +113,7 @@ python -m app.analysis.analyze --transcript path/to/transcript.txt --prompt "fin
 | GET | `/api/jobs/presets` | List built-in rule presets |
 | GET | `/api/jobs/{id}` | Job details + violation counts |
 | DELETE | `/api/jobs/{id}` | Delete job and files |
+| GET | `/api/jobs/{id}/transcript` | Stored transcript (404 when the job has none) |
 | GET | `/api/jobs/{id}/violations` | List suggested edits |
 | PATCH | `/api/jobs/{id}/violations/{vid}` | Update status or action |
 | POST | `/api/jobs/{id}/violations/bulk-update` | Bulk update, optionally filtered by label |
@@ -145,6 +148,7 @@ CREATE TABLE jobs (
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     error_message TEXT,
     waveform_data TEXT,                -- JSON cached peaks
+    transcript TEXT,                   -- JSON transcript segments, NULL on old rows
     export_status TEXT DEFAULT 'none', -- none, queued, exporting, ready, failed
     export_error TEXT
 );
@@ -232,9 +236,19 @@ System dependency: `brew install ffmpeg`.
 - **Admin auth** (`app/auth.py`): `require_admin` is a no-op when `ADMIN_TOKEN` is unset and a 401
   otherwise. It is declared on all three destructive routes individually — `reset_all` calls the
   other two as plain Python functions, so a `Depends` on those never runs for it.
+- **Transcript persistence** (`services/transcripts.py`): the worker stores the transcript on the
+  job *before* analysis runs, so a partial or failed analysis still leaves the text behind - the
+  LLM is the stage that fails, and re-running it is cheap next to re-transcribing. Stored as
+  segments only: word timing is what makes the timestamp mapping precise, but it is ~20x the bytes
+  and nothing reads it back. `GET /api/jobs/{id}/transcript` is a **404** for an unknown job, a job
+  that never got that far, and a row from before the column existed - all three mean "nothing to
+  read", where an empty segment list would claim the recording was silent. `from_json` is lenient
+  by design: a truncated or hand-edited row reads as absent rather than raising.
 - **Keyboard review**: the review page binds `J`/`K`, `A`/`R` (decide and advance), `M`, `Space`,
-  `P` and `?` on `window`, guarded against modifier keys and text inputs. `WaveformHandle` exposes
-  `playClip` and `togglePlayPause`; the auto-pause timer for `playClip` is held in a ref and
+  `P`, `T` (transcript panel) and `?` on `window`, guarded against modifier keys and text inputs.
+  `Space` also defers to a focused `<button>`, since the transcript's lines are buttons and the
+  browser's activate-on-space would otherwise fire alongside play/pause. `WaveformHandle` exposes
+  `playClip`, `togglePlayPause` and `seekTo` (which the transcript panel drives); the auto-pause timer for `playClip` is held in a ref and
   cleared per call, since a keyboard-driven clip is easy to retrigger mid-playback.
 
 ## Conventions

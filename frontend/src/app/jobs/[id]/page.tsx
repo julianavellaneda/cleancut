@@ -10,7 +10,8 @@ import { ViolationList, SCRUB_LABELS } from "@/components/ViolationList";
 import { ViolationCard } from "@/components/ViolationCard";
 import { ProcessingView } from "@/components/ProcessingView";
 import { KeyboardLegend } from "@/components/KeyboardLegend";
-import { api, ExportStatus, Job, Violation } from "@/lib/api";
+import { TranscriptPanel } from "@/components/TranscriptPanel";
+import { api, ExportStatus, Job, Transcript, Violation } from "@/lib/api";
 
 function isProcessing(status: string): boolean {
   return !["completed", "failed"].includes(status);
@@ -37,6 +38,12 @@ export default function ReviewPage() {
   // the last render rather than whether it still matches the review.
   const [exportStale, setExportStale] = useState(false);
   const [showLegend, setShowLegend] = useState(false);
+  // Jobs processed before transcripts were persisted return null here, so the
+  // panel is opt-in twice over: only shown when the user asks, and only when
+  // this particular job actually has one.
+  const [transcript, setTranscript] = useState<Transcript | null>(null);
+  const [showTranscript, setShowTranscript] = useState(false);
+  const [currentTime, setCurrentTime] = useState(0);
 
   const waveformRef = useRef<WaveformHandle>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
@@ -62,6 +69,17 @@ export default function ReviewPage() {
   }, [jobId, selectedViolation]);
 
   useEffect(() => { loadData(); }, [jobId]);
+
+  // Fetched separately from the job: it can be large, it never changes once the
+  // job completes, and a job without one is a normal case rather than an error.
+  useEffect(() => {
+    if (job?.status !== "completed" || transcript) return;
+    let cancelled = false;
+    api.getTranscript(jobId)
+      .then(t => { if (!cancelled) setTranscript(t); })
+      .catch(() => {});
+    return () => { cancelled = true; };
+  }, [job?.status, jobId, transcript]);
 
   // One poll covers both halves of the pipeline: the processing stages, and the
   // export render, which now runs on the same worker queue instead of inline in
@@ -186,6 +204,10 @@ export default function ReviewPage() {
         return;
       }
 
+      // The transcript's lines are buttons; when one has focus, Space belongs to
+      // the browser's activate-the-button default, not to the transport.
+      if (e.key === " " && target?.tagName === "BUTTON") return;
+
       const key = e.key.toLowerCase();
 
       // Navigation stays live during an in-flight update; the decision keys do
@@ -213,6 +235,11 @@ export default function ReviewPage() {
       if (key === "p") {
         e.preventDefault();
         playSelectedClip();
+        return;
+      }
+      if (key === "t") {
+        e.preventDefault();
+        setShowTranscript(v => !v);
         return;
       }
 
@@ -281,6 +308,15 @@ export default function ReviewPage() {
         {/* The render happens on the worker queue, so the button reports the
             job's export_status rather than the lifetime of a hanging request. */}
         <div className="flex items-center gap-3">
+          {transcript && (
+            <Button
+              size="sm"
+              variant={showTranscript ? "secondary" : "ghost"}
+              onClick={() => setShowTranscript(v => !v)}
+            >
+              Transcript
+            </Button>
+          )}
           {exportStatus === "failed" && !exportStale && (
             <span className="max-w-xs truncate text-xs text-destructive" title={job.export_error ?? undefined}>
               Export failed: {job.export_error ?? "unknown error"}
@@ -340,7 +376,7 @@ export default function ReviewPage() {
               {job.media_type === "video" && (
                 <video ref={videoRef} src={api.getAudioUrl(jobId)} className="w-full aspect-video rounded-lg border mb-8 bg-black" controls />
               )}
-              <Waveform ref={waveformRef} audioUrl={api.getAudioUrl(jobId)} violations={violations} selectedViolation={selectedViolation} onViolationClick={setSelectedViolation} mediaRef={job.media_type === "video" ? videoRef : undefined} />
+              <Waveform ref={waveformRef} audioUrl={api.getAudioUrl(jobId)} violations={violations} selectedViolation={selectedViolation} onViolationClick={setSelectedViolation} onTimeUpdate={setCurrentTime} mediaRef={job.media_type === "video" ? videoRef : undefined} />
 
               {exportReady && (
                 <div className="mt-8 rounded-lg border bg-background p-4">
@@ -367,6 +403,17 @@ export default function ReviewPage() {
             </div>
           </div>
         </main>
+
+        {transcript && showTranscript && (
+          <aside className="w-80 border-l bg-muted/20">
+            <TranscriptPanel
+              segments={transcript.segments}
+              violations={violations}
+              currentTime={currentTime}
+              onSeek={(time) => waveformRef.current?.seekTo(time)}
+            />
+          </aside>
+        )}
       </div>
 
       <KeyboardLegend open={showLegend} onToggle={() => setShowLegend(v => !v)} />

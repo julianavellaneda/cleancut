@@ -14,7 +14,10 @@
 
   Feature gaps worth building
 
-  - The transcript is thrown away. It's computed, used, and never persisted — no column, no endpoint, no UI. Users can't read the transcript,
+  - ~~The transcript is thrown away.~~ **Shipped.** `jobs.transcript` (segments only),
+    `GET /api/jobs/{id}/transcript`, and a searchable click-to-seek panel behind `T` on the review
+    screen. Re-running analysis without re-transcribing is now possible but not yet built.
+    Original note: It's computed, used, and never persisted — no column, no endpoint, no UI. Users can't read the transcript,
     search it, or see a flagged quote in context. This is the biggest missing feature in the product: a transcript panel with the flagged spans
     highlighted, click-to-seek, is what turns it from "a list of markers" into an editor. It also unlocks re-running analysis with a different
     prompt without re-transcribing (currently a new prompt = a full Whisper re-run).

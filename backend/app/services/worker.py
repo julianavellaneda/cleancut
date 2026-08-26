@@ -17,6 +17,7 @@ from ..models import Job, Violation
 from ..services.processor import get_processor
 from ..services.media_editor import DECODE_SAMPLE_RATE, decode_pcm_mono
 from ..services.scrubber import Scrubber
+from ..services import transcripts
 from ..services.levels import find_quiet_regions
 from ..services import exports
 
@@ -233,6 +234,11 @@ def _process_job_sequentially(job_id: str, file_path: str):
 
         job.duration_seconds = transcript.duration
         job.language = transcript.language
+        # Stored before analysis rather than after: analysis is the stage that
+        # can fail on a bad LLM response, and a transcript that survives that
+        # failure is still worth having on the job.
+        job.transcript = transcripts.to_json(transcript)
+        db.commit()
 
         # Step 2: Analyzing
         job.status = "analyzing"

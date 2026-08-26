@@ -110,6 +110,20 @@ class ExportResponse(BaseModel):
     export_status: str = "queued"
 
 
+class TranscriptSegment(BaseModel):
+    """One line of the transcript, with the timing the review UI seeks to."""
+    start: float
+    end: float
+    text: str
+
+
+class TranscriptResponse(BaseModel):
+    job_id: str
+    language: str | None = None
+    duration: float | None = None
+    segments: list[TranscriptSegment]
+
+
 class AdminStats(BaseModel):
     total_jobs: int
     total_violations: int

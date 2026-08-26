@@ -32,6 +32,11 @@ class Job(Base):
     created_at = Column(DateTime, default=datetime.utcnow)
     error_message = Column(Text, nullable=True)
     waveform_data = Column(Text, nullable=True)  # JSON string of waveform peaks
+    # The transcript the analysis ran on, as JSON (see services/transcripts.py).
+    # Kept because transcription is the slowest stage of the job and every
+    # reader of it - the review panel, a future re-analysis - would otherwise
+    # have to pay for it again. Segments only, no word timing.
+    transcript = Column(Text, nullable=True)
     # Export state is tracked separately from `status`. Folding it in would mean a
     # failed re-encode marks the whole job "failed" and throws away the review the
     # user just finished, and there would be no way to tell "never exported" from

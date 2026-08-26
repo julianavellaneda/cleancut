@@ -67,6 +67,12 @@ def _apply_migrations():
             conn.execute(text("UPDATE jobs SET export_status = 'none' WHERE export_status IS NULL"))
         if "export_error" not in existing:
             conn.execute(text("ALTER TABLE jobs ADD COLUMN export_error TEXT"))
+
+        # The transcript used to be discarded once analysis was done. Old rows
+        # keep a NULL here: it cannot be backfilled without re-transcribing, and
+        # the route answers 404 rather than pretending the recording was silent.
+        if "transcript" not in existing:
+            conn.execute(text("ALTER TABLE jobs ADD COLUMN transcript TEXT"))
     if "bsm_mode" in existing:
         try:
             with engine.begin() as conn:

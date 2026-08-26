@@ -15,6 +15,7 @@ const BINDINGS: [string, string][] = [
   ["M", "Toggle cut / mute"],
   ["Space", "Play / pause"],
   ["P", "Play the selected clip"],
+  ["T", "Show / hide the transcript"],
   ["?", "Hide this list"],
 ];
 
