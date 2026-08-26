@@ -40,6 +40,13 @@ jobs:
         working-directory: backend
         run: pytest
 
+      # pytest already asserts the floors; this prints the scorecard into the
+      # build log, so a run that drifts from 12/15 to 11/15 while still passing
+      # is visible rather than merely green.
+      - name: Eval scorecard (demo fixture)
+        working-directory: backend
+        run: python -m app.eval.run ../tests/fixtures/demo/seed_job.json
+
   frontend:
     name: Frontend (types + build)
     runs-on: ubuntu-latest

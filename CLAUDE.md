@@ -31,6 +31,10 @@ ai-audio-editing/
 │   │   │   ├── prompt_analyzer.py  # Chunked LLM analysis + preset registry
 │   │   │   ├── analyze.py          # Standalone CLI
 │   │   │   └── presets/            # Rule preset markdown (income-claims, pii-redaction)
+│   │   ├── eval/
+│   │   │   ├── spec.py             # Ground truth: authored labels + measured offsets
+│   │   │   ├── scoring.py          # Match suggestions to labels, precision/recall
+│   │   │   └── run.py              # CLI: score a saved run, or --live
 │   │   ├── routes/
 │   │   │   ├── jobs.py             # Upload, list, presets, status, delete
 │   │   │   ├── violations.py       # List, update, bulk-update
@@ -61,7 +65,7 @@ ai-audio-editing/
 │       │   └── ViolationCard.tsx   # Detail, accept/reject, cut/mute toggle
 │       └── lib/api.ts              # API client
 ├── docs/                           # Architecture, spec, roadmap
-└── tests/                          # Media fixtures (synthetic only)
+└── tests/                          # Media fixtures (synthetic only) + the eval labels
 ```
 
 **Data flow:**
@@ -102,6 +106,15 @@ cd backend && source .venv/bin/activate
 python -m app.analysis.analyze audio.mp3 --prompt "flag every income claim"
 python -m app.analysis.analyze audio.mp3 --preset income-claims
 python -m app.analysis.analyze --transcript path/to/transcript.txt --prompt "find filler words"
+```
+
+**Eval** (how accurate the detectors are, as a number):
+
+```bash
+cd backend && source .venv/bin/activate
+python -m app.eval.run ../tests/fixtures/demo/seed_job.json          # free, deterministic
+python -m app.eval.run --live ../tests/fixtures/demo/demo_seminar.mp3  # transcribes + calls the LLM
+python -m app.eval.run ../tests/fixtures/demo/seed_job.json --json --min-recall 0.75
 ```
 
 ## API Endpoints
@@ -244,6 +257,20 @@ System dependency: `brew install ffmpeg`.
   that never got that far, and a row from before the column existed - all three mean "nothing to
   read", where an empty segment list would claim the recording was silent. `from_json` is lenient
   by design: a truncated or hand-edited row reads as absent rather than raising.
+- **Eval harness** (`app/eval/`): scores a run's suggestions against the labelled demo clip and
+  reports precision, recall and per-category coverage. Ground truth is two files on purpose -
+  `tests/fixtures/demo/expected_violations.json` is *generated* on every re-render and holds only
+  timing, `eval_labels.json` is *authored* and holds the judgements, joined by line/pause index so
+  the labels survive a re-render. Matching has to be loose in three specific ways: labels are
+  free-form in prompt mode so a category is identified by declared substrings, coverage is measured
+  against the *shorter* span so a model quoting one tight clause is not punished for cutting less,
+  and a second suggestion on an already-matched label is a **duplicate** rather than a false
+  positive. Fillers are matched by the word rather than the window, since word timestamps drift
+  against the script's line offsets. Recall is per **suite** - a run told to find income claims is
+  not marked down for missing an email address, so an out-of-scope hit is set aside and not graded
+  either way. The `controls` are the real assertion: an honest earnings disclaimer sitting between
+  two income claims must never be flagged, and a control hit fails the run regardless of the
+  aggregate numbers. Adding a label means editing `eval_labels.json`, not the scorer.
 - **Keyboard review**: the review page binds `J`/`K`, `A`/`R` (decide and advance), `M`, `Space`,
   `P`, `T` (transcript panel) and `?` on `window`, guarded against modifier keys and text inputs.
   `Space` also defers to a focused `<button>`, since the transcript's lines are buttons and the

@@ -30,6 +30,8 @@ export a single re-encoded file.
   `exporting` → `completed`), polled by the frontend. Export is queued the same way, so a long
   re-encode never holds an HTTP request open.
 - **Multi-language**, including code-switching between English and Spanish mid-sentence.
+- **Measured, not asserted** — a labelled synthetic clip and an eval harness that scores the
+  detectors against it: precision, recall, and per-category coverage, run on every build.
 
 ## Architecture
 
@@ -85,6 +87,47 @@ pytest
 
 GitHub Actions runs the same suite on every push and pull request, alongside `tsc --noEmit` and a
 production frontend build — see `.github/workflows/ci.yml`.
+
+## Eval
+
+"The analyzer seems accurate" is not a claim worth making, so there is a number behind it.
+
+`tests/fixtures/demo/` holds a synthetic two-speaker seminar clip with every detector's target
+planted at a known offset — income, lifestyle and health claims, ten filler words, three dead-air
+pauses, a code-switch into Spanish, and contact details. Alongside it, `eval_labels.json` records
+what each line is and whether it should be flagged.
+
+```bash
+cd backend
+source .venv/bin/activate
+python -m app.eval.run ../tests/fixtures/demo/seed_job.json
+```
+
+```
+  precision  100.0%   (14 suggestions graded)
+  recall      80.0%   (15 labels in scope)
+
+By category:
+  income-claim     ############  1/1
+  lifestyle-claim  ############  2/2
+  health-claim     ############  1/1
+  filler           ########....  5/8
+  dead-air         ############  3/3
+```
+
+That run is a recorded snapshot of the real pipeline, so scoring it needs no API key, no model and
+no media — which is why it runs in CI. To measure the pipeline as it stands right now, point it at
+the clip instead: `--live ../tests/fixtures/demo/demo_seminar.mp3` transcribes and calls the LLM.
+`--json` emits the scorecard for a machine, and `--min-recall` / `--min-precision` turn a threshold
+into a non-zero exit.
+
+Two details worth knowing about how it grades. A suggestion that quotes one tight clause of a
+labelled line **counts** — cutting less is the better answer for an editor, and coverage is measured
+against the shorter of the two spans so the scorer cannot punish precision. And the clip contains
+two **controls**: an honest earnings disclaimer sitting between two income claims, and a neutral
+follow-up question. Flagging either fails the run outright, whatever the aggregate numbers say —
+they are the fixture's test for whether the analyzer is reading sentences or matching on the
+neighbourhood.
 
 ## CLI
 

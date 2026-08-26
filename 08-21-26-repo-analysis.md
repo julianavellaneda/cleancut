@@ -24,7 +24,15 @@
   - No undo / no bulk reject. bulk-update only touches pending violations, so "Clean All" is one-way — you can't un-accept in bulk.
   - Pluggable LLM provider. OpenAI() and model="gpt-4o" are hardcoded at prompt_analyzer.py:324,630. RECOMMENDATIONS §3 flags this; adding
     Anthropic behind a small provider interface is maybe 60 lines and gives you the BYO-key demo mode for free.
-  - No eval harness. §3's "flags land within N ms" idea is the one thing here that would actually differentiate you in an interview, and you
+  - ~~No eval harness.~~ **Shipped.** `backend/app/eval/` scores a run against the labelled clip -
+    precision, recall, per-category coverage, and two control lines that fail the run if flagged.
+    `eval_labels.json` holds the judgements next to the generated offsets; the recorded demo run is
+    graded in pytest and printed in CI, and `--live` measures the pipeline as it stands.
+    It earned its keep immediately: the demo clip's line 9 renders as 0.3s of silence, so the spoken
+    phone number the fixture advertises is not in the audio, and `Scrubber.FILLER_WORDS` can never
+    match its own multi-word entry "you know" (word-by-word matching) or Whisper's "Hmm" (the set
+    has "hm"). Filler recall is 5/8 because of those two.
+    Original note: §3's "flags land within N ms" idea is the one thing here that would actually differentiate you in an interview, and you
     already have tests/fixtures/demo/expected_violations.json — the fixture exists, the assertion doesn't.
 
   OSS packaging (what's missing to be a real public repo)

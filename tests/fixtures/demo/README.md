@@ -10,6 +10,7 @@ market, or recording.
 | `demo_seminar.mp4` | The same audio over a static card with a `showwaves` overlay, so the video path and the A/V-sync-preserving export are exercised rather than claimed. |
 | `expected_violations.json` | Measured start/end offsets for every line and pause, taken with `ffprobe` at generation time. |
 | `seed_job.json` | A snapshot of one real completed pipeline run against this clip, replayed by `scripts/seed_demo_job.py`. |
+| `eval_labels.json` | Hand-authored ground truth: what each line is, and whether a detector should flag it. Joined onto the measured offsets by `backend/app/eval/`. |
 
 Regenerate with:
 
@@ -42,11 +43,39 @@ One line is a control: *"some people try this and earn nothing at all"*. It is a
 disclaimer sitting right next to the income claims, and it must **not** be flagged. If it ever
 starts getting flagged, the analyzer has fallen back to keyword matching.
 
+## Line 9 is missing from the audio
+
+The text-to-speech call for `HOST | ... just call us at five five five, oh one three three`
+came back with 0.3 s of silence, and the generator recorded that 0.3 s as the line's measured
+duration. So the clip runs straight from the third pause into the email line, and **the spoken
+phone number listed in the planted-items table is not in the recording** - nor are the two filler
+words on that line.
+
+`eval_labels.json` marks those three expectations `"present": false` with the reason attached,
+which keeps them out of every recall figure. They are recorded rather than deleted: the label is
+still what the script called for, and re-rendering the clip is what fixes it. Doing so costs one
+TTS call and moves every offset after 63 s, which `backend/tests/test_scrubber.py` asserts on -
+so it is a deliberate job, not a tidy-up.
+
+The eval harness is what found this. Nothing else reads the offsets closely enough to notice a
+line of dialogue that takes three tenths of a second to say.
+
 ## expected_violations.json is the eval fixture
 
 Because the generator knows each line's exact offset, this file is ground truth. It is worth more
 than the clip: it turns "the analyzer seems accurate" into something measurable, and it is the
 labelled eval set the roadmap wanted.
+
+It holds only *timing*, though, because it is regenerated on every re-render and anything written
+into it by hand would be lost. The judgements - which line is an income claim, which pause is dead
+air, which line must never be flagged - live in `eval_labels.json` and refer to lines and pauses by
+index, so they survive a re-render and follow the clip to wherever it lands.
+
+Score a run against them with:
+
+```bash
+cd backend && python -m app.eval.run ../tests/fixtures/demo/seed_job.json
+```
 
 ## Rule
 
