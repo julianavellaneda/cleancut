@@ -11,6 +11,7 @@ market, or recording.
 | `expected_violations.json` | Measured start/end offsets for every line and pause, taken with `ffprobe` at generation time. |
 | `seed_job.json` | A snapshot of one real completed pipeline run against this clip, replayed by `scripts/seed_demo_job.py`. |
 | `eval_labels.json` | Hand-authored ground truth: what each line is, and whether a detector should flag it. Joined onto the measured offsets by `backend/app/eval/`. |
+| `transcript_words.json` | A word-level Whisper transcript of the clip, written by `scripts/dump_demo_transcript.py`. Committed so CI can grade the scrubber (`python -m app.eval.run --detectors`) without downloading a model. Re-run the script after any re-render. |
 
 Regenerate with:
 
@@ -38,6 +39,14 @@ when something audible fills them.
 
 The filler words are drawn only from `Scrubber.FILLER_WORDS` and each stands alone as its own
 token, because the scrubber matches word-by-word after stripping punctuation.
+
+There is a fourth stretch of dead air nobody planted. The TTS clip for line 7 ends before its
+measured slot does and line 8 starts half a second into its own, leaving 1.01 s below -50 dBFS
+across the seam - `ffmpeg -af silencedetect=n=-50dB:d=0.75` reports 53.879 -> 54.892. It is silence
+by every definition the tool uses, so `eval_labels.json` carries it as `dead-air-seam-7-8` rather
+than letting a correct detection score as a hallucination. It has no slot of its own, so the label
+names lines 7 and 8 together. `seed_job.json` was recorded when the dead-air floor was 2.0 s and
+does not contain it; that is the one label the recorded run is allowed to miss.
 
 One line is a control: *"some people try this and earn nothing at all"*. It is an honest
 disclaimer sitting right next to the income claims, and it must **not** be flagged. If it ever

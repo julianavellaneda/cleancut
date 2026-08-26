@@ -45,6 +45,10 @@ class Expectation:
     # is missing is worth keeping next to the label.
     present: bool = True
     note: str | None = None
+    # False when the window is a stand-in rather than the labelled span itself -
+    # a multi-index window covers whole lines around a span that has no slot of
+    # its own, so the boundary error against it would be meaningless.
+    timed: bool = True
 
     @property
     def duration(self) -> float:
@@ -122,16 +126,30 @@ class EvalSpec:
 
 
 def _window(entry: dict, lines: list[dict], pauses: list[dict], where: str) -> tuple[float, float]:
+    """
+    Resolve a label's window from the generated offsets.
+
+    ``{"line": 3}`` is one line's slot. ``{"line": [7, 8]}`` spans from the start
+    of the first to the end of the last, which is how a span sitting *across* a
+    seam is named - the generated file records slots, and a silence that falls in
+    the tail of one clip and the lead-in of the next has no slot of its own.
+    """
     if "line" in entry:
         index, source, kind = entry["line"], lines, "line"
     elif "pause" in entry:
         index, source, kind = entry["pause"], pauses, "pause"
     else:
         raise SpecError(f"{where} names neither a line nor a pause.")
-    if not isinstance(index, int) or not 0 <= index < len(source):
-        raise SpecError(f"{where} points at {kind} {index}, which the clip does not have.")
-    item = source[index]
-    return float(item["start"]), float(item["end"])
+
+    span = index if isinstance(index, list) else [index, index]
+    if len(span) != 2:
+        raise SpecError(f"{where} gives {len(span)} {kind} indices; a span needs exactly two.")
+    for i in span:
+        if not isinstance(i, int) or isinstance(i, bool) or not 0 <= i < len(source):
+            raise SpecError(f"{where} points at {kind} {i}, which the clip does not have.")
+    if span[1] < span[0]:
+        raise SpecError(f"{where} spans {kind}s {span[0]} to {span[1]}, which runs backwards.")
+    return float(source[span[0]]["start"]), float(source[span[1]]["end"])
 
 
 def load_spec(
@@ -167,6 +185,7 @@ def load_spec(
         if match == "token" and not entry.get("text"):
             raise SpecError(f"Token expectation '{eid}' has no text to match on.")
         start, end = _window(entry, lines, pauses, f"Expectation '{eid}'")
+        spans_indices = isinstance(entry.get("line", entry.get("pause")), list)
         expectations.append(Expectation(
             id=eid,
             category=category,
@@ -177,6 +196,7 @@ def load_spec(
             quote=entry.get("quote"),
             present=bool(entry.get("present", True)),
             note=entry.get("note"),
+            timed=not spans_indices,
         ))
 
     seen: set[str] = set()

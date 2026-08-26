@@ -24,6 +24,7 @@ suggestions.
 """
 
 import json
+import shutil
 from pathlib import Path
 
 import pytest
@@ -33,6 +34,7 @@ from app.eval.scoring import (
     MIN_COVERAGE,
     Prediction,
     load_predictions,
+    load_run,
     score,
 )
 from app.eval.spec import (
@@ -47,6 +49,13 @@ from app.eval.spec import (
 DEMO_DIR = Path(__file__).resolve().parents[2] / "tests" / "fixtures" / "demo"
 SEED_JOB = DEMO_DIR / "seed_job.json"
 LABELS = DEMO_DIR / "eval_labels.json"
+DEMO_MP3 = DEMO_DIR / "demo_seminar.mp3"
+DEMO_TRANSCRIPT = DEMO_DIR / "transcript_words.json"
+
+needs_media = pytest.mark.skipif(
+    shutil.which("ffmpeg") is None or not DEMO_MP3.exists() or not DEMO_TRANSCRIPT.exists(),
+    reason="needs ffmpeg, the demo clip and the committed transcript",
+)
 
 
 # --------------------------------------------------------------------------
@@ -320,7 +329,7 @@ def test_the_recorded_run_clears_the_floors(demo_card):
     """
     Floors, not exact numbers. The point is to catch a real regression in the
     detectors or in the matching rules, not to freeze one snapshot to three
-    decimal places. The recorded run scores 1.00 / 0.80.
+    decimal places. The recorded run scores 1.00 / 0.75.
     """
     _, _, card = demo_card
     assert card.precision >= 0.95
@@ -340,12 +349,16 @@ def test_every_claim_and_every_planted_pause_was_found(demo_card):
     """
     _, _, card = demo_card
     per_category = card.per_category
-    for category in ("income-claim", "lifestyle-claim", "health-claim", "dead-air"):
+    for category in ("income-claim", "lifestyle-claim", "health-claim"):
         found, expected = per_category[category]
         assert found == expected, f"{category}: {found}/{expected}"
+    # The three planted pauses. The fourth dead-air label is a second of real
+    # silence at a clip seam that today's 0.75s floor finds and this recording,
+    # made under the old 2.0s floor, predates.
+    assert per_category["dead-air"] == (3, 4)
 
 
-def test_the_recorded_run_misses_exactly_the_three_known_fillers(demo_card):
+def test_the_recorded_run_misses_exactly_the_known_four(demo_card):
     """
     Not a target - a record of what the harness found the moment it existed,
     and all three are the scrubber's doing rather than bad luck:
@@ -355,12 +368,16 @@ def test_the_recorded_run_misses_exactly_the_three_known_fillers(demo_card):
     - "hm" is in the set; Whisper transcribes the sound as "Hmm", which is not.
     - "Er," was dropped from the transcript altogether.
 
-    If someone fixes the first two, this assertion is what tells them to
-    re-record `seed_job.json` rather than leaving a stale snapshot behind.
+    The fourth miss is not the scrubber's doing: `dead-air-seam-7-8` is 1.01s of
+    measured silence that today's 0.75s floor finds and the 2.0s floor this run
+    was recorded under could not.
+
+    If someone fixes any of them, this assertion is what tells them to re-record
+    `seed_job.json` rather than leaving a stale snapshot behind.
     """
     _, _, card = demo_card
     assert sorted(e.id for e in card.misses) == [
-        "filler-er-1", "filler-hm-1", "filler-you-know-1",
+        "dead-air-seam-7-8", "filler-er-1", "filler-hm-1", "filler-you-know-1",
     ]
 
 
@@ -426,7 +443,8 @@ def test_the_cli_emits_json_for_a_machine(capsys):
     main(["--suite", "claims-and-scrub", str(SEED_JOB), "--labels", str(LABELS), "--json"])
     payload = json.loads(capsys.readouterr().out)
     assert payload["suite"] == "claims-and-scrub"
-    assert payload["per_category"]["dead-air"] == {"found": 3, "expected": 3}
+    assert payload["per_category"]["dead-air"] == {"found": 3, "expected": 4}
+    assert payload["is_partial"] is False
 
 
 def test_the_cli_refuses_a_saved_run_and_a_live_one_at_once():
@@ -437,3 +455,225 @@ def test_the_cli_refuses_a_saved_run_and_a_live_one_at_once():
 def test_as_dict_round_trips_through_json(demo_card):
     _, _, card = demo_card
     assert json.loads(json.dumps(as_dict(card)))["recall"] == card.recall
+
+
+# --------------------------------------------------------------------------
+# Out of scope is not the same as absent
+# --------------------------------------------------------------------------
+
+def test_a_finding_on_a_label_the_clip_does_not_contain_is_a_false_positive():
+    """
+    The failure this closes: `present: false` labels used to sit in the same
+    pool as out-of-suite ones, so a model inventing a phone number on the silent
+    line was quietly excluded from the denominator. A run finding one real thing
+    and hallucinating one other scored a flawless 1.00.
+    """
+    absent = Expectation(
+        "phone-1", "phone", "span", 60.0, 70.0, present=False, note="silent line",
+    )
+    spec = _spec(
+        expectations=[CLAIM, absent],
+        label_patterns={"claim": ("claim",), "phone": ("phone",)},
+    )
+    card = score(spec, _suite("claim", "phone"), [
+        Prediction("...", 10.0, 20.0, "Income Claim"),
+        Prediction("call 555-0133", 60.0, 70.0, "Phone Number"),
+    ])
+    assert card.out_of_scope == ()
+    assert card.false_positives == (1,)
+    assert card.counted == 2
+    assert card.precision == 0.5
+
+
+def test_an_absent_label_in_another_suite_is_still_a_false_positive():
+    """Absent is absent: the suite it belongs to does not make it real."""
+    absent = Expectation("phone-1", "phone", "span", 60.0, 70.0, present=False)
+    spec = _spec(
+        expectations=[CLAIM, absent],
+        label_patterns={"claim": ("claim",), "phone": ("phone",)},
+    )
+    card = score(spec, _suite("claim"), [Prediction("...", 60.0, 70.0, "Phone Number")])
+    assert card.false_positives == (0,)
+    assert card.out_of_scope == ()
+
+
+# --------------------------------------------------------------------------
+# A window with no slot of its own
+# --------------------------------------------------------------------------
+
+def test_a_label_can_span_two_lines(tmp_path):
+    """
+    Silence at a seam falls in the tail of one clip and the lead-in of the next,
+    and the generated file records slots rather than acoustics - so the label
+    names both lines and the window is their union.
+    """
+    spec = load_spec(_write_spec(tmp_path, _labels(
+        expectations=[{"id": "seam", "category": "claim", "match": "span", "line": [0, 1]}],
+    )))
+    assert (spec.expectations[0].start, spec.expectations[0].end) == (0.0, 10.0)
+    assert spec.expectations[0].timed is False
+
+
+@pytest.mark.parametrize("broken, message", [
+    ({"id": "a", "category": "claim", "match": "span", "line": [1, 0]}, "runs backwards"),
+    ({"id": "a", "category": "claim", "match": "span", "line": [0, 1, 2]}, "exactly two"),
+    ({"id": "a", "category": "claim", "match": "span", "line": [0, 9]}, "does not have"),
+])
+def test_an_unusable_line_span_is_an_error(tmp_path, broken, message):
+    with pytest.raises(SpecError, match=message):
+        load_spec(_write_spec(tmp_path, _labels(expectations=[broken])))
+
+
+def test_a_stand_in_window_is_not_counted_as_boundary_error():
+    """
+    A hit against a two-line window is a hit; measuring how far its edges sit
+    from lines nobody claimed it matched would report seconds of error that mean
+    nothing.
+    """
+    seam = Expectation("seam", "claim", "span", 0.0, 10.0, timed=False)
+    card = score(_spec(expectations=[seam]), _suite("claim"),
+                 [Prediction("...", 4.0, 5.0, "Income Claim")])
+    assert len(card.hits) == 1
+    assert card.timing["n"] == 0
+
+
+# --------------------------------------------------------------------------
+# Reading a run: completeness, and refusing to guess
+# --------------------------------------------------------------------------
+
+def test_a_partial_analysis_stays_partial_through_the_loader():
+    """
+    `to_json` records that a chunk failed. Dropping it on load is how an
+    incomplete run comes to look like a complete one that found less.
+    """
+    run = load_run({
+        "violations": [{"text": "x", "start_time": 1.0, "end_time": 2.0, "label": "L"}],
+        "is_partial": True,
+        "failed_chunks": ["chunk 2/3 [40.0-80.0s]: unreadable response"],
+    })
+    assert run.is_partial
+    assert run.failed_chunks == ("chunk 2/3 [40.0-80.0s]: unreadable response",)
+
+
+def test_a_run_with_no_completeness_field_is_not_assumed_partial():
+    assert load_run(SEED_JOB).is_partial is False
+    assert load_run([]).is_partial is False
+
+
+def test_an_object_without_a_violations_list_is_an_error_not_an_empty_run():
+    """
+    The wrong file, or a producer that renamed the key, must not read as a
+    detector that found nothing - that is the loudest result the harness has.
+    """
+    with pytest.raises(ValueError, match="no 'violations' list"):
+        load_predictions({"results": [], "total_segments": 12})
+
+
+@pytest.mark.parametrize("row, message", [
+    ({"text": "x", "end_time": 2.0}, "no 'start_time'"),
+    ({"text": "x", "start_time": 1.0}, "no 'end_time'"),
+    ({"text": "x", "start_time": "soon", "end_time": 2.0}, "non-numeric"),
+    ({"text": "x", "start_time": float("nan"), "end_time": 2.0}, "non-finite"),
+    ({"text": "x", "start_time": 1.0, "end_time": float("inf")}, "non-finite"),
+    ({"text": "x", "start_time": 5.0, "end_time": 2.0}, "ends before it starts"),
+])
+def test_an_unusable_timestamp_is_an_error(row, message):
+    with pytest.raises(ValueError, match=message):
+        load_predictions({"violations": [row]})
+
+
+def test_a_zero_length_suggestion_is_still_read():
+    """Whisper emits one occasionally; `_coverage` has a rule for it."""
+    assert load_predictions([{"text": "uh", "start_time": 5.38, "end_time": 5.38}]) == [
+        Prediction("uh", 5.38, 5.38, None)
+    ]
+
+
+# --------------------------------------------------------------------------
+# An incomplete run cannot exit 0
+# --------------------------------------------------------------------------
+
+def _partial_run(tmp_path: Path) -> Path:
+    """The recorded run, relabelled as one where a chunk failed."""
+    data = json.loads(SEED_JOB.read_text())
+    data["is_partial"] = True
+    data["failed_chunks"] = ["chunk 2/2 [50-74s]: unreadable response"]
+    path = tmp_path / "partial.json"
+    path.write_text(json.dumps(data))
+    return path
+
+
+def test_a_partial_run_exits_two_even_when_it_clears_every_floor(tmp_path, capsys):
+    """
+    The chunks that did answer are graded as if they were the whole transcript,
+    so the numbers can look fine. Automation has to be able to tell the
+    difference, and a warning on stderr is not something a CI step notices.
+    """
+    code = main([str(_partial_run(tmp_path)), "--labels", str(LABELS), "--min-recall", "0.5"])
+    assert code == 2
+    assert "INCOMPLETE RUN" in capsys.readouterr().out
+
+
+def test_allow_partial_grades_it_anyway(tmp_path, capsys):
+    code = main([str(_partial_run(tmp_path)), "--labels", str(LABELS), "--allow-partial"])
+    capsys.readouterr()
+    assert code == 0
+
+
+def test_a_partial_run_that_also_misses_a_floor_fails_as_a_failure(tmp_path, capsys):
+    """1 outranks 2: the run is bad, not merely unfinished."""
+    code = main([
+        str(_partial_run(tmp_path)), "--labels", str(LABELS), "--min-recall", "0.99",
+    ])
+    capsys.readouterr()
+    assert code == 1
+
+
+def test_the_json_output_carries_completeness(tmp_path, capsys):
+    main([str(_partial_run(tmp_path)), "--labels", str(LABELS), "--json", "--allow-partial"])
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["is_partial"] is True
+    assert payload["failed_chunks"] == ["chunk 2/2 [50-74s]: unreadable response"]
+
+
+# --------------------------------------------------------------------------
+# The detectors themselves, scored - what CI actually gates on
+# --------------------------------------------------------------------------
+
+@needs_media
+def test_the_scrubber_as_it_stands_today_is_scored_against_the_clip():
+    """
+    The gap this closes: every other test here grades a snapshot, so the
+    detectors could return nothing at all and the suite would stay green. This
+    one runs `Scrubber` against the real audio and the committed word-level
+    transcript - no model, no API key - and grades what it produces.
+    """
+    from app.eval.run import run_detectors
+
+    spec = load_spec(LABELS)
+    suite = spec.suite("scrub")
+    card = score(spec, suite, list(run_detectors(DEMO_MP3, DEMO_TRANSCRIPT).predictions))
+
+    assert card.control_hits == ()
+    assert card.false_positives == ()
+    assert card.per_category["dead-air"] == (4, 4)
+    assert card.precision >= 0.95
+    assert card.recall >= 0.70
+
+
+@needs_media
+def test_the_cli_runs_the_detectors(capsys):
+    code = main([
+        "--detectors", str(DEMO_MP3), "--transcript", str(DEMO_TRANSCRIPT),
+        "--suite", "scrub", "--labels", str(LABELS),
+        "--min-precision", "0.95", "--min-recall", "0.70",
+    ])
+    assert code == 0
+    assert "dead-air" in capsys.readouterr().out
+
+
+def test_the_cli_refuses_two_input_modes_at_once():
+    with pytest.raises(SystemExit):
+        main([str(SEED_JOB), "--detectors", str(DEMO_MP3)])
+    with pytest.raises(SystemExit):
+        main(["--suite", "scrub"])

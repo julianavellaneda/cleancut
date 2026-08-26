@@ -12,11 +12,12 @@ Three pieces:
 - ``spec``    - the ground truth, joined from the generated offsets and the
                 hand-written labels.
 - ``scoring`` - matching predictions to expectations, and the scorecard.
-- ``run``     - the CLI, which can score a saved run or drive a live one.
+- ``run``     - the CLI, which can score a saved run, the deterministic
+                detectors, or a live pipeline run.
 """
 
 from .spec import EvalSpec, Expectation, Control, Suite, load_spec
-from .scoring import Prediction, Scorecard, load_predictions, score
+from .scoring import Prediction, RunResult, Scorecard, load_predictions, load_run, score
 
 __all__ = [
     "EvalSpec",
@@ -25,7 +26,9 @@ __all__ = [
     "Suite",
     "load_spec",
     "Prediction",
+    "RunResult",
     "Scorecard",
     "load_predictions",
+    "load_run",
     "score",
 ]

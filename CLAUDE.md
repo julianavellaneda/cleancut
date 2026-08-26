@@ -112,9 +112,19 @@ python -m app.analysis.analyze --transcript path/to/transcript.txt --prompt "fin
 
 ```bash
 cd backend && source .venv/bin/activate
-python -m app.eval.run ../tests/fixtures/demo/seed_job.json          # free, deterministic
-python -m app.eval.run --live ../tests/fixtures/demo/demo_seminar.mp3  # transcribes + calls the LLM
+# Grade a recorded run. Free and deterministic - this checks the scorer, not the detectors.
+python -m app.eval.run ../tests/fixtures/demo/seed_job.json
+
+# Grade the deterministic detectors as they stand. Free: no model, no API key. What CI gates on.
+python -m app.eval.run --detectors ../tests/fixtures/demo/demo_seminar.mp3 --suite scrub
+
+# Grade the whole pipeline. Transcribes and calls the LLM, so it stays opt-in.
+python -m app.eval.run --live ../tests/fixtures/demo/demo_seminar.mp3
+
 python -m app.eval.run ../tests/fixtures/demo/seed_job.json --json --min-recall 0.75
+
+# Regenerate the committed word-level transcript the --detectors mode reads (local, free).
+python ../scripts/dump_demo_transcript.py
 ```
 
 ## API Endpoints
@@ -268,9 +278,20 @@ System dependency: `brew install ffmpeg`.
   positive. Fillers are matched by the word rather than the window, since word timestamps drift
   against the script's line offsets. Recall is per **suite** - a run told to find income claims is
   not marked down for missing an email address, so an out-of-scope hit is set aside and not graded
-  either way. The `controls` are the real assertion: an honest earnings disclaimer sitting between
-  two income claims must never be flagged, and a control hit fails the run regardless of the
-  aggregate numbers. Adding a label means editing `eval_labels.json`, not the scorer.
+  either way - but only a label the clip *contains*: a suggestion landing on one marked
+  `present: false` invented it, and counts as a false positive. The `controls` are the real
+  assertion: an honest earnings disclaimer sitting between two income claims must never be flagged,
+  and a control hit fails the run regardless of the aggregate numbers. Adding a label means editing
+  `eval_labels.json`, not the scorer; a label whose span has no slot of its own (silence at a clip
+  seam) names two line indices, and its boundary error is not reported since the window is a
+  stand-in.
+  Three input modes measure three different things: a saved run grades a **snapshot** (the scorer
+  and the labels), `--detectors MEDIA` grades the **scrubber** against the real audio plus the
+  committed `transcript_words.json` for free, and `--live MEDIA` grades the **whole pipeline** at
+  the cost of a transcription and a completion. CI runs the first two. Exit codes are `0` pass,
+  `1` a flagged control or a missed floor, and `2` the analysis was partial and `--allow-partial`
+  was not given - a partial run's numbers can clear every floor, since the chunks that answered are
+  graded as if they were the whole transcript.
 - **Keyboard review**: the review page binds `J`/`K`, `A`/`R` (decide and advance), `M`, `Space`,
   `P`, `T` (transcript panel) and `?` on `window`, guarded against modifier keys and text inputs.
   `Space` also defers to a focused `<button>`, since the transcript's lines are buttons and the

@@ -15,13 +15,19 @@ two correct flags rather than one correct and one spurious. Coverage is measured
 against the *shorter* of the two spans for that reason - IoU would mark the
 tighter, better span down - and a second suggestion landing on an
 already-matched label is recorded as a duplicate instead of a false positive.
+
+*Out of scope is not the same as absent.* A suggestion answering a real label
+this suite did not ask about is set aside; a suggestion answering a label marked
+``present: false`` is a hallucination about something the clip does not contain,
+and costs precision like any other false positive.
 """
 
 from __future__ import annotations
 
 import json
+import math
 import re
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from pathlib import Path
 
 from .spec import Control, EvalSpec, Expectation, Suite
@@ -60,6 +66,9 @@ class Hit:
     coverage: float
     delta_start: float
     delta_end: float
+    # False when the label's window is a stand-in for the real span - see
+    # Expectation.timed. Such a hit is a hit; its boundary error is noise.
+    timed: bool = True
 
 
 @dataclass(frozen=True)
@@ -118,7 +127,7 @@ class Scorecard:
         trails off quietly, a pause starts before the last word decays. A
         detector measuring the audio is right to disagree with the script here.
         """
-        spans = [h for h in self.hits if h.coverage > 0]
+        spans = [h for h in self.hits if h.coverage > 0 and h.timed]
         if not spans:
             return {"start": 0.0, "end": 0.0, "n": 0}
         return {
@@ -224,13 +233,21 @@ def score(spec: EvalSpec, suite: Suite, predictions: list[Prediction]) -> Scorec
         claimed.add(exp.id)
         hits.append(Hit(
             exp.id, exp.category, i, coverage,
-            pred.start - exp.start, pred.end - exp.end,
+            pred.start - exp.start, pred.end - exp.end, exp.timed,
         ))
 
     # Whatever is left either answers a label this suite did not ask about, or
     # is a false positive - and a false positive on a control is the one the
     # fixture was built to catch.
-    rest = [e for e in spec.expectations if e not in scorable]
+    #
+    # Only *present* labels from other categories are set aside. An expectation
+    # marked present: false is not in the clip at all, so a suggestion landing on
+    # it invented something; excluding that from the denominator would let a
+    # hallucinated phone number on a silent line score a flawless run.
+    rest = [
+        e for e in spec.expectations
+        if e.present and e.category not in suite.categories
+    ]
     for i, pred in enumerate(predictions):
         if i in matched_predictions:
             continue
@@ -262,13 +279,49 @@ def score(spec: EvalSpec, suite: Suite, predictions: list[Prediction]) -> Scorec
     )
 
 
-def load_predictions(source: Path | str | dict | list) -> list[Prediction]:
+@dataclass(frozen=True)
+class RunResult:
     """
-    Read a run's suggestions.
+    A run's suggestions, plus whether the run actually finished.
+
+    ``is_partial`` is the reason this is not just a list. A chunk that failed
+    leaves findings behind for the rest of the transcript, and those findings
+    score perfectly well - the recall they produce is a floor, not a
+    measurement, and nothing downstream can tell the difference once the flag is
+    dropped.
+    """
+
+    predictions: tuple[Prediction, ...]
+    is_partial: bool = False
+    failed_chunks: tuple[str, ...] = ()
+
+
+def _timestamp(row: dict, key: str) -> float:
+    try:
+        value = float(row[key])
+    except KeyError:
+        raise ValueError(f"Suggestion has no '{key}': {row!r}") from None
+    except (TypeError, ValueError):
+        raise ValueError(f"Suggestion has a non-numeric '{key}': {row!r}") from None
+    if not math.isfinite(value):
+        raise ValueError(f"Suggestion has a non-finite '{key}': {row!r}")
+    return value
+
+
+def load_run(source: Path | str | dict | list) -> RunResult:
+    """
+    Read a run's suggestions and its completeness.
 
     Accepts the three shapes this repo already writes: the seeded demo job, the
     CLI's ``analysis.to_json`` output, and the API's violation list. All three
-    carry the same four fields under the same names; only the wrapper differs.
+    carry the same four fields under the same names; only the wrapper differs,
+    and only ``to_json`` records whether the analysis was partial.
+
+    An object without a ``violations`` key is an error rather than an empty run.
+    A schema change at the producer, or simply the wrong file, would otherwise
+    read as a legitimate zero-finding run - which scores as a detector that
+    found nothing, the single most alarming result the harness can report, and
+    the one it must not report by accident.
     """
     if isinstance(source, (str, Path)):
         data = json.loads(Path(source).read_text())
@@ -276,9 +329,19 @@ def load_predictions(source: Path | str | dict | list) -> list[Prediction]:
         data = source
 
     if isinstance(data, dict):
-        rows = data.get("violations", [])
+        if "violations" not in data:
+            raise ValueError(
+                "Object has no 'violations' list. Give a saved run "
+                f"(seed_job.json, analysis JSON, or an API violation list); got keys: "
+                f"{sorted(data)}"
+            )
+        rows = data["violations"]
+        failed_chunks = tuple(str(c) for c in data.get("failed_chunks", ()) or ())
+        is_partial = bool(data.get("is_partial", False)) or bool(failed_chunks)
     else:
         rows = data
+        failed_chunks = ()
+        is_partial = False
     if not isinstance(rows, list):
         raise ValueError("Expected a list of suggestions, or an object with a 'violations' list.")
 
@@ -286,10 +349,25 @@ def load_predictions(source: Path | str | dict | list) -> list[Prediction]:
     for row in rows:
         if not isinstance(row, dict):
             raise ValueError(f"Suggestion is not an object: {row!r}")
+        start = _timestamp(row, "start_time")
+        end = _timestamp(row, "end_time")
+        # Zero-length is legal - see _coverage - but an interval that ends
+        # before it starts is not a tight cut, it is a corrupt row.
+        if end < start:
+            raise ValueError(f"Suggestion ends before it starts: {row!r}")
         predictions.append(Prediction(
             text=str(row.get("text", "")),
-            start=float(row["start_time"]),
-            end=float(row["end_time"]),
+            start=start,
+            end=end,
             label=row.get("label"),
         ))
-    return predictions
+    return RunResult(
+        predictions=tuple(predictions),
+        is_partial=is_partial,
+        failed_chunks=failed_chunks,
+    )
+
+
+def load_predictions(source: Path | str | dict | list) -> list[Prediction]:
+    """The suggestions alone, for callers that do not care about completeness."""
+    return list(load_run(source).predictions)

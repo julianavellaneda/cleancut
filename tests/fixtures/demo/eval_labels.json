@@ -50,7 +50,11 @@
       "prompt": "Find every income, lifestyle, and health claim, then cut the filler words and dead air",
       "categories": ["income-claim", "lifestyle-claim", "health-claim", "filler", "dead-air"]
     },
-    "pii-redaction": {
+      "scrub": {
+      "description": "The deterministic detectors alone: filler words and dead air, no LLM.",
+      "categories": ["filler", "dead-air"]
+    },
+  "pii-redaction": {
       "description": "The pii-redaction preset: spoken contact details, muted rather than cut.",
       "preset": "pii-redaction",
       "categories": ["phone-number", "email-address"]
@@ -126,7 +130,11 @@
     {"id": "filler-like-1", "category": "filler", "match": "token", "line": 10, "text": "like"},
     {"id": "dead-air-1", "category": "dead-air", "match": "span", "pause": 0},
     {"id": "dead-air-2", "category": "dead-air", "match": "span", "pause": 1},
-    {"id": "dead-air-3", "category": "dead-air", "match": "span", "pause": 2}
+    {"id": "dead-air-3", "category": "dead-air", "match": "span", "pause": 2},
+    {
+      "id": "dead-air-seam-7-8", "category": "dead-air", "match": "span", "line": [7, 8],
+      "note": "Not a planted pause. The TTS clip for line 7 ends before its measured slot does and line 8 starts half a second into its own, leaving 1.01s below -50 dBFS across the seam - `ffmpeg -af silencedetect=n=-50dB:d=0.75` reports 53.879 -> 54.892. That is dead air by every definition the tool uses, so a correct detector finds it and the labels say so rather than scoring it as a hallucination. It is named as a line span because the generated offsets record slots, and this silence has no slot of its own. seed_job.json predates DEAD_AIR_MIN_SECONDS coming down to 0.75s, so the recorded run misses it."
+    }
   ],
   "controls": [
     {

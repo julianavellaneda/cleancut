@@ -40,12 +40,27 @@ jobs:
         working-directory: backend
         run: pytest
 
-      # pytest already asserts the floors; this prints the scorecard into the
-      # build log, so a run that drifts from 12/15 to 11/15 while still passing
-      # is visible rather than merely green.
-      - name: Eval scorecard (demo fixture)
+      # Scorer regression, not accuracy: this grades a recorded run, so what it
+      # protects is the matching rules and the labels. It prints the scorecard
+      # into the build log, so a run that drifts from 12/16 to 11/16 while still
+      # passing is visible rather than merely green.
+      - name: Eval scorecard (recorded run - scorer regression)
         working-directory: backend
         run: python -m app.eval.run ../tests/fixtures/demo/seed_job.json
+
+      # This one grades the detectors as they stand on this commit: the level
+      # pass runs against the real clip and the scrubber against the committed
+      # word-level transcript. No model and no API key, so it can gate every
+      # push - the LLM half stays opt-in behind `--live`, which costs money and
+      # cannot be deterministic. Floors, not exact numbers: the run scores
+      # 1.00 / 0.75 today, the three misses being fillers the scrubber cannot
+      # say (see test_eval.py).
+      - name: Detector eval (scrubber, deterministic)
+        working-directory: backend
+        run: >
+          python -m app.eval.run
+          --detectors ../tests/fixtures/demo/demo_seminar.mp3
+          --suite scrub --min-precision 0.95 --min-recall 0.70
 
   frontend:
     name: Frontend (types + build)

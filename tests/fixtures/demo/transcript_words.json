@@ -1,0 +1,998 @@
+{
+ "source": "demo_seminar.mp3",
+ "model": "medium",
+ "language": "en",
+ "duration": 74.0,
+ "segments": [
+  {
+   "text": "So, um, welcome back and, you know, let's just dive right into today's story.",
+   "start": 0.0,
+   "end": 4.92,
+   "words": [
+    {
+     "text": " So,",
+     "start": 0.0,
+     "end": 0.56,
+     "probability": 0.8592828512191772
+    },
+    {
+     "text": " um,",
+     "start": 0.6,
+     "end": 1.12,
+     "probability": 0.4294432997703552
+    },
+    {
+     "text": " welcome",
+     "start": 1.2,
+     "end": 1.38,
+     "probability": 0.98478764295578
+    },
+    {
+     "text": " back",
+     "start": 1.38,
+     "end": 1.76,
+     "probability": 0.9992075562477112
+    },
+    {
+     "text": " and,",
+     "start": 1.76,
+     "end": 2.12,
+     "probability": 0.5653178691864014
+    },
+    {
+     "text": " you",
+     "start": 2.12,
+     "end": 2.34,
+     "probability": 0.93866366147995
+    },
+    {
+     "text": " know,",
+     "start": 2.34,
+     "end": 2.52,
+     "probability": 0.9989978671073914
+    },
+    {
+     "text": " let's",
+     "start": 2.78,
+     "end": 3.04,
+     "probability": 0.9864952266216278
+    },
+    {
+     "text": " just",
+     "start": 3.04,
+     "end": 3.3,
+     "probability": 0.9933846592903137
+    },
+    {
+     "text": " dive",
+     "start": 3.3,
+     "end": 3.58,
+     "probability": 0.9942177534103394
+    },
+    {
+     "text": " right",
+     "start": 3.58,
+     "end": 3.82,
+     "probability": 0.9869411587715149
+    },
+    {
+     "text": " into",
+     "start": 3.82,
+     "end": 4.08,
+     "probability": 0.9393042922019958
+    },
+    {
+     "text": " today's",
+     "start": 4.08,
+     "end": 4.6,
+     "probability": 0.9928806722164154
+    },
+    {
+     "text": " story.",
+     "start": 4.6,
+     "end": 4.92,
+     "probability": 0.9989423155784607
+    }
+   ],
+   "language": "en"
+  },
+  {
+   "text": "Uh, yeah. So in my fourth month I brought home $11,400 and that changed everything.",
+   "start": 5.38,
+   "end": 13.32,
+   "words": [
+    {
+     "text": " Uh,",
+     "start": 5.38,
+     "end": 5.38,
+     "probability": 0.5457271337509155
+    },
+    {
+     "text": " yeah.",
+     "start": 5.76,
+     "end": 6.16,
+     "probability": 0.973686158657074
+    },
+    {
+     "text": " So",
+     "start": 6.7,
+     "end": 6.96,
+     "probability": 0.9932247996330261
+    },
+    {
+     "text": " in",
+     "start": 6.96,
+     "end": 7.26,
+     "probability": 0.7208881378173828
+    },
+    {
+     "text": " my",
+     "start": 7.26,
+     "end": 7.58,
+     "probability": 0.9986633062362671
+    },
+    {
+     "text": " fourth",
+     "start": 7.58,
+     "end": 7.86,
+     "probability": 0.9296915531158447
+    },
+    {
+     "text": " month",
+     "start": 7.86,
+     "end": 8.26,
+     "probability": 0.9951221346855164
+    },
+    {
+     "text": " I",
+     "start": 8.26,
+     "end": 8.66,
+     "probability": 0.26281535625457764
+    },
+    {
+     "text": " brought",
+     "start": 8.66,
+     "end": 8.98,
+     "probability": 0.9862478375434875
+    },
+    {
+     "text": " home",
+     "start": 8.98,
+     "end": 9.38,
+     "probability": 0.9985710382461548
+    },
+    {
+     "text": " $11",
+     "start": 9.38,
+     "end": 9.96,
+     "probability": 0.8958501517772675
+    },
+    {
+     "text": ",400",
+     "start": 9.96,
+     "end": 10.88,
+     "probability": 0.9912572205066681
+    },
+    {
+     "text": " and",
+     "start": 10.88,
+     "end": 11.9,
+     "probability": 0.6963991522789001
+    },
+    {
+     "text": " that",
+     "start": 11.9,
+     "end": 12.34,
+     "probability": 0.9975659847259521
+    },
+    {
+     "text": " changed",
+     "start": 12.34,
+     "end": 12.82,
+     "probability": 0.9971912503242493
+    },
+    {
+     "text": " everything.",
+     "start": 12.82,
+     "end": 13.32,
+     "probability": 0.9954348206520081
+    }
+   ],
+   "language": "en"
+  },
+  {
+   "text": "That's amazing. What changed for you after that?",
+   "start": 16.29,
+   "end": 19.37,
+   "words": [
+    {
+     "text": " That's",
+     "start": 16.29,
+     "end": 16.69,
+     "probability": 0.9886824190616608
+    },
+    {
+     "text": " amazing.",
+     "start": 16.69,
+     "end": 17.09,
+     "probability": 0.996634304523468
+    },
+    {
+     "text": " What",
+     "start": 17.71,
+     "end": 17.95,
+     "probability": 0.9955728054046631
+    },
+    {
+     "text": " changed",
+     "start": 17.95,
+     "end": 18.35,
+     "probability": 0.9987621307373047
+    },
+    {
+     "text": " for",
+     "start": 18.35,
+     "end": 18.53,
+     "probability": 0.9982301592826843
+    },
+    {
+     "text": " you",
+     "start": 18.53,
+     "end": 18.69,
+     "probability": 0.9996292591094971
+    },
+    {
+     "text": " after",
+     "start": 18.69,
+     "end": 18.97,
+     "probability": 0.9922149777412415
+    },
+    {
+     "text": " that?",
+     "start": 18.97,
+     "end": 19.37,
+     "probability": 0.9983323216438293
+    }
+   ],
+   "language": "en"
+  },
+  {
+   "text": "Honestly, by December I quit my job right before Christmas and it felt unreal.",
+   "start": 19.67,
+   "end": 25.71,
+   "words": [
+    {
+     "text": " Honestly,",
+     "start": 19.67,
+     "end": 20.09,
+     "probability": 0.9913550019264221
+    },
+    {
+     "text": " by",
+     "start": 20.73,
+     "end": 20.99,
+     "probability": 0.9927223324775696
+    },
+    {
+     "text": " December",
+     "start": 20.99,
+     "end": 21.41,
+     "probability": 0.9980247020721436
+    },
+    {
+     "text": " I",
+     "start": 21.41,
+     "end": 21.81,
+     "probability": 0.5549113154411316
+    },
+    {
+     "text": " quit",
+     "start": 21.81,
+     "end": 21.99,
+     "probability": 0.9985144734382629
+    },
+    {
+     "text": " my",
+     "start": 21.99,
+     "end": 22.27,
+     "probability": 0.9987984895706177
+    },
+    {
+     "text": " job",
+     "start": 22.27,
+     "end": 22.57,
+     "probability": 0.9997068047523499
+    },
+    {
+     "text": " right",
+     "start": 22.57,
+     "end": 23.19,
+     "probability": 0.8817035555839539
+    },
+    {
+     "text": " before",
+     "start": 23.19,
+     "end": 23.55,
+     "probability": 0.9992619156837463
+    },
+    {
+     "text": " Christmas",
+     "start": 23.55,
+     "end": 23.97,
+     "probability": 0.9985526204109192
+    },
+    {
+     "text": " and",
+     "start": 23.97,
+     "end": 24.59,
+     "probability": 0.8463317155838013
+    },
+    {
+     "text": " it",
+     "start": 24.59,
+     "end": 24.83,
+     "probability": 0.9988711476325989
+    },
+    {
+     "text": " felt",
+     "start": 24.83,
+     "end": 25.13,
+     "probability": 0.9989377856254578
+    },
+    {
+     "text": " unreal.",
+     "start": 25.13,
+     "end": 25.71,
+     "probability": 0.9982774257659912
+    }
+   ],
+   "language": "en"
+  },
+  {
+   "text": "And, ah, three months later there was a shiny little sports car sitting in my driveway.",
+   "start": 26.39,
+   "end": 32.19,
+   "words": [
+    {
+     "text": " And,",
+     "start": 26.39,
+     "end": 26.81,
+     "probability": 0.9543258547782898
+    },
+    {
+     "text": " ah,",
+     "start": 26.83,
+     "end": 27.43,
+     "probability": 0.7608619928359985
+    },
+    {
+     "text": " three",
+     "start": 28.07,
+     "end": 28.35,
+     "probability": 0.976182222366333
+    },
+    {
+     "text": " months",
+     "start": 28.35,
+     "end": 28.69,
+     "probability": 0.9989134073257446
+    },
+    {
+     "text": " later",
+     "start": 28.69,
+     "end": 29.11,
+     "probability": 0.9993166923522949
+    },
+    {
+     "text": " there",
+     "start": 29.11,
+     "end": 29.49,
+     "probability": 0.7708401679992676
+    },
+    {
+     "text": " was",
+     "start": 29.49,
+     "end": 29.71,
+     "probability": 0.9993335604667664
+    },
+    {
+     "text": " a",
+     "start": 29.71,
+     "end": 29.91,
+     "probability": 0.9990033507347107
+    },
+    {
+     "text": " shiny",
+     "start": 29.91,
+     "end": 30.15,
+     "probability": 0.9925689101219177
+    },
+    {
+     "text": " little",
+     "start": 30.15,
+     "end": 30.51,
+     "probability": 0.9917986392974854
+    },
+    {
+     "text": " sports",
+     "start": 30.51,
+     "end": 30.85,
+     "probability": 0.9950343370437622
+    },
+    {
+     "text": " car",
+     "start": 30.85,
+     "end": 31.13,
+     "probability": 0.9812151789665222
+    },
+    {
+     "text": " sitting",
+     "start": 31.13,
+     "end": 31.41,
+     "probability": 0.9973004460334778
+    },
+    {
+     "text": " in",
+     "start": 31.41,
+     "end": 31.63,
+     "probability": 0.9993096590042114
+    },
+    {
+     "text": " my",
+     "start": 31.63,
+     "end": 31.83,
+     "probability": 0.9995216131210327
+    },
+    {
+     "text": " driveway.",
+     "start": 31.83,
+     "end": 32.19,
+     "probability": 0.9988717436790466
+    }
+   ],
+   "language": "en"
+  },
+  {
+   "text": "Paid for in cash.",
+   "start": 32.21,
+   "end": 34.47,
+   "words": [
+    {
+     "text": " Paid",
+     "start": 32.21,
+     "end": 33.03,
+     "probability": 0.5004496484179981
+    },
+    {
+     "text": " for",
+     "start": 33.03,
+     "end": 33.37,
+     "probability": 0.9709897637367249
+    },
+    {
+     "text": " in",
+     "start": 33.37,
+     "end": 33.81,
+     "probability": 0.5048158764839172
+    },
+    {
+     "text": " cash.",
+     "start": 33.81,
+     "end": 34.47,
+     "probability": 0.9883389472961426
+    }
+   ],
+   "language": "en"
+  },
+  {
+   "text": "And it wasn't just financial, right? There was something with your mom too.",
+   "start": 38.32,
+   "end": 42.24,
+   "words": [
+    {
+     "text": " And",
+     "start": 38.32,
+     "end": 38.48,
+     "probability": 0.36567726731300354
+    },
+    {
+     "text": " it",
+     "start": 38.48,
+     "end": 38.74,
+     "probability": 0.928398847579956
+    },
+    {
+     "text": " wasn't",
+     "start": 38.74,
+     "end": 39.02,
+     "probability": 0.9957279860973358
+    },
+    {
+     "text": " just",
+     "start": 39.02,
+     "end": 39.36,
+     "probability": 0.9986144304275513
+    },
+    {
+     "text": " financial,",
+     "start": 39.36,
+     "end": 39.82,
+     "probability": 0.993665874004364
+    },
+    {
+     "text": " right?",
+     "start": 40.22,
+     "end": 40.22,
+     "probability": 0.9956682920455933
+    },
+    {
+     "text": " There",
+     "start": 40.66,
+     "end": 40.8,
+     "probability": 0.9627520442008972
+    },
+    {
+     "text": " was",
+     "start": 40.8,
+     "end": 40.96,
+     "probability": 0.9984737038612366
+    },
+    {
+     "text": " something",
+     "start": 40.96,
+     "end": 41.2,
+     "probability": 0.9984660148620605
+    },
+    {
+     "text": " with",
+     "start": 41.2,
+     "end": 41.38,
+     "probability": 0.9968681931495667
+    },
+    {
+     "text": " your",
+     "start": 41.38,
+     "end": 41.58,
+     "probability": 0.997734546661377
+    },
+    {
+     "text": " mom",
+     "start": 41.58,
+     "end": 41.84,
+     "probability": 0.8981924057006836
+    },
+    {
+     "text": " too.",
+     "start": 41.84,
+     "end": 42.24,
+     "probability": 0.46670472621917725
+    }
+   ],
+   "language": "en"
+  },
+  {
+   "text": "Yeah. Hmm. My mother's migraines just disappeared after she started on the wellness pack.",
+   "start": 42.42,
+   "end": 48.5,
+   "words": [
+    {
+     "text": " Yeah.",
+     "start": 42.42,
+     "end": 42.96,
+     "probability": 0.8764481544494629
+    },
+    {
+     "text": " Hmm.",
+     "start": 43.68,
+     "end": 43.76,
+     "probability": 0.2479640543460846
+    },
+    {
+     "text": " My",
+     "start": 44.26,
+     "end": 44.42,
+     "probability": 0.9933271408081055
+    },
+    {
+     "text": " mother's",
+     "start": 44.42,
+     "end": 44.9,
+     "probability": 0.9917446076869965
+    },
+    {
+     "text": " migraines",
+     "start": 44.9,
+     "end": 45.34,
+     "probability": 0.9901023109753927
+    },
+    {
+     "text": " just",
+     "start": 45.34,
+     "end": 45.78,
+     "probability": 0.9941792488098145
+    },
+    {
+     "text": " disappeared",
+     "start": 45.78,
+     "end": 46.38,
+     "probability": 0.9697017669677734
+    },
+    {
+     "text": " after",
+     "start": 46.38,
+     "end": 46.92,
+     "probability": 0.9488154053688049
+    },
+    {
+     "text": " she",
+     "start": 46.92,
+     "end": 47.26,
+     "probability": 0.995859682559967
+    },
+    {
+     "text": " started",
+     "start": 47.26,
+     "end": 47.54,
+     "probability": 0.9962298274040222
+    },
+    {
+     "text": " on",
+     "start": 47.54,
+     "end": 47.74,
+     "probability": 0.9979350566864014
+    },
+    {
+     "text": " the",
+     "start": 47.74,
+     "end": 47.9,
+     "probability": 0.992294430732727
+    },
+    {
+     "text": " wellness",
+     "start": 47.9,
+     "end": 48.2,
+     "probability": 0.8935408592224121
+    },
+    {
+     "text": " pack.",
+     "start": 48.2,
+     "end": 48.5,
+     "probability": 0.9899563789367676
+    }
+   ],
+   "language": "en"
+  },
+  {
+   "text": "It genuinely cleared them up. Mi mama est\u00e1 muy feliz ahora.",
+   "start": 49.06,
+   "end": 53.9,
+   "words": [
+    {
+     "text": " It",
+     "start": 49.06,
+     "end": 49.5,
+     "probability": 0.987031877040863
+    },
+    {
+     "text": " genuinely",
+     "start": 49.5,
+     "end": 50.0,
+     "probability": 0.9908085465431213
+    },
+    {
+     "text": " cleared",
+     "start": 50.0,
+     "end": 50.44,
+     "probability": 0.9703733921051025
+    },
+    {
+     "text": " them",
+     "start": 50.44,
+     "end": 50.66,
+     "probability": 0.9982753992080688
+    },
+    {
+     "text": " up.",
+     "start": 50.66,
+     "end": 51.0,
+     "probability": 0.9978796243667603
+    },
+    {
+     "text": " Mi",
+     "start": 51.36,
+     "end": 51.44,
+     "probability": 0.7521529793739319
+    },
+    {
+     "text": " mama",
+     "start": 51.44,
+     "end": 51.84,
+     "probability": 0.5963826775550842
+    },
+    {
+     "text": " est\u00e1",
+     "start": 51.84,
+     "end": 52.54,
+     "probability": 0.5400991439819336
+    },
+    {
+     "text": " muy",
+     "start": 52.54,
+     "end": 52.94,
+     "probability": 0.9909085631370544
+    },
+    {
+     "text": " feliz",
+     "start": 52.94,
+     "end": 53.46,
+     "probability": 0.9851472973823547
+    },
+    {
+     "text": " ahora.",
+     "start": 53.46,
+     "end": 53.9,
+     "probability": 0.9668838381767273
+    }
+   ],
+   "language": "en"
+  },
+  {
+   "text": "Now, to be fair, some people try this and earn nothing at all and that's just the truth.",
+   "start": 54.92,
+   "end": 60.2,
+   "words": [
+    {
+     "text": " Now,",
+     "start": 54.92,
+     "end": 55.32,
+     "probability": 0.9818755984306335
+    },
+    {
+     "text": " to",
+     "start": 55.44,
+     "end": 55.64,
+     "probability": 0.9987454414367676
+    },
+    {
+     "text": " be",
+     "start": 55.64,
+     "end": 55.88,
+     "probability": 0.9996373653411865
+    },
+    {
+     "text": " fair,",
+     "start": 55.88,
+     "end": 56.18,
+     "probability": 0.9993640780448914
+    },
+    {
+     "text": " some",
+     "start": 56.54,
+     "end": 56.74,
+     "probability": 0.9862548112869263
+    },
+    {
+     "text": " people",
+     "start": 56.74,
+     "end": 57.02,
+     "probability": 0.9994385838508606
+    },
+    {
+     "text": " try",
+     "start": 57.02,
+     "end": 57.28,
+     "probability": 0.9979382157325745
+    },
+    {
+     "text": " this",
+     "start": 57.28,
+     "end": 57.54,
+     "probability": 0.9980104565620422
+    },
+    {
+     "text": " and",
+     "start": 57.54,
+     "end": 57.7,
+     "probability": 0.9809901714324951
+    },
+    {
+     "text": " earn",
+     "start": 57.7,
+     "end": 57.9,
+     "probability": 0.9942250847816467
+    },
+    {
+     "text": " nothing",
+     "start": 57.9,
+     "end": 58.22,
+     "probability": 0.999308705329895
+    },
+    {
+     "text": " at",
+     "start": 58.22,
+     "end": 58.46,
+     "probability": 0.9965212345123291
+    },
+    {
+     "text": " all",
+     "start": 58.46,
+     "end": 58.76,
+     "probability": 0.9991883635520935
+    },
+    {
+     "text": " and",
+     "start": 58.76,
+     "end": 59.14,
+     "probability": 0.25138595700263977
+    },
+    {
+     "text": " that's",
+     "start": 59.14,
+     "end": 59.44,
+     "probability": 0.9967444241046906
+    },
+    {
+     "text": " just",
+     "start": 59.44,
+     "end": 59.66,
+     "probability": 0.9991876482963562
+    },
+    {
+     "text": " the",
+     "start": 59.66,
+     "end": 59.9,
+     "probability": 0.998869001865387
+    },
+    {
+     "text": " truth.",
+     "start": 59.9,
+     "end": 60.2,
+     "probability": 0.9994986057281494
+    }
+   ],
+   "language": "en"
+  },
+  {
+   "text": "Or, um, email us like at grow.spark at lumenrise-living.com.",
+   "start": 63.61,
+   "end": 71.07,
+   "words": [
+    {
+     "text": " Or,",
+     "start": 63.61,
+     "end": 64.07,
+     "probability": 0.324504017829895
+    },
+    {
+     "text": " um,",
+     "start": 64.09,
+     "end": 64.73,
+     "probability": 0.6779838800430298
+    },
+    {
+     "text": " email",
+     "start": 64.97,
+     "end": 65.17,
+     "probability": 0.9150654077529907
+    },
+    {
+     "text": " us",
+     "start": 65.17,
+     "end": 65.51,
+     "probability": 0.995964765548706
+    },
+    {
+     "text": " like",
+     "start": 65.51,
+     "end": 66.09,
+     "probability": 0.5613311529159546
+    },
+    {
+     "text": " at",
+     "start": 66.09,
+     "end": 66.51,
+     "probability": 0.5545130968093872
+    },
+    {
+     "text": " grow",
+     "start": 66.51,
+     "end": 66.97,
+     "probability": 0.9264770150184631
+    },
+    {
+     "text": ".spark",
+     "start": 66.97,
+     "end": 68.23,
+     "probability": 0.8408950567245483
+    },
+    {
+     "text": " at",
+     "start": 68.23,
+     "end": 68.71,
+     "probability": 0.006991766393184662
+    },
+    {
+     "text": " lumenrise",
+     "start": 68.71,
+     "end": 69.45,
+     "probability": 0.9165805379549662
+    },
+    {
+     "text": "-living",
+     "start": 69.45,
+     "end": 70.19,
+     "probability": 0.9777470231056213
+    },
+    {
+     "text": ".com.",
+     "start": 70.19,
+     "end": 71.07,
+     "probability": 0.9769387543201447
+    }
+   ],
+   "language": "en"
+  },
+  {
+   "text": "Thanks for listening. See you at the next event.",
+   "start": 71.57,
+   "end": 73.55,
+   "words": [
+    {
+     "text": " Thanks",
+     "start": 71.57,
+     "end": 71.63,
+     "probability": 0.9702548384666443
+    },
+    {
+     "text": " for",
+     "start": 71.63,
+     "end": 71.85,
+     "probability": 0.9990289211273193
+    },
+    {
+     "text": " listening.",
+     "start": 71.85,
+     "end": 72.25,
+     "probability": 0.9963165521621704
+    },
+    {
+     "text": " See",
+     "start": 72.63,
+     "end": 72.79,
+     "probability": 0.9948888421058655
+    },
+    {
+     "text": " you",
+     "start": 72.79,
+     "end": 72.89,
+     "probability": 0.9966915845870972
+    },
+    {
+     "text": " at",
+     "start": 72.89,
+     "end": 72.99,
+     "probability": 0.9952815175056458
+    },
+    {
+     "text": " the",
+     "start": 72.99,
+     "end": 73.05,
+     "probability": 0.9981340765953064
+    },
+    {
+     "text": " next",
+     "start": 73.05,
+     "end": 73.27,
+     "probability": 0.9988049268722534
+    },
+    {
+     "text": " event.",
+     "start": 73.27,
+     "end": 73.55,
+     "probability": 0.9954824447631836
+    }
+   ],
+   "language": "en"
+  }
+ ]
+}
