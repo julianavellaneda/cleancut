@@ -40,6 +40,7 @@ ai-audio-editing/
 │   │       ├── worker.py           # Threaded job queue, per-stage status
 │   │       ├── processor.py        # Wraps transcriber + analyzer
 │   │       ├── exports.py          # Export naming, cut/mute partition, render
+│   │       ├── retention.py        # RETENTION_HOURS sweeper: expired jobs + orphan media
 │   │       ├── scrubber.py         # Deterministic silence + filler detection
 │   │       └── media_editor.py     # FFmpeg trim/atrim + concat filter graphs
 │   ├── tests/                      # pytest suite
@@ -180,6 +181,8 @@ MAX_DURATION_MINUTES=120  # optional; media length cap, probed with ffprobe (fai
 DEAD_AIR_FLOOR_DB=-50     # optional; dBFS below which audio counts as silence
 DEAD_AIR_MIN_SECONDS=0.75 # optional; shortest dead-air span worth suggesting
 ADMIN_TOKEN=              # optional; when set, destructive /api/admin/* needs X-Admin-Token
+RETENTION_HOURS=          # optional; delete jobs + media older than this. Unset = keep forever
+RETENTION_SWEEP_MINUTES=15 # optional; sweeper interval
 SKIP_PREFLIGHT=           # optional; 1 to boot past a failed startup check
 ```
 
@@ -212,6 +215,14 @@ System dependency: `brew install ffmpeg`.
 - **exports.py**: the single owner of the `{job_id}_edited{ext}` naming rule, the cut/mute
   partition, and the render call. Both the queued export and the worker's auto-fix branch go
   through it; do not re-derive an export path anywhere else. Tests swap `exports.MediaEditor`.
+- **Retention** (`services/retention.py`): off unless `RETENTION_HOURS` is set - an unparseable
+  value also leaves it off, because a typo in `.env` must not start deleting media on a schedule
+  nobody chose (the opposite of `limits.py`, which fails closed). The sweeper is a daemon thread
+  started in the lifespan; it deletes expired jobs whose status is terminal, their media, and any
+  file on disk with no live job behind it. Jobs still in the pipeline are skipped however old they
+  are - the queue is sequential, so age alone does not mean abandoned. `delete_job_files` is the
+  single owner of "remove a job's media"; `DELETE /api/jobs/{id}` calls it too, which is what fixed
+  that route leaving the export behind.
 - **Worker**: threaded queue, sequential processing, per-stage job status polled by the frontend.
   Queue items are `QueuedTask(kind, job_id, ...)` with `kind` either `"process"` or `"export"`.
 - **Export is asynchronous**: `POST /export` validates synchronously (404 unknown job, 400 not

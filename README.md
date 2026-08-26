@@ -81,6 +81,9 @@ pip install -r requirements-dev.txt
 pytest
 ```
 
+GitHub Actions runs the same suite on every push and pull request, alongside `tsc --noEmit` and a
+production frontend build — see `.github/workflows/ci.yml`.
+
 ## CLI
 
 The analysis pipeline is also runnable standalone, without the web app:
@@ -169,6 +172,8 @@ Set in `.env` at the repo root:
 | `NEXT_PUBLIC_API_URL` | `http://localhost:8000/api` | Backend URL baked into the frontend build |
 | `MAX_UPLOAD_MB` | `500` | Upload size cap; larger uploads are rejected with a 413 |
 | `MAX_DURATION_MINUTES` | `120` | Media length cap, measured with `ffprobe` before queueing; media whose duration cannot be read is rejected |
+| `RETENTION_HOURS` | unset | Delete jobs and their media once they are this old. Unset keeps everything forever |
+| `RETENTION_SWEEP_MINUTES` | `15` | How often the retention sweeper runs |
 | `ADMIN_TOKEN` | unset | Shared secret for the destructive admin routes. Unset leaves them open (fine on localhost); set it and they require an `X-Admin-Token` header |
 | `SKIP_PREFLIGHT` | unset | Boot despite a failed startup check (jobs will still fail) |
 
@@ -202,3 +207,14 @@ provider — never the audio. Jobs, uploads, and exports stay on local disk (SQL
 
 The wipe endpoints delete everything and are open by default, which is only safe on a machine you
 control. Set `ADMIN_TOKEN` before putting the API anywhere else; the dashboard has a field for it.
+
+Nothing is deleted on a timer unless you ask for it. Set `RETENTION_HOURS` and a background sweeper
+deletes each job — its row, its violations, its upload, and its export — once it is that old, along
+with any media left on disk that no job refers to any more. A job still moving through the pipeline
+is never collected however old it is, since the queue is sequential and a job can wait a long time
+behind a long one. The default is unset, because on your own laptop the recordings are yours and
+deleting them by surprise is the worse failure.
+
+## License
+
+MIT — see [LICENSE](LICENSE).
