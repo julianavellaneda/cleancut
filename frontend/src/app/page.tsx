@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useCallback, useEffect, useRef } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -73,27 +73,34 @@ export default function UploadPage() {
     }
   }
 
-  const handleDragOver = useCallback((e: React.DragEvent) => {
+  // None of these are memoized, deliberately. They are handed to plain DOM
+  // elements, so a stable identity buys no re-render that React was not going
+  // to do anyway - and the empty dependency list it needs is a trap here: the
+  // two that reach `handleFiles` used to be `useCallback(..., [])`, which froze
+  // them around the *first* render's closure. `handleFiles` reads prompt,
+  // preset, autoFix and autoScrub, so every upload shipped the initial values
+  // and the settings above the drop zone did nothing at all.
+  function handleDragOver(e: React.DragEvent) {
     e.preventDefault();
     setIsDragging(true);
-  }, []);
+  }
 
-  const handleDragLeave = useCallback((e: React.DragEvent) => {
+  function handleDragLeave(e: React.DragEvent) {
     e.preventDefault();
     setIsDragging(false);
-  }, []);
+  }
 
-  const handleDrop = useCallback((e: React.DragEvent) => {
+  function handleDrop(e: React.DragEvent) {
     e.preventDefault();
     setIsDragging(false);
     const files = Array.from(e.dataTransfer.files);
     if (files.length > 0) handleFiles(files);
-  }, []);
+  }
 
-  const handleFileInput = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
+  function handleFileInput(e: React.ChangeEvent<HTMLInputElement>) {
     const files = e.target.files ? Array.from(e.target.files) : [];
     if (files.length > 0) handleFiles(files);
-  }, []);
+  }
 
   async function handleFiles(files: File[]) {
     const allowedExtensions = /\.(mp3|wav|m4a|flac|ogg|webm|aif|aiff|mp4|mov)$/i;
