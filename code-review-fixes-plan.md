@@ -11,7 +11,41 @@ General rules for every phase:
 
 ---
 
-## Phase 1 — Export status reporting (quick, high-impact, isolated)
+## Progress
+
+All work is on branch `code-review-fixes`, off `main` at `e6113a9`. One commit per phase.
+
+| Phase | State | Commit |
+|-------|-------|--------|
+| 1 — Export status reporting | **Done** | `aceafda` (bundled with the pre-existing working tree) |
+| 2 — Frontend upload settings | **Done** | `23ba748` |
+| 3 — Dedup + timestamp alignment | **Done** | `dc7280c` |
+| 4–11 | Not started | — |
+
+Baseline after Phase 3: **532 backend tests**, **29 frontend tests**, `tsc --noEmit` clean,
+`python -m app.eval.run --detectors ../tests/fixtures/demo/demo_seminar.mp3 --suite scrub` passes
+(F1 95.7%, unchanged by these fixes).
+
+Notes left behind for whoever picks this up:
+
+- **Phase 1** also matters to Phase 4: `export_status` is now actually visible to the frontend
+  poll, which is what makes staleness observable at all.
+- **Phase 3** added `Violation.is_approximate` to the *analyzer* dataclass only. It gates
+  `auto_fix` (via `worker._is_pre_accepted`) and is written into the `reasoning` text so a
+  reviewer sees it, but there is **no `violations` column for it** — surfacing it as a real field
+  in the review UI needs a migration in `database._apply_migrations()`, `schemas.py`, `api.ts`
+  and `ViolationCard`. Worth doing if Phase 8 or 9 is touching the schema anyway.
+- **Phase 3** changed two private signatures: `_find_text_timestamps` now returns
+  `(start, end, aligned)` and `_deduplicate_violations` takes a list of per-chunk lists rather
+  than a flat list. Both are covered by `tests/test_timestamp_mapping.py` and `tests/test_dedup.py`.
+- `worker._is_pre_accepted` is now the single owner of "may this be applied unreviewed" — both the
+  saved `status` and the auto-rendered export ask it. Keep it that way; they used to be two
+  separate expressions that could drift.
+- **Phase 6 still needs a decision from the user** before anyone implements it.
+
+---
+
+## Phase 1 — Export status reporting (quick, high-impact, isolated) — DONE
 
 **Finding #1 (High): Export polling never observes the real state**
 - File: `backend/app/routes/jobs.py:309` (`_build_job_response`)
@@ -23,7 +57,7 @@ momentum and validate the workflow.
 
 ---
 
-## Phase 2 — Frontend upload settings bug (isolated, frontend-only)
+## Phase 2 — Frontend upload settings bug (isolated, frontend-only) — DONE
 
 **Finding #8 (High): Upload settings are ignored by the frontend**
 - File: `frontend/src/app/page.tsx:86`
@@ -38,7 +72,7 @@ sequentially.
 
 ---
 
-## Phase 3 — Analysis correctness: dedup + timestamp alignment
+## Phase 3 — Analysis correctness: dedup + timestamp alignment — DONE
 
 These two live in the same file and are conceptually linked (both affect what gets auto-cut), so
 group them together.
@@ -175,10 +209,10 @@ Small, mechanical validation fixes — group together:
 
 ## Suggested execution order
 
-1. Phase 1 (export status) — quick win
-2. Phase 2 (upload settings) — quick win, frontend-only
-3. Phase 3 (dedup + timestamp alignment) — correctness-critical
-4. Phase 4 (export invalidation) — depends on Phase 1
+1. ~~Phase 1 (export status)~~ — done
+2. ~~Phase 2 (upload settings)~~ — done
+3. ~~Phase 3 (dedup + timestamp alignment)~~ — done
+4. **Phase 4 — start here.** Phase 4 (export invalidation) — depends on Phase 1
 5. Phase 5 (admin auth default)
 6. Phase 6 (network exposure) — **needs user decision first**
 7. Phase 8, 9, 10 (medium batches) — any order, independent of each other
