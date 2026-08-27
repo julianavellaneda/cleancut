@@ -256,3 +256,47 @@ def test_media_type_is_passed_through(run_job):
     )
 
     assert RecordingEditor.last["media_type"] == "video"
+
+
+# --- a suggestion nobody could place is never applied unattended -------------
+#
+# When the analyzer cannot find a quote in the transcript, the span it returns
+# is the model's own estimate. `auto_fix` used to apply those exactly like a
+# measured one, so a quote that matched nothing cut whatever happened to be at
+# the guessed time - the one case where an unreviewed cut is guaranteed wrong.
+
+def _approximate(start, end, label, action):
+    v = _violation(start, end, label, action)
+    v.is_approximate = True
+    return v
+
+
+def test_auto_fix_leaves_an_unplaced_suggestion_pending(run_job):
+    job_id = run_job(
+        llm_violations=[_approximate(1.0, 2.0, "Income Claims", "cut")],
+        auto_fix=True,
+    )
+
+    assert [row.status for row in _rows(job_id)] == ["pending"]
+
+
+def test_an_unplaced_suggestion_is_not_rendered_into_the_export(run_job):
+    """The review screen and the exported file have to agree about it."""
+    run_job(
+        llm_violations=[
+            _violation(1.0, 2.0, "Income Claims", "cut"),
+            _approximate(5.0, 6.0, "Income Claims", "cut"),
+        ],
+        auto_fix=True,
+    )
+
+    assert RecordingEditor.last["cuts"] == [(1.0, 2.0)]
+
+
+def test_placed_suggestions_are_still_auto_accepted(run_job):
+    job_id = run_job(
+        llm_violations=[_violation(1.0, 2.0, "Income Claims", "cut")],
+        auto_fix=True,
+    )
+
+    assert [row.status for row in _rows(job_id)] == ["accepted"]

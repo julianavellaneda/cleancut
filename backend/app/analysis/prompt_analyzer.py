@@ -8,6 +8,7 @@ Which model answers is configuration, not code - see `providers.py` and
 
 import difflib
 import json
+import math
 import os
 import re
 from dataclasses import dataclass, asdict, field
@@ -109,6 +110,17 @@ _MIN_CROSS_SEGMENT_WORDS = 4
 # off with the model's own approximate timestamp.
 _MIN_FUZZY_MATCH_RATIO = 0.6
 
+# How alike two quotes must read before one is treated as the other seen a
+# second time. Only ever consulted for two suggestions that already share a
+# label and already overlap in time.
+_DUPLICATE_TEXT_RATIO = 0.75
+
+# What a reviewer is told about a suggestion whose quote could not be placed.
+_APPROXIMATE_NOTE = (
+    "[Approximate placement: this quote could not be matched to the transcript, "
+    "so the span is the model's own estimate. Check it before accepting.]"
+)
+
 # Words in an editing instruction that mean "leave it in place and silence it"
 # rather than "take it out".
 _REDACTION_HINTS = (
@@ -126,6 +138,52 @@ _REMOVAL_HINTS = (
 def _normalize_words(text: str) -> list[str]:
     """Lowercased word-shaped tokens, punctuation discarded."""
     return _WORD_RE.findall(text.lower())
+
+
+def _tokenize_words(words) -> tuple[list[str], list[int]]:
+    """
+    Flatten ``Word`` objects into tokens, remembering which Word each came from.
+
+    One Word can normalize to two tokens ("job.by") or to none at all (bare
+    punctuation), so a token index is not a word index and the mapping has to be
+    kept rather than recomputed.
+    """
+    haystack: list[str] = []
+    owners: list[int] = []
+    for index, word in enumerate(words):
+        for token in _normalize_words(word.text):
+            haystack.append(token)
+            owners.append(index)
+    return haystack, owners
+
+
+def _find_token_run(haystack: list[str], needle: list[str]) -> list[int]:
+    """Start indices where ``needle`` appears in ``haystack`` as a whole run."""
+    if not needle or len(needle) > len(haystack):
+        return []
+    return [
+        i
+        for i in range(len(haystack) - len(needle) + 1)
+        if haystack[i:i + len(needle)] == needle
+    ]
+
+
+def _coerce_time(value) -> float | None:
+    """
+    A timestamp from the model, or ``None`` when it is not a usable one.
+
+    ``float()`` accepts "nan" and "inf" as readily as "12.5", and both propagate
+    straight into a span the exporter would hand to FFmpeg. A negative time is
+    equally unusable. All three are rejected here rather than clamped, because
+    the caller has a real fallback and a clamped nonsense value looks plausible.
+    """
+    try:
+        seconds = float(str(value).strip().rstrip("s"))
+    except (TypeError, ValueError):
+        return None
+    if not math.isfinite(seconds) or seconds < 0:
+        return None
+    return seconds
 
 
 def _prompt_default_action(prompt: str | None) -> str:
@@ -274,6 +332,11 @@ class Violation:
     reasoning: str
     rule_violated: str | None = None  # Populated in preset mode
     severity: str | None = None  # "high" | "medium" | "low", populated in preset mode
+    # True when the quote could not be placed against the transcript and the
+    # span is the model's own estimate rather than a measurement. Such a
+    # suggestion is still worth reviewing - the model found something - but it
+    # is never applied without a human looking at it, so `auto_fix` skips it.
+    is_approximate: bool = False
 
 
 @dataclass
@@ -384,7 +447,10 @@ class PromptAnalyzer:
             overlap_info = f", {overlap} segment overlap" if overlap > 0 else ""
             print(f"Analyzing transcript in {num_chunks} chunks ({chunk_size} segments each{overlap_info}) with {mode_label}...")
 
-        all_violations = []
+        # Kept grouped by chunk: deduplication only collapses a finding that two
+        # overlapping chunks both reported, and that decision needs to know
+        # which chunk each suggestion came from.
+        per_chunk_violations: list[list[Violation]] = []
         failed_chunks: list[str] = []
         # Segment indices a chunk actually came back with an answer for. With
         # overlap one segment can sit in two chunks, so this is a set rather
@@ -431,7 +497,7 @@ class PromptAnalyzer:
             mapped = self._map_to_timestamps(
                 chunk_violations, chunk_transcript, preset=preset, prompt=prompt
             )
-            all_violations.extend(mapped)
+            per_chunk_violations.append(mapped)
 
         # Every chunk failed: there is no analysis at all, so fail loudly
         # rather than hand back an empty result that reads as "nothing found".
@@ -441,7 +507,7 @@ class PromptAnalyzer:
             )
 
         # Deduplicate violations from overlapping chunks
-        all_violations = self._deduplicate_violations(all_violations)
+        all_violations = self._deduplicate_violations(per_chunk_violations)
 
         # Sort all violations by time
         all_violations.sort(key=lambda v: v.start_time)
@@ -495,30 +561,70 @@ class PromptAnalyzer:
             for start, end in self._chunk_ranges(len(segments), chunk_size, overlap)
         ]
 
-    def _deduplicate_violations(self, violations: list[Violation]) -> list[Violation]:
-        """Remove duplicate suggestions from overlapping chunks."""
-        if not violations:
-            return violations
+    def _deduplicate_violations(
+        self, per_chunk: list[list[Violation]]
+    ) -> list[Violation]:
+        """
+        Collapse the same finding seen twice, and nothing else.
 
-        sorted_violations = sorted(violations, key=lambda v: (v.start_time, v.label))
-        unique = []
+        Duplicates exist for exactly one reason: consecutive chunks overlap, so
+        the segments in the seam are analyzed twice. That is the only case this
+        removes. The old rule - same label, starts within 5 seconds - had no
+        notion of which chunk a suggestion came from, so it also deleted
+        *distinct* findings that happened to be close together. Two income
+        claims three seconds apart is not an unusual sentence in a recording
+        this tool exists to review, and the second one silently disappeared.
 
-        for v in sorted_violations:
-            is_duplicate = False
-            for existing in unique:
-                # Check if same label and overlapping time (within 5 seconds)
-                if (v.label == existing.label and
-                    abs(v.start_time - existing.start_time) < 5.0):
-                    if len(v.text) > len(existing.text):
-                        unique.remove(existing)
-                        unique.append(v)
-                    is_duplicate = True
-                    break
+        A suggestion is the same finding as another only when all three hold:
+        it came from a **different chunk**, the labels agree, and the spans
+        genuinely overlap - not "start near each other", which two adjacent
+        five-second edits also do. Text similarity then confirms it, so two
+        different sentences quoted from the same overlapping seam both survive.
 
-            if not is_duplicate:
-                unique.append(v)
+        Input is grouped by chunk rather than flat, because chunk provenance is
+        the whole basis of the decision and cannot be recovered afterwards.
+        """
+        kept: list[tuple[int, Violation]] = []
 
-        return unique
+        for chunk_index, chunk in enumerate(per_chunk):
+            for violation in chunk:
+                duplicate_of = next(
+                    (
+                        position
+                        for position, (seen_chunk, seen) in enumerate(kept)
+                        if seen_chunk != chunk_index
+                        and self._is_same_finding(violation, seen)
+                    ),
+                    None,
+                )
+                if duplicate_of is None:
+                    kept.append((chunk_index, violation))
+                elif len(violation.text) > len(kept[duplicate_of][1].text):
+                    # Keep the fuller quote. A chunk boundary can cut a sentence
+                    # in half, and the half is the worse suggestion of the two.
+                    kept[duplicate_of] = (chunk_index, violation)
+
+        return [violation for _, violation in kept]
+
+    def _is_same_finding(self, a: Violation, b: Violation) -> bool:
+        """Whether two suggestions from different chunks describe one edit."""
+        if a.label.strip().lower() != b.label.strip().lower():
+            return False
+
+        # Real interval overlap. Two suggestions that merely abut are two edits.
+        if min(a.end_time, b.end_time) <= max(a.start_time, b.start_time):
+            return False
+
+        first, second = _normalize_words(a.text), _normalize_words(b.text)
+        if not first or not second:
+            return False
+        if first == second:
+            return True
+        # One chunk quoting a clause of what the other quoted whole.
+        shorter, longer = sorted((first, second), key=len)
+        if _find_token_run(longer, shorter):
+            return True
+        return difflib.SequenceMatcher(None, first, second).ratio() >= _DUPLICATE_TEXT_RATIO
 
     def _format_transcript_for_analysis(self, transcript: TranscriptResult) -> str:
         """Format transcript for LLM analysis."""
@@ -661,14 +767,13 @@ IMPORTANT:
 
         for v in raw_violations:
             text = v.get("text", "")
-            approx_time = v.get("approximate_time", "0s")
 
-            try:
-                approx_seconds = float(str(approx_time).replace("s", ""))
-            except ValueError:
-                approx_seconds = 0
+            # An unreadable, negative, NaN or infinite `approximate_time` is not
+            # a hint about where to look; treating it as 0s used to drag the
+            # search - and the fallback window - to the start of the recording.
+            approx_seconds = _coerce_time(v.get("approximate_time", "0s"))
 
-            start_time, end_time = self._find_text_timestamps(
+            start_time, end_time, aligned = self._find_text_timestamps(
                 text, transcript, approx_seconds
             )
 
@@ -686,15 +791,23 @@ IMPORTANT:
                 action = v.get("action") or prompt_default_action
             action = action.strip().lower()
 
+            reasoning = v.get("reasoning", "")
+            if not aligned:
+                # Said in the one field the reviewer already reads. Without a
+                # column of its own, this is how an unplaced marker admits on
+                # screen that it is a guess.
+                reasoning = f"{_APPROXIMATE_NOTE} {reasoning}".strip()
+
             violations.append(Violation(
                 text=text,
                 start_time=start_time,
                 end_time=end_time,
                 label=label,
                 action=action,
-                reasoning=v.get("reasoning", ""),
+                reasoning=reasoning,
                 rule_violated=rule_violated,
                 severity=severity,
+                is_approximate=not aligned,
             ))
 
         return violations
@@ -703,14 +816,24 @@ IMPORTANT:
         self,
         text: str,
         transcript: TranscriptResult,
-        approx_time: float
-    ) -> tuple[float, float]:
-        """Find precise timestamps for a text segment."""
+        approx_time: float | None,
+    ) -> tuple[float, float, bool]:
+        """
+        Place a quote on the transcript's clock.
+
+        Returns ``(start, end, aligned)``. ``aligned`` is False when the quote
+        could not be found in the transcript at all and the span is the model's
+        own estimate padded out - the third element exists so that a guess
+        cannot be mistaken downstream for a measurement, which is what let an
+        unplaced quote be auto-applied as if it had been located.
+        """
         text_lower = text.lower()
         candidates = []
         for seg in transcript.segments:
             if text_lower in seg.text.lower():
-                distance = abs(seg.start - approx_time)
+                # With no usable hint from the model, prefer the first
+                # occurrence rather than pretending 0s was a real answer.
+                distance = abs(seg.start - approx_time) if approx_time is not None else seg.start
                 candidates.append((distance, seg))
 
         if candidates:
@@ -719,8 +842,10 @@ IMPORTANT:
             if best_seg.words:
                 start, end = self._find_words_in_segment(text_lower, best_seg)
                 if start is not None:
-                    return start, end
-            return best_seg.start, best_seg.end
+                    return start, end, True
+            # The quote is inside this segment; its bounds are a real, measured
+            # span even when the words underneath could not be narrowed down.
+            return best_seg.start, best_seg.end, True
 
         # No single segment contains the quote. That is the normal shape of a
         # sentence Whisper split at a pause - "you could quit your job" ends one
@@ -729,15 +854,21 @@ IMPORTANT:
         # quote against the transcript's words instead of its segments.
         span = self._find_text_across_segments(text, transcript, approx_time)
         if span is not None:
-            return span
+            return span[0], span[1], True
 
-        return max(0, approx_time - 2), approx_time + 2
+        # Nothing in the transcript accounts for this quote. The window below is
+        # a placeholder so the finding stays reviewable and roughly locatable -
+        # not an answer. It is returned unaligned, and the caller is responsible
+        # for never applying it unattended.
+        if approx_time is None:
+            return 0.0, 0.0, False
+        return max(0.0, approx_time - 2), approx_time + 2, False
 
     def _find_text_across_segments(
         self,
         text: str,
         transcript: TranscriptResult,
-        approx_time: float,
+        approx_time: float | None,
     ) -> tuple[float, float] | None:
         """
         Align a quote spanning a segment boundary onto word-level timestamps.
@@ -757,12 +888,7 @@ IMPORTANT:
 
         # One entry per token, remembering which Word it came from - a Word can
         # normalize to two tokens ("job.by") or to none at all (bare punctuation).
-        haystack: list[str] = []
-        owners: list[int] = []
-        for index, word in enumerate(words):
-            for token in _normalize_words(word.text):
-                haystack.append(token)
-                owners.append(index)
+        haystack, owners = _tokenize_words(words)
         if not haystack:
             return None
 
@@ -770,13 +896,16 @@ IMPORTANT:
             return words[owners[start_idx]].start, words[owners[end_idx]].end
 
         # Exact run of words, the common case once punctuation is dropped.
-        exact = [
-            i
-            for i in range(len(haystack) - len(needle) + 1)
-            if haystack[i:i + len(needle)] == needle
-        ]
+        exact = _find_token_run(haystack, needle)
         if exact:
-            best = min(exact, key=lambda i: abs(words[owners[i]].start - approx_time))
+            best = min(
+                exact,
+                key=lambda i: (
+                    abs(words[owners[i]].start - approx_time)
+                    if approx_time is not None
+                    else words[owners[i]].start
+                ),
+            )
             return span_for(best, best + len(needle) - 1)
 
         # Otherwise the model paraphrased slightly, or Whisper's words differ
@@ -805,22 +934,30 @@ IMPORTANT:
         text: str,
         segment: Segment
     ) -> tuple[float | None, float | None]:
-        """Find word-level timestamps for text within a segment."""
-        words = text.split()
-        if not words or not segment.words:
+        """
+        Word-level timestamps for a quote known to sit inside one segment.
+
+        The whole normalized run has to match. The previous version looked for
+        the quote's *first* word as a substring of any word in the segment and
+        then took a span that many words long from there - so "so" matched
+        inside "also", "I" matched inside "like", and the end was a word count
+        measured from a start that was never verified. The result was a
+        confident span over speech nobody had quoted, which `auto_fix` was happy
+        to cut. Returning ``None, None`` instead hands the caller back to the
+        segment's own bounds, which are at least measured.
+        """
+        needle = _normalize_words(text)
+        if not needle or not segment.words:
             return None, None
 
-        segment_words = [w.text.strip().lower() for w in segment.words]
-        first_word = words[0].lower()
+        haystack, owners = _tokenize_words(segment.words)
+        matches = _find_token_run(haystack, needle)
+        if not matches:
+            return None, None
 
-        for i, sw in enumerate(segment_words):
-            if first_word in sw:
-                start_time = segment.words[i].start
-                end_idx = min(i + len(words) - 1, len(segment.words) - 1)
-                end_time = segment.words[end_idx].end
-                return start_time, end_time
-
-        return None, None
+        start_idx = matches[0]
+        end_idx = start_idx + len(needle) - 1
+        return segment.words[owners[start_idx]].start, segment.words[owners[end_idx]].end
 
 
 def to_json(result: AnalysisResult, indent: int = 2) -> str:

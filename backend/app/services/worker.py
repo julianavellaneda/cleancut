@@ -101,6 +101,26 @@ def _worker_loop():
             logger.error(f"Worker loop error: {str(e)}")
 
 
+def _is_pre_accepted(suggestion, job) -> bool:
+    """
+    Whether a suggestion may be applied without anyone having looked at it.
+
+    `auto_scrub` governs the deterministic detectors, `auto_fix` the LLM's
+    suggestions - two separate promises about two separate kinds of confidence.
+
+    Neither flag covers a suggestion the analyzer could not place. When a quote
+    cannot be found in the transcript, its span is the model's own estimate, and
+    applying an estimate unattended cuts whatever happens to be there. Those land
+    as `pending` however the job was configured: the flag was a statement about
+    trusting the *findings*, not about trusting a guess at where one is.
+    """
+    if getattr(suggestion, "is_approximate", False):
+        return False
+    if suggestion.label in exports.SCRUBBER_LABELS:
+        return bool(job.auto_scrub)
+    return bool(job.auto_fix)
+
+
 def _append_job_warning(db, job, message: str):
     """
     Add a non-fatal warning to a job without clobbering an existing one.
@@ -423,14 +443,8 @@ def _process_job_sequentially(job_id: str, file_path: str):
 
         # Step 3: Save results (Suggested Edits)
         for v in all_suggestions:
-            # For scrubber violations, we use auto_scrub to decide initial status
-            # For LLM violations, we use auto_fix
-            is_scrubber = v.label in ["Dead Air", "Filler Word"]
-            if is_scrubber:
-                status = "accepted" if job.auto_scrub else "pending"
-            else:
-                status = "accepted" if job.auto_fix else "pending"
-                
+            status = "accepted" if _is_pre_accepted(v, job) else "pending"
+
             violation = Violation(
                 id=str(uuid.uuid4()),
                 job_id=job_id,
@@ -454,16 +468,10 @@ def _process_job_sequentially(job_id: str, file_path: str):
 
             export_path = exports.export_path_for(job, file_path_to_use, EXPORT_DIR)
 
-            # Map pre-accepted suggestions to time segments. auto_fix governs the
-            # LLM's suggestions, auto_scrub the deterministic ones. Each keeps its
-            # own action - a preset like pii-redaction defaults to mute, and
-            # auto-applying it as a cut would delete the audio instead of
-            # silencing it.
-            applied = [
-                v for v in all_suggestions
-                if (v.label in exports.SCRUBBER_LABELS and job.auto_scrub)
-                or (v.label not in exports.SCRUBBER_LABELS and job.auto_fix)
-            ]
+            # What gets rendered is exactly what was written as `accepted`
+            # above - one predicate, asked twice, so the file on disk cannot
+            # disagree with the review screen describing it.
+            applied = [v for v in all_suggestions if _is_pre_accepted(v, job)]
             cuts, mutes = exports.partition_edits(applied)
             exports.render_export(file_path_to_use, export_path, cuts, mutes, job.media_type)
             job.export_status = "ready"
