@@ -194,6 +194,12 @@ def _process_export(job_id: str, edit_action: str | None = None):
         job.export_error = None
         db.commit()
 
+        # Captured before the edits are read, and compared again once the render
+        # lands. A reviewer can accept or reject something while a long re-encode
+        # is running; without this check the worker would then mark a file
+        # "ready" that answers a question nobody is asking any more.
+        rendered_revision = job.edit_revision or 0
+
         violations = (
             db.query(Violation)
             .filter(Violation.job_id == job_id, Violation.status == "accepted")
@@ -206,8 +212,24 @@ def _process_export(job_id: str, edit_action: str | None = None):
 
         exports.render_export(str(source_path), export_path, cuts, mutes, job.media_type)
 
+        db.refresh(job)
+        if (job.edit_revision or 0) != rendered_revision:
+            # The edit list moved under the render. Publishing it would put a
+            # download button next to a file that no longer matches the review,
+            # which is the exact failure this phase exists to close.
+            exports.delete_export_files(job_id, EXPORT_DIR)
+            job.export_status = "none"
+            job.export_error = None
+            job.export_revision = None
+            db.commit()
+            logger.info(
+                f"Export for job {job_id} discarded: the edits changed while it rendered."
+            )
+            return
+
         job.export_status = "ready"
         job.export_error = None
+        job.export_revision = rendered_revision
         db.commit()
         logger.info(f"Export for job {job_id} finished: {exports.describe_edits(cuts, mutes)}")
 
@@ -293,6 +315,12 @@ def _process_reanalysis(job_id: str):
 
         job.status = "completed"
         db.commit()
+
+        # Every LLM suggestion the old export was rendered from has just been
+        # deleted, decisions included, so whatever sits in exports/ describes an
+        # edit list that no longer exists.
+        exports.invalidate_export(db, job, EXPORT_DIR)
+
         logger.info(f"Job {job_id} re-analyzed: {len(analysis.violations)} suggestion(s).")
 
     except Exception as e:
@@ -475,6 +503,10 @@ def _process_job_sequentially(job_id: str, file_path: str):
             cuts, mutes = exports.partition_edits(applied)
             exports.render_export(file_path_to_use, export_path, cuts, mutes, job.media_type)
             job.export_status = "ready"
+            # Nothing has been reviewed yet, so this render matches the edit set
+            # exactly - revision 0. The first decision the reviewer makes bumps
+            # past it and retires the file.
+            job.export_revision = job.edit_revision or 0
 
         job.status = "completed"
         db.commit()

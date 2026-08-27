@@ -177,7 +177,9 @@ CREATE TABLE jobs (
     waveform_data TEXT,                -- JSON cached peaks
     transcript TEXT,                   -- JSON transcript segments, NULL on old rows
     export_status TEXT DEFAULT 'none', -- none, queued, exporting, ready, failed
-    export_error TEXT
+    export_error TEXT,
+    edit_revision INTEGER DEFAULT 0,   -- bumped whenever the accepted edit set moves
+    export_revision INTEGER            -- the edit_revision the export was rendered from
 );
 
 CREATE TABLE violations (
@@ -265,6 +267,22 @@ System dependency: `brew install ffmpeg`.
 - **exports.py**: the single owner of the `{job_id}_edited{ext}` naming rule, the cut/mute
   partition, and the render call. Both the queued export and the worker's auto-fix branch go
   through it; do not re-derive an export path anywhere else. Tests swap `exports.MediaEditor`.
+- **Export staleness** (`exports.invalidate_export`, `exports.export_is_stale`): an export is only
+  current for the edit list it was rendered from, so the job carries two counters -
+  `edit_revision`, bumped whenever the *accepted* set moves, and `export_revision`, the revision the
+  file on disk came from. Every route that can move a suggestion goes through `invalidate_export`,
+  which bumps, deletes the superseded file, and puts `export_status` back to `none`; the file is
+  deleted rather than flagged because the counter is monotonic, so those bytes can never be current
+  again. `affects_export` is what keeps this from churning: only accepted edits reach FFmpeg, so
+  pending -> rejected, or re-cutting a rejected row, changes nothing and keeps the export. A render
+  already in flight is left alone - `_process_export` captures the revision before it starts and
+  re-checks after, discarding a file the edits overtook rather than publishing it `ready`. A
+  **NULL** `export_revision` means "provenance unknown" (never exported, or a row from before these
+  columns) and is deliberately *not* stale, which keeps an old row's download working. Both
+  counters are on `JobResponse`, so the review page derives staleness from the server rather than
+  from a flag that could not survive a reload or a second tab. `/export/download` and
+  `/export/stream` answer **409** on a stale export - belt and braces, since invalidation normally
+  deletes the file first.
 - **Retention** (`services/retention.py`): off unless `RETENTION_HOURS` is set - an unparseable
   value also leaves it off, because a typo in `.env` must not start deleting media on a schedule
   nobody chose (the opposite of `limits.py`, which fails closed). The sweeper is a daemon thread

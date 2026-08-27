@@ -4,7 +4,7 @@ SQLAlchemy models for Job and Violation.
 
 import uuid
 from datetime import datetime
-from sqlalchemy import Column, String, Float, Text, ForeignKey, DateTime, Boolean
+from sqlalchemy import Column, String, Float, Integer, Text, ForeignKey, DateTime, Boolean
 from sqlalchemy.orm import relationship
 
 from .database import Base
@@ -43,6 +43,14 @@ class Job(Base):
     # "export ready".
     export_status = Column(String, default="none")  # none, queued, exporting, ready, failed
     export_error = Column(Text, nullable=True)
+    # Monotonic counter over the *accepted* edit set: bumped whenever a decision
+    # or an action changes what a render would produce. `export_revision` records
+    # which revision the file in exports/ was rendered from, so "is this export
+    # still the edit list on screen" is a comparison rather than a guess. NULL
+    # means no export whose provenance we know - a row migrated in from before
+    # these columns, or a job that has never exported.
+    edit_revision = Column(Integer, default=0, nullable=False)
+    export_revision = Column(Integer, nullable=True)
 
     violations = relationship("Violation", back_populates="job", cascade="all, delete-orphan")
 

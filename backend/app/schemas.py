@@ -70,6 +70,12 @@ class JobResponse(JobBase):
     # it polls `status` for the processing stages.
     export_status: str = "none"  # none, queued, exporting, ready, failed
     export_error: str | None = None
+    # Staleness, as data rather than as something the client has to remember: an
+    # export is current only while `export_revision` still equals
+    # `edit_revision`. NULL export_revision means "no export of known
+    # provenance", which is not the same as stale.
+    edit_revision: int = 0
+    export_revision: int | None = None
     violation_count: int = 0
     pending_count: int = 0
     accepted_count: int = 0

@@ -190,6 +190,16 @@ def _resolve_export(job_id: str, db: Session) -> tuple[Job, Path, str]:
     if not job:
         raise HTTPException(status_code=404, detail="Job not found")
 
+    # Belt and braces. `invalidate_export` already deletes a superseded file, so
+    # this normally cannot trigger - but a stale file that survived (an unlink
+    # that failed, a render that landed after the edits moved) must not be
+    # handed to the user as their finished master.
+    if exports.export_is_stale(job):
+        raise HTTPException(
+            status_code=409,
+            detail="This export is out of date. The edits changed since it was rendered; export again.",
+        )
+
     export_path = _get_export_path(job_id, job)
     if not export_path:
         raise HTTPException(

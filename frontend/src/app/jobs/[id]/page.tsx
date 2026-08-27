@@ -23,6 +23,21 @@ function isExportPending(status: ExportStatus | undefined): boolean {
   return status === "queued" || status === "exporting";
 }
 
+/**
+ * Whether the rendered export predates the edit list on screen.
+ *
+ * Read off the job's revisions rather than remembered in component state: the
+ * server retires a superseded export the moment an accepted edit moves, and a
+ * flag living only in this component could not survive a reload, a second tab,
+ * or the poll replacing the job object. A null `export_revision` is "provenance
+ * unknown" - a job that never exported, or a row from before the columns - and
+ * is deliberately not stale.
+ */
+function isExportStale(job: Job | null): boolean {
+  if (!job || job.export_revision === null || job.export_revision === undefined) return false;
+  return job.export_revision !== job.edit_revision;
+}
+
 export default function ReviewPage() {
   const params = useParams();
   const jobId = params.id as string;
@@ -40,10 +55,6 @@ export default function ReviewPage() {
   const [lastSweep, setLastSweep] = useState<string[] | null>(null);
   const [showReanalyze, setShowReanalyze] = useState(false);
   const [isReanalyzing, setIsReanalyzing] = useState(false);
-  // The edit set changed since the last render, so whatever sits in exports/ is
-  // stale. Tracked separately from the server's export_status, which describes
-  // the last render rather than whether it still matches the review.
-  const [exportStale, setExportStale] = useState(false);
   const [showLegend, setShowLegend] = useState(false);
   // Jobs processed before transcripts were persisted return null here, so the
   // panel is opt-in twice over: only shown when the user asks, and only when
@@ -56,8 +67,24 @@ export default function ReviewPage() {
   const videoRef = useRef<HTMLVideoElement>(null);
 
   const exportStatus: ExportStatus = job?.export_status ?? "none";
+  const exportStale = isExportStale(job);
   const exportReady = exportStatus === "ready" && !exportStale;
   const acceptedCount = violations.filter(v => v.status === "accepted").length;
+
+  /**
+   * Mirror the retirement the server just performed.
+   *
+   * A violation update answers with the violation, not the job, so rather than
+   * spend a round trip re-reading the job after every keystroke the page applies
+   * the same rule the backend does: a finished export is retired, an in-flight
+   * one is left for the worker to resolve when it lands.
+   */
+  const markExportInvalidated = useCallback(() => {
+    setJob(prev => {
+      if (!prev || isExportPending(prev.export_status)) return prev;
+      return { ...prev, export_status: "none", export_error: null, export_revision: null };
+    });
+  }, []);
 
   const loadData = useCallback(async () => {
     try {
@@ -131,7 +158,7 @@ export default function ReviewPage() {
       // from the buttons leaves the reviewer where they clicked.
       const index = violations.findIndex(vi => vi.id === updated.id);
       setSelectedViolation(advance ? violations[index + 1] ?? updated : updated);
-      setExportStale(true);
+      markExportInvalidated();
     } catch (err) {
       setError("Update failed");
     } finally {
@@ -146,7 +173,7 @@ export default function ReviewPage() {
       const updated = await api.updateViolation(jobId, selectedViolation.id, { action });
       setViolations(v => v.map(vi => vi.id === updated.id ? updated : vi));
       setSelectedViolation(updated);
-      setExportStale(true);
+      markExportInvalidated();
     } catch {
       setError("Update failed");
     } finally {
@@ -163,7 +190,7 @@ export default function ReviewPage() {
         refreshed.find(v => v.id === selectedViolation.id) ?? selectedViolation
       );
     }
-    setExportStale(true);
+    markExportInvalidated();
   };
 
   const handleCleanAll = async () => {
@@ -226,8 +253,11 @@ export default function ReviewPage() {
       // This returns as soon as the render is queued; the poll above watches
       // export_status from there.
       const queued = await api.exportAudio(jobId);
-      setExportStale(false);
-      setJob(prev => (prev ? { ...prev, export_status: queued.export_status, export_error: null } : prev));
+      // export_revision stays null until the render lands, which reads as
+      // "nothing of known provenance yet" rather than as a stale file.
+      setJob(prev => (prev
+        ? { ...prev, export_status: queued.export_status, export_error: null, export_revision: null }
+        : prev));
     } catch (err) {
       setError(err instanceof Error ? err.message : "Export failed");
     }

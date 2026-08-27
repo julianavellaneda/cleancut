@@ -10,6 +10,7 @@ from sqlalchemy.orm import Session
 from ..database import get_db
 from ..models import Job, Violation
 from ..schemas import BulkViolationUpdate, ViolationResponse, ViolationUpdate
+from ..services import exports
 
 router = APIRouter()
 
@@ -56,7 +57,14 @@ def update_violation(
     update: ViolationUpdate,
     db: Session = Depends(get_db)
 ):
-    """Update violation status (accept/reject)."""
+    """
+    Update violation status (accept/reject).
+
+    A change that alters the accepted edit set also retires the job's export:
+    the file in ``exports/`` was rendered from the previous list, and until
+    Phase 4 it went on advertising itself as "ready" while describing edits the
+    reviewer had since changed.
+    """
     violation = (
         db.query(Violation)
         .filter(Violation.id == violation_id, Violation.job_id == job_id)
@@ -66,16 +74,27 @@ def update_violation(
     if not violation:
         raise HTTPException(status_code=404, detail="Violation not found")
 
-    # Update fields if provided
     if update.status is not None:
         _validate_status(update.status)
+    if update.action is not None:
+        _validate_action(update.action)
+
+    changed_export = exports.affects_export(violation, update.status, update.action)
+
+    # Update fields if provided
+    if update.status is not None:
         violation.status = update.status
 
     if update.action is not None:
-        _validate_action(update.action)
         violation.action = update.action
 
     db.commit()
+
+    if changed_export:
+        job = db.query(Job).filter(Job.id == job_id).first()
+        if job:
+            exports.invalidate_export(db, job)
+
     db.refresh(violation)
 
     return violation
@@ -137,7 +156,11 @@ def bulk_update_violations(
     violations = query.all()
 
     updated_count = 0
+    changed_export = False
     for v in violations:
+        # Asked before the row is written, and only once for the whole sweep:
+        # the export is retired if *any* accepted edit moved.
+        changed_export = changed_export or exports.affects_export(v, update.status, update.action)
         if update.status is not None:
             v.status = update.status
         if update.action is not None:
@@ -145,6 +168,9 @@ def bulk_update_violations(
         updated_count += 1
 
     db.commit()
+
+    if changed_export:
+        exports.invalidate_export(db, job)
 
     return {"message": f"Updated {updated_count} violations", "updated": updated_count}
 

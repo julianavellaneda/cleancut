@@ -337,6 +337,8 @@ def _build_job_response(job: Job, db: Session) -> JobResponse:
         error_message=job.error_message,
         export_status=job.export_status or "none",
         export_error=job.export_error,
+        edit_revision=job.edit_revision or 0,
+        export_revision=job.export_revision,
         violation_count=len(violations),
         pending_count=sum(1 for v in violations if v.status == "pending"),
         accepted_count=sum(1 for v in violations if v.status == "accepted"),

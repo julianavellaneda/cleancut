@@ -11,6 +11,8 @@ Two generations of schema drift are covered here:
    `export_status` and `export_error`, defaulting to "no export yet".
 4. A database from before the transcript was persisted must gain `transcript`,
    left NULL because it cannot be reconstructed without re-transcribing.
+5. A database from before exports were revision-tracked must gain
+   `edit_revision` (0) and `export_revision` (NULL, "provenance unknown").
 """
 
 import sqlite3
@@ -175,6 +177,40 @@ def test_transcript_column_migration_is_idempotent(legacy_db):
     database._apply_migrations()
     database._apply_migrations()
     assert "transcript" in _columns(legacy_db)
+
+
+def test_legacy_db_is_missing_the_revision_columns(legacy_db):
+    """Precondition for the export-staleness migration below."""
+    assert "edit_revision" not in _columns(legacy_db)
+    assert "export_revision" not in _columns(legacy_db)
+
+
+def test_migration_adds_the_revision_columns(legacy_db):
+    database._apply_migrations()
+    assert {"edit_revision", "export_revision"} <= _columns(legacy_db)
+
+
+def test_existing_rows_start_at_revision_zero_with_no_known_export(legacy_db):
+    """
+    The counter only has to be monotonic per job, so 0 is a fine starting point
+    for every old row. `export_revision` stays NULL even where a file exists:
+    nothing recorded which edits produced it, and claiming a match would mark a
+    file current on no evidence. NULL reads as "provenance unknown", which keeps
+    the existing download working.
+    """
+    database._apply_migrations()
+    with legacy_db.begin() as conn:
+        row = conn.execute(
+            text("SELECT edit_revision, export_revision FROM jobs WHERE id = 'old-job'")
+        ).fetchone()
+    assert row[0] == 0
+    assert row[1] is None
+
+
+def test_revision_column_migration_is_idempotent(legacy_db):
+    database._apply_migrations()
+    database._apply_migrations()
+    assert {"edit_revision", "export_revision"} <= _columns(legacy_db)
 
 
 def test_bsm_mode_rows_are_backfilled_to_a_preset(bsm_db):

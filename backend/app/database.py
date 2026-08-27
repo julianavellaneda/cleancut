@@ -73,6 +73,20 @@ def _apply_migrations():
         # the route answers 404 rather than pretending the recording was silent.
         if "transcript" not in existing:
             conn.execute(text("ALTER TABLE jobs ADD COLUMN transcript TEXT"))
+
+        # Export staleness. `edit_revision` starts at 0 for every existing row -
+        # the counter only has to be monotonic per job, not meaningful across
+        # them. `export_revision` stays NULL even on a row marked 'ready':
+        # nothing recorded which edit set that file came from, and inventing a
+        # match would claim an export is current on no evidence. NULL is read as
+        # "provenance unknown", which keeps those rows downloadable exactly as
+        # they are today; the first edit after this migration bumps them into
+        # the tracked world.
+        if "edit_revision" not in existing:
+            conn.execute(text("ALTER TABLE jobs ADD COLUMN edit_revision INTEGER DEFAULT 0"))
+            conn.execute(text("UPDATE jobs SET edit_revision = 0 WHERE edit_revision IS NULL"))
+        if "export_revision" not in existing:
+            conn.execute(text("ALTER TABLE jobs ADD COLUMN export_revision INTEGER"))
     if "bsm_mode" in existing:
         try:
             with engine.begin() as conn:

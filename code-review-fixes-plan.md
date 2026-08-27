@@ -20,9 +20,10 @@ All work is on branch `code-review-fixes`, off `main` at `e6113a9`. One commit p
 | 1 — Export status reporting | **Done** | `aceafda` (bundled with the pre-existing working tree) |
 | 2 — Frontend upload settings | **Done** | `23ba748` |
 | 3 — Dedup + timestamp alignment | **Done** | `dc7280c` |
-| 4–11 | Not started | — |
+| 4 — Export staleness invalidation | **Done** | (this commit) |
+| 5–11 | Not started | — |
 
-Baseline after Phase 3: **532 backend tests**, **29 frontend tests**, `tsc --noEmit` clean,
+Baseline after Phase 4: **555 backend tests**, **34 frontend tests**, `tsc --noEmit` clean,
 `python -m app.eval.run --detectors ../tests/fixtures/demo/demo_seminar.mp3 --suite scrub` passes
 (F1 95.7%, unchanged by these fixes).
 
@@ -41,6 +42,15 @@ Notes left behind for whoever picks this up:
 - `worker._is_pre_accepted` is now the single owner of "may this be applied unreviewed" — both the
   saved `status` and the auto-rendered export ask it. Keep it that way; they used to be two
   separate expressions that could drift.
+- **Phase 4** added two columns (`jobs.edit_revision`, `jobs.export_revision`) via
+  `database._apply_migrations()`, so Phase 8/9 schema work has a recent example to copy. It also
+  gave `exports.py` its own `EXPORT_DIR`; `routes/audio.py`, `routes/jobs.py`, `services/worker.py`
+  and `services/retention.py` still each hold their own copy of the same constant, which is now
+  five. Worth collapsing to one owner if a later phase is in these files anyway - the only reason
+  it was not done here is that several test modules monkeypatch the per-module copies.
+- **Phase 4** left `POST /export` free to queue a render while one is already in flight. That was
+  true before and is not made worse by the revision tracking (the second render simply wins), but
+  Phase 7's durable queue is the right place to make it explicit.
 - **Phase 6 still needs a decision from the user** before anyone implements it.
 
 ---
@@ -95,7 +105,7 @@ word coincidentally matches unrelated text must not be misaligned.
 
 ---
 
-## Phase 4 — Export staleness invalidation
+## Phase 4 — Export staleness invalidation — DONE
 
 **Finding #2 (High): Exports remain "current" after edits change**
 - Files: `backend/app/routes/violations.py:69`, `backend/app/services/worker.py:242`
@@ -212,8 +222,8 @@ Small, mechanical validation fixes — group together:
 1. ~~Phase 1 (export status)~~ — done
 2. ~~Phase 2 (upload settings)~~ — done
 3. ~~Phase 3 (dedup + timestamp alignment)~~ — done
-4. **Phase 4 — start here.** Phase 4 (export invalidation) — depends on Phase 1
-5. Phase 5 (admin auth default)
+4. ~~Phase 4 (export invalidation)~~ — done
+5. **Phase 5 — start here.** Phase 5 (admin auth default)
 6. Phase 6 (network exposure) — **needs user decision first**
 7. Phase 8, 9, 10 (medium batches) — any order, independent of each other
 8. Phase 11 (Next.js upgrade) — isolate dependency churn

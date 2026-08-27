@@ -20,6 +20,13 @@ export interface Job {
   error_message: string | null;
   export_status: ExportStatus;
   export_error: string | null;
+  /**
+   * Staleness, straight from the server. The export in `exports/` is current
+   * only while `export_revision === edit_revision`; a null `export_revision`
+   * means no export of known provenance, which is not the same as stale.
+   */
+  edit_revision: number;
+  export_revision: number | null;
   violation_count: number;
   pending_count: number;
   accepted_count: number;
