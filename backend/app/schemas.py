@@ -35,6 +35,14 @@ class ViolationUpdate(BaseModel):
     action: str | None = None  # cut, mute
 
 
+class BulkViolationUpdate(ViolationUpdate):
+    # Exactly which rows to move. Undo needs this: a sweep is undone by putting
+    # back the rows it actually changed, not every row that now happens to look
+    # like them - an edit accepted by hand before the sweep is not the sweep's
+    # to revert. None means "every row the filters select".
+    ids: list[str] | None = None
+
+
 class JobBase(BaseModel):
     filename: str
     original_filename: str | None = None
@@ -108,6 +116,22 @@ class ExportResponse(BaseModel):
     # Export is queued, not rendered inline, so the POST answers with the state
     # the caller should start polling rather than with a finished file.
     export_status: str = "queued"
+
+
+class ReanalyzeRequest(BaseModel):
+    """A second question about a transcript that has already been made."""
+
+    prompt: str | None = None
+    preset: str | None = None
+
+
+class ReanalyzeResponse(BaseModel):
+    job_id: str
+    prompt: str | None = None
+    preset: str | None = None
+    # Queued on the same worker as everything else, so this is the state to
+    # start polling rather than a result.
+    status: str = "analyzing"
 
 
 class TranscriptSegment(BaseModel):

@@ -9,9 +9,12 @@ from sqlalchemy.orm import Session
 
 from ..database import get_db
 from ..models import Job, Violation
-from ..schemas import ViolationResponse, ViolationUpdate
+from ..schemas import BulkViolationUpdate, ViolationResponse, ViolationUpdate
 
 router = APIRouter()
+
+STATUSES = ("pending", "accepted", "rejected")
+ACTIONS = ("cut", "mute")
 
 
 @router.get("/{job_id}/violations", response_model=List[ViolationResponse])
@@ -65,19 +68,11 @@ def update_violation(
 
     # Update fields if provided
     if update.status is not None:
-        if update.status not in ["pending", "accepted", "rejected"]:
-            raise HTTPException(
-                status_code=400,
-                detail="Status must be 'pending', 'accepted', or 'rejected'"
-            )
+        _validate_status(update.status)
         violation.status = update.status
 
     if update.action is not None:
-        if update.action not in ["cut", "mute"]:
-            raise HTTPException(
-                status_code=400,
-                detail="Action must be 'cut' or 'mute'"
-            )
+        _validate_action(update.action)
         violation.action = update.action
 
     db.commit()
@@ -89,22 +84,55 @@ def update_violation(
 @router.post("/{job_id}/violations/bulk-update")
 def bulk_update_violations(
     job_id: str,
-    update: ViolationUpdate,
+    update: BulkViolationUpdate,
     labels: List[str] | None = Query(None),
+    from_status: List[str] | None = Query(
+        None,
+        description=(
+            "Which statuses to move. Defaults to pending only, so 'Clean All' "
+            "cannot silently revisit a decision the reviewer already made."
+        ),
+    ),
     db: Session = Depends(get_db)
 ):
-    """Update multiple pending violations for a job, optionally filtered by label."""
+    """
+    Update several violations at once, optionally filtered by label.
+
+    `ids` and `from_status` are what make a bulk action undoable. `ids` names
+    the exact rows to move, which is what undo needs: a sweep is put back by
+    restoring the rows it changed, not every row that now looks like them.
+
+    `from_status` defaults to
+    `pending`, which is the only safe default for "Clean All": a reviewer who
+    has already rejected an edit by hand must not have it accepted out from
+    under them by a later sweep. Undo is the same call pointed the other way -
+    `from_status=accepted&status=pending` puts the sweep back.
+    """
     job = db.query(Job).filter(Job.id == job_id).first()
     if not job:
         raise HTTPException(status_code=404, detail="Job not found")
 
+    if update.status is not None:
+        _validate_status(update.status)
+    if update.action is not None:
+        _validate_action(update.action)
+
+    sources = from_status or ["pending"]
+    for status in sources:
+        _validate_status(status)
+
     query = db.query(Violation).filter(
-        Violation.job_id == job_id, 
-        Violation.status == "pending"
+        Violation.job_id == job_id,
+        Violation.status.in_(sources),
     )
 
     if labels:
         query = query.filter(Violation.label.in_(labels))
+
+    if update.ids is not None:
+        # An empty list is a real answer - "these zero rows" - and must not fall
+        # through to selecting the whole job.
+        query = query.filter(Violation.id.in_(update.ids))
 
     violations = query.all()
 
@@ -118,4 +146,17 @@ def bulk_update_violations(
 
     db.commit()
 
-    return {"message": f"Updated {updated_count} violations"}
+    return {"message": f"Updated {updated_count} violations", "updated": updated_count}
+
+
+def _validate_status(status: str) -> None:
+    if status not in STATUSES:
+        raise HTTPException(
+            status_code=400,
+            detail="Status must be 'pending', 'accepted', or 'rejected'",
+        )
+
+
+def _validate_action(action: str) -> None:
+    if action not in ACTIONS:
+        raise HTTPException(status_code=400, detail="Action must be 'cut' or 'mute'")

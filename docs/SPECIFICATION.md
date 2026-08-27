@@ -24,7 +24,8 @@
 - **FFmpeg (`ffmpeg-python`):** Replaces `pydub`. Essential for video container support and complex filter chains.
 - **faster-whisper:** Retained for transcription. High performance on M-series chips and CPU.
 - **Silero VAD:** For high-accuracy silence/voice detection.
-- **OpenAI GPT-4o-mini / GPT-4o:** For semantic analysis.
+- **An LLM for semantic analysis**, chosen by `CLEANCUT_MODEL` (`openai:gpt-4o` by default, or an
+  Anthropic model).
 
 ## 4. Video Editing Logic (FFmpeg)
 

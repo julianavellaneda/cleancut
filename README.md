@@ -23,6 +23,9 @@ export a single re-encoded file.
   `Space` to play, `P` to replay the selected clip, `T` for the transcript, `?` for the full list).
 - **Searchable transcript panel** — the transcript the analysis actually ran on, kept with the job.
   Click a line to seek there, watch it follow playback, and see which lines carry a suggested edit.
+- **Ask again without re-transcribing** — a new prompt or preset re-runs the analysis against the
+  stored transcript, so changing the question costs one LLM call instead of another Whisper pass.
+  Filler-word and dead-air edits, and your decisions on them, are kept across the re-run.
 - **Per-edit cut or mute**, honored independently on export.
 - **A/V-sync-preserving export** — a single FFmpeg `trim`/`atrim` + `concat` filter graph, so video
   stays in sync with its audio across every cut.
@@ -30,6 +33,8 @@ export a single re-encoded file.
   `exporting` → `completed`), polled by the frontend. Export is queued the same way, so a long
   re-encode never holds an HTTP request open.
 - **Multi-language**, including code-switching between English and Spanish mid-sentence.
+- **Bring your own model** — `CLEANCUT_MODEL=provider:model` picks the vendor and the model
+  (`openai:gpt-4o`, `anthropic:claude-opus-5`). One line of `.env`, no code change.
 - **Measured, not asserted** — a labelled synthetic clip and an eval harness that scores the
   detectors against it: precision, recall, and per-category coverage, run on every build.
 
@@ -39,7 +44,7 @@ export a single re-encoded file.
 |---|---|
 | Backend | FastAPI, SQLAlchemy (SQLite), FFmpeg, OpenAI API |
 | Frontend | Next.js 15, Tailwind CSS v4, Wavesurfer.js |
-| Analysis | `faster-whisper` transcription, chunked sliding-window LLM analysis |
+| Analysis | `faster-whisper` transcription, chunked sliding-window LLM analysis (OpenAI or Anthropic) |
 
 ```
 upload → queue → Whisper (word timestamps) → LLM analysis → review UI → FFmpeg export
@@ -48,7 +53,7 @@ upload → queue → Whisper (word timestamps) → LLM analysis → review UI �
 ## Quickstart (Docker)
 
 ```bash
-cp .env.example .env      # then add your OPENAI_API_KEY
+cp .env.example .env      # then add your model API key
 docker compose up --build
 ```
 
@@ -60,7 +65,7 @@ Requires Python 3.10+, Node 18+, and FFmpeg (`brew install ffmpeg`).
 
 ```bash
 # 1. Environment — a .env at the repo root, read by the backend
-cp .env.example .env      # then add your OPENAI_API_KEY
+cp .env.example .env      # then add your model API key
 
 # 2. Backend (port 8000)
 cd backend
@@ -83,10 +88,13 @@ Or run both with `./start.sh`.
 cd backend
 pip install -r requirements-dev.txt
 pytest
+
+cd ../frontend
+npm test          # vitest + Testing Library, in jsdom - no browser needed
 ```
 
-GitHub Actions runs the same suite on every push and pull request, alongside `tsc --noEmit` and a
-production frontend build — see `.github/workflows/ci.yml`.
+GitHub Actions runs both suites on every push and pull request, alongside `tsc --noEmit`, the
+detector eval below, and a production frontend build — see `.github/workflows/ci.yml`.
 
 ## Eval
 
@@ -116,8 +124,33 @@ By category:
 ```
 
 That run is a recorded snapshot of the real pipeline, so scoring it needs no API key, no model and
-no media — which is why it runs in CI. To measure the pipeline as it stands right now, point it at
-the clip instead: `--live ../tests/fixtures/demo/demo_seminar.mp3` transcribes and calls the LLM.
+no media — which is why it runs in CI. What it grades is the scorer and the labels, not today's
+code; its filler score is the one the harness found on the day it was built.
+
+To grade the detectors **as they stand on this commit**, run them against the real audio and the
+committed word-level transcript. Still free — no model, no API key — so CI gates on this one too:
+
+```bash
+python -m app.eval.run --detectors ../tests/fixtures/demo/demo_seminar.mp3 --suite scrub
+```
+
+```
+  precision  100.0%   (11 suggestions graded)
+  recall      91.7%   (12 labels in scope)
+
+By category:
+  filler           ##########..  7/8
+  dead-air         ############  4/4
+```
+
+The one filler it misses is an "Er," that Whisper dropped from the transcript altogether — the
+scrubber reads word timestamps, so a word the model never wrote is not a word it can find. The two
+that used to be missed were the harness earning its keep: `FILLER_WORDS` held `"you know"` while
+matching walked one word at a time, so the most common filler in English could never fire, and the
+set spelled a sound `"hm"` that Whisper writes as `"Hmm"`.
+
+To measure the whole pipeline as it stands, point it at the clip with
+`--live ../tests/fixtures/demo/demo_seminar.mp3`, which transcribes and calls the LLM.
 `--json` emits the scorecard for a machine, and `--min-recall` / `--min-precision` turn a threshold
 into a non-zero exit.
 
@@ -159,9 +192,10 @@ Interactive Swagger docs at http://localhost:8000/docs.
 | GET | `/api/jobs/{id}` | Job status and metadata |
 | DELETE | `/api/jobs/{id}` | Delete a job and its files |
 | GET | `/api/jobs/{id}/transcript` | The transcript the analysis ran on |
+| POST | `/api/jobs/{id}/reanalyze` | Ask a new question about it — no re-transcription |
 | GET | `/api/jobs/{id}/violations` | List suggested edits |
 | PATCH | `/api/jobs/{id}/violations/{vid}` | Set status (accepted/rejected) or action (cut/mute) |
-| POST | `/api/jobs/{id}/violations/bulk-update` | Bulk accept/reject, optionally filtered by label |
+| POST | `/api/jobs/{id}/violations/bulk-update` | Bulk accept/reject/undo, filtered by label, id, or source status |
 | GET | `/api/jobs/{id}/audio` | Stream the original media |
 | GET | `/api/jobs/{id}/audio/waveform` | Cached waveform peaks |
 | POST | `/api/jobs/{id}/export` | Queue the edited render (202; poll `export_status`) |
@@ -219,7 +253,9 @@ Set in `.env` at the repo root:
 
 | Variable | Default | Purpose |
 |---|---|---|
-| `OPENAI_API_KEY` | — | Required for analysis |
+| `CLEANCUT_MODEL` | `openai:gpt-4o` | Which model analyses the transcript, as `provider:model`. `openai` or `anthropic` |
+| `OPENAI_API_KEY` | — | Required when `CLEANCUT_MODEL` names `openai` |
+| `ANTHROPIC_API_KEY` | — | Required when `CLEANCUT_MODEL` names `anthropic` |
 | `CORS_ORIGINS` | `http://localhost:3000` | Comma-separated allowed origins |
 | `DATABASE_PATH` | `backend/audio_compliance.db` | SQLite file location |
 | `NEXT_PUBLIC_API_URL` | `http://localhost:8000/api` | Backend URL baked into the frontend build |
@@ -232,8 +268,8 @@ Set in `.env` at the repo root:
 
 ## Failure modes
 
-The backend runs a preflight at startup and refuses to boot if `OPENAI_API_KEY` is missing or
-`ffmpeg`/`ffprobe` are not on PATH — both are otherwise only reached minutes into a job, where a
+The backend runs a preflight at startup and refuses to boot if the configured provider's API key is
+missing or `ffmpeg`/`ffprobe` are not on PATH — both are otherwise only reached minutes into a job, where a
 missing line in `.env` looks like an application bug.
 
 Uploads are capped by size and by duration; both come back as a 413 with the limit named, and the

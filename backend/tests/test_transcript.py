@@ -10,8 +10,9 @@ The specific things that must not drift:
     with a partial or failed analysis still keeps the text;
   - an unreadable or absent transcript is a 404, never an empty segment list -
     "nothing stored" and "this recording is silent" are different claims;
-  - the stored shape is segments only, with no word-level timing, which is what
-    keeps a two-hour job's row small enough to sit in the polled table.
+  - words are stored but not *served*: re-analysis needs the timing to place a
+    quote as precisely as the first pass did, and the panel needs lines. A row
+    written before words were stored still reads.
 
 No FFmpeg, no Whisper, no LLM: the processor is stubbed, exactly as in
 test_worker_autofix.
@@ -83,14 +84,75 @@ def test_round_trip_preserves_lines_and_timing():
     ]
 
 
-def test_word_timing_is_deliberately_not_stored():
+def test_word_timing_is_stored():
     """
-    Word timing is ~20x the bytes and no consumer of the stored copy uses it.
-    If that changes, this assertion is the place to make the decision again.
+    It deliberately was not, on size grounds, until re-analysis needed it: an
+    LLM quote can only be placed as precisely as the timing behind it, and a
+    re-run that produced coarser markers than the first pass would put two
+    kinds of precision on one review screen.
     """
     payload = json.loads(transcripts.to_json(_transcript(_segment(0.0, 1.0, "one two three"))))
 
-    assert payload["segments"] == [{"start": 0.0, "end": 1.0, "text": "one two three"}]
+    assert payload["version"] == 2
+    assert [w["text"] for w in payload["segments"][0]["words"]] == ["one", "two", "three"]
+
+
+def test_a_line_with_no_word_timing_stores_no_words_key():
+    """
+    Not `"words": []`. A line Whisper timed no words in has to read back exactly
+    like a line from a version 1 row - one absence, not two.
+    """
+    payload = json.loads(
+        transcripts.to_json(_transcript(_segment(0.0, 1.0, "one two", with_words=False)))
+    )
+
+    assert payload["segments"] == [{"start": 0.0, "end": 1.0, "text": "one two"}]
+
+
+def test_a_version_1_row_still_reads():
+    """The rows already in the database, which have no words at all."""
+    raw = json.dumps({
+        "version": 1, "language": "en", "duration": 12.0,
+        "segments": [{"start": 0.0, "end": 2.0, "text": "no words here"}],
+    })
+
+    restored = transcripts.from_json(raw)
+
+    assert restored is not None
+    assert restored.segments[0].words == ()
+
+
+def test_malformed_words_are_dropped_and_the_line_survives():
+    """
+    One unparseable word costs the precision of one quote. Refusing the whole
+    transcript over it would cost the panel and every other line's timing.
+    """
+    raw = json.dumps({
+        "version": 2, "language": "en", "duration": 12.0,
+        "segments": [{"start": 0.0, "end": 2.0, "text": "a b", "words": [
+            {"start": 0.0, "end": 0.5, "text": "a"},
+            {"start": "nope", "end": 1.0, "text": "b"},
+            {"start": 1.0, "end": 1.5},
+            "not a word at all",
+        ]}],
+    })
+
+    restored = transcripts.from_json(raw)
+
+    assert [w.text for w in restored.segments[0].words] == ["a"]
+
+
+def test_a_stored_transcript_rebuilds_into_something_the_analyzer_can_read():
+    """What re-analysis runs on: the same shape transcription hands over."""
+    stored = transcripts.from_json(
+        transcripts.to_json(_transcript(_segment(0.0, 1.0, "one two three")))
+    )
+
+    rebuilt = transcripts.to_transcript_result(stored)
+
+    assert rebuilt.language == "en"
+    assert rebuilt.duration == 60.0
+    assert [w.text for w in rebuilt.segments[0].words] == ["one", "two", "three"]
 
 
 def test_segment_text_is_trimmed():

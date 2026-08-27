@@ -24,13 +24,15 @@ from ..schemas import (
     JobResponse,
     JobListResponse,
     PresetResponse,
+    ReanalyzeRequest,
+    ReanalyzeResponse,
     TranscriptResponse,
     TranscriptSegment,
 )
 from ..services.processor import PRESETS, is_valid_preset
 from ..services.retention import delete_job_files
 from ..services import transcripts
-from ..services.worker import enqueue_job
+from ..services.worker import enqueue_job, enqueue_reanalysis
 
 router = APIRouter()
 
@@ -190,6 +192,66 @@ def get_job(job_id: str, db: Session = Depends(get_db)):
     return _build_job_response(job, db)
 
 
+@router.post("/{job_id}/reanalyze", response_model=ReanalyzeResponse, status_code=202)
+def reanalyze_job(job_id: str, request: ReanalyzeRequest, db: Session = Depends(get_db)):
+    """
+    Ask a different question about a transcript that has already been made.
+
+    This is the whole return on persisting the transcript: transcription is the
+    slowest stage of the job and a new prompt has nothing to do with it, so a
+    re-run reads the stored words instead of putting the audio back through
+    Whisper.
+
+    Validated here, queued for the worker, answered 202 - the same shape as
+    export, and polled the same way through `status`. Refused when the job has
+    no stored transcript (409 rather than 404: the job is real, it simply
+    predates the column or never got that far) and when it is still in the
+    pipeline, since the run in flight would overwrite whatever this one wrote.
+    """
+    job = db.query(Job).filter(Job.id == job_id).first()
+    if not job:
+        raise HTTPException(status_code=404, detail="Job not found")
+
+    if job.status not in ("completed", "failed"):
+        raise HTTPException(
+            status_code=409,
+            detail=f"Job is still {job.status}; wait for it to finish before re-analyzing.",
+        )
+
+    if transcripts.from_json(job.transcript) is None:
+        raise HTTPException(
+            status_code=409,
+            detail="This job has no stored transcript to re-analyze.",
+        )
+
+    preset = request.preset or None
+    if not is_valid_preset(preset):
+        raise HTTPException(
+            status_code=400,
+            detail=f"Unknown preset '{preset}'. Available: {', '.join(PRESETS)}",
+        )
+
+    prompt = (request.prompt or "").strip() or None
+    if not prompt and not preset:
+        raise HTTPException(
+            status_code=400,
+            detail="Re-analysis needs a prompt or a preset.",
+        )
+
+    # The job's own prompt and preset are updated, not shadowed: the review
+    # screen shows what was asked, and after a re-run the suggestions on it are
+    # the answer to *this* question. A preset replaces a prompt and vice versa,
+    # since the analyzer runs in one mode or the other.
+    job.prompt = prompt
+    job.preset = preset
+    job.status = "analyzing"
+    db.commit()
+
+    enqueue_reanalysis(job_id)
+
+    return ReanalyzeResponse(job_id=job_id, prompt=prompt, preset=preset)
+
+
 @router.get("/{job_id}/transcript", response_model=TranscriptResponse)
 def get_transcript(job_id: str, db: Session = Depends(get_db)):
     """
@@ -245,7 +307,19 @@ def delete_job(job_id: str, db: Session = Depends(get_db)):
 
 
 def _build_job_response(job: Job, db: Session) -> JobResponse:
-    """Build JobResponse with violation counts."""
+    """
+    Build JobResponse with violation counts.
+
+    The export fields are carried explicitly. This response is assembled field by
+    field rather than from the ORM object, so a column the worker writes but this
+    function forgets does not surface as a stale value - it surfaces as the
+    schema default. That is what happened to `export_status`: the poll that drives
+    the export button read "none" forever, so a queued render never became
+    "Exporting..." and a finished one never became a download.
+
+    `or "none"` covers rows migrated in before the column existed, which are NULL
+    rather than 'none' until something writes them.
+    """
     violations = job.violations
     return JobResponse(
         id=job.id,
@@ -261,6 +335,8 @@ def _build_job_response(job: Job, db: Session) -> JobResponse:
         language=job.language,
         created_at=job.created_at,
         error_message=job.error_message,
+        export_status=job.export_status or "none",
+        export_error=job.export_error,
         violation_count=len(violations),
         pending_count=sum(1 for v in violations if v.status == "pending"),
         accepted_count=sum(1 for v in violations if v.status == "accepted"),

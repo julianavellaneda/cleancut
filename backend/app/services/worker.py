@@ -42,7 +42,7 @@ class QueuedTask:
     kinds of work, and "which element was the file path again" is not a question
     worth re-answering at every unpack site.
     """
-    kind: str  # "process" or "export"
+    kind: str  # "process", "export" or "reanalyze"
     job_id: str
     file_path: str | None = None
     edit_action: str | None = None
@@ -66,6 +66,17 @@ def enqueue_export(job_id: str, edit_action: str | None = None):
     logger.info(f"Export for job {job_id} enqueued. Queue size: {job_queue.qsize()}")
 
 
+def enqueue_reanalysis(job_id: str):
+    """
+    Queue a fresh analysis of a job's stored transcript.
+
+    Same single worker thread as everything else, so a re-run queues behind any
+    job already transcribing rather than competing with it for the machine.
+    """
+    job_queue.put(QueuedTask(kind="reanalyze", job_id=job_id))
+    logger.info(f"Re-analysis for job {job_id} enqueued. Queue size: {job_queue.qsize()}")
+
+
 def start_worker():
     """Start the background worker thread."""
     thread = threading.Thread(target=_worker_loop, daemon=True)
@@ -81,6 +92,8 @@ def _worker_loop():
             logger.info(f"Worker picking up {task.kind} task for Job {task.job_id}...")
             if task.kind == "export":
                 _process_export(task.job_id, task.edit_action)
+            elif task.kind == "reanalyze":
+                _process_reanalysis(task.job_id)
             else:
                 _process_job_sequentially(task.job_id, task.file_path)
             job_queue.task_done()
@@ -183,6 +196,114 @@ def _process_export(job_id: str, edit_action: str | None = None):
         _mark_export_failed(db, job_id, str(e))
     finally:
         db.close()
+
+
+def _process_reanalysis(job_id: str):
+    """
+    Re-run the LLM analysis over a job's stored transcript.
+
+    The point of storing the transcript: a new prompt used to mean a new
+    Whisper pass, which is the slowest and most expensive stage of the job and
+    has nothing to do with the question being changed.
+
+    What it replaces and what it leaves alone is the whole design here. The
+    LLM's suggestions are the answer to the old prompt, so they go - including
+    the ones already accepted or rejected, since a decision about a suggestion
+    that no longer exists cannot be carried forward honestly. The scrubber's
+    are deterministic, unrelated to the prompt, and would come back identical,
+    so they and every decision made on them stay exactly as they are.
+    """
+    db = SessionLocal()
+    try:
+        job = db.query(Job).filter(Job.id == job_id).first()
+        if not job:
+            logger.error(f"Re-analysis requested for unknown job {job_id}")
+            return
+
+        stored = transcripts.from_json(job.transcript)
+        if stored is None:
+            _mark_reanalysis_failed(
+                db, job_id, "Re-analysis needs a stored transcript; this job has none.",
+            )
+            return
+
+        job.status = "analyzing"
+        # The warning belonged to the previous analysis. Clearing it here means
+        # a re-run that succeeds does not inherit "partial analysis" from the
+        # run it replaced.
+        job.error_message = None
+        db.commit()
+
+        transcript = transcripts.to_transcript_result(stored)
+        analysis = get_processor().analyze(
+            transcript, prompt=job.prompt, preset=job.preset,
+        )
+
+        (db.query(Violation)
+           .filter(Violation.job_id == job_id,
+                   Violation.label.notin_(exports.SCRUBBER_LABELS))
+           .delete(synchronize_session=False))
+
+        for v in analysis.violations:
+            db.add(Violation(
+                id=str(uuid.uuid4()),
+                job_id=job_id,
+                text=v.text,
+                start_time=v.start_time,
+                end_time=v.end_time,
+                label=v.label,
+                rule_violated=getattr(v, "rule_violated", None),
+                severity=getattr(v, "severity", None),
+                action=v.action,
+                reasoning=v.reasoning,
+                # Never pre-accepted. `auto_fix` is a choice made about the
+                # upload; a re-analysis is a choice made in the review screen,
+                # where the whole point is to look at what came back.
+                status="pending",
+            ))
+
+        if getattr(analysis, "failed_chunks", None):
+            skipped = len(analysis.failed_chunks)
+            job.error_message = (
+                f"Partial analysis: {skipped} section(s) of the transcript could not be "
+                f"analyzed and may contain unflagged content. "
+                + " | ".join(analysis.failed_chunks[:3])
+            )
+            logger.warning(f"Job {job_id} re-analyzed with {skipped} failed chunk(s).")
+
+        job.status = "completed"
+        db.commit()
+        logger.info(f"Job {job_id} re-analyzed: {len(analysis.violations)} suggestion(s).")
+
+    except Exception as e:
+        logger.error(f"Re-analysis of job {job_id} failed: {e}", exc_info=True)
+        _mark_reanalysis_failed(db, job_id, str(e))
+    finally:
+        db.close()
+
+
+def _mark_reanalysis_failed(db, job_id: str, message: str):
+    """
+    Record a failed re-analysis without marking the job failed.
+
+    The same argument as `_mark_export_failed`: the job is a completed job with
+    a reviewed edit list, and a bad LLM response to a second prompt must not
+    strand that behind an error screen. The old suggestions are still there -
+    the delete only runs once the new analysis has come back - so putting the
+    status back to `completed` describes what the reviewer is actually looking
+    at.
+    """
+    try:
+        db.rollback()
+        job = db.query(Job).filter(Job.id == job_id).first()
+        if job is None:
+            logger.error(f"Re-analysis of job {job_id} failed and its row is gone: {message}")
+            return
+        job.status = "completed"
+        job.error_message = f"Re-analysis failed, the previous suggestions are unchanged: {message}"
+        db.commit()
+    except Exception:
+        logger.exception(f"Could not record the failed re-analysis of job {job_id}")
 
 
 def _find_source_file(job_id: str) -> Path | None:

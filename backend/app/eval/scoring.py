@@ -157,12 +157,15 @@ def _tokens(text: str) -> list[str]:
 
 def _contains_token(pred: Prediction, exp: Expectation) -> bool:
     """Does the suggestion's text contain the expected filler, as whole words?"""
-    wanted = _tokens(exp.text or "")
-    if not wanted:
-        return False
     got = _tokens(pred.text)
-    n = len(wanted)
-    return any(got[i:i + n] == wanted for i in range(len(got) - n + 1))
+    for spelling in (exp.text or "", *exp.also):
+        wanted = _tokens(spelling)
+        if not wanted:
+            continue
+        n = len(wanted)
+        if any(got[i:i + n] == wanted for i in range(len(got) - n + 1)):
+            return True
+    return False
 
 
 def _near(pred: Prediction, exp: Expectation) -> bool:

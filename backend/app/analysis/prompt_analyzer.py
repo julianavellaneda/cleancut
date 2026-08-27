@@ -1,6 +1,9 @@
 """
-Prompt-based semantic analysis module using GPT-4o.
+Prompt-based semantic analysis.
 Analyzes transcripts based on user-defined editing instructions.
+
+Which model answers is configuration, not code - see `providers.py` and
+`CLEANCUT_MODEL`.
 """
 
 import difflib
@@ -11,8 +14,7 @@ from dataclasses import dataclass, asdict, field
 from pathlib import Path
 from typing import List, Optional
 
-from openai import OpenAI
-
+from .providers import ProviderError, configured_model_spec, get_provider
 from .transcriber import TranscriptResult, Segment
 
 
@@ -297,7 +299,7 @@ class AnalysisResult:
 
 class PromptAnalyzer:
     """
-    Analyzes transcripts for suggested edits using GPT-4o based on a user prompt.
+    Analyzes transcripts for suggested edits using an LLM, based on a user prompt.
     """
 
     # Default chunk size in segments (~2-3 minutes of audio typically)
@@ -310,7 +312,8 @@ class PromptAnalyzer:
         self,
         rules_path: str | None = None,
         chunk_size: int | None = None,
-        overlap: int | None = None
+        overlap: int | None = None,
+        provider=None,
     ):
         """
         Initialize the analyzer.
@@ -320,8 +323,11 @@ class PromptAnalyzer:
                 prompt mode. Preset mode loads its own rulebook instead.
             chunk_size: Number of segments per chunk.
             overlap: Number of segments to overlap between chunks.
+            provider: Anything with ``complete(system_prompt, user_prompt)``.
+                Defaults to whatever ``CLEANCUT_MODEL`` names.
         """
-        self.client = OpenAI()  # Uses OPENAI_API_KEY env var
+        self.model_spec = configured_model_spec()
+        self.provider = provider if provider is not None else get_provider(self.model_spec)
         self.chunk_size = chunk_size
         self.overlap = overlap if overlap is not None else self.DEFAULT_OVERLAP
 
@@ -403,10 +409,14 @@ class PromptAnalyzer:
             transcript_text = self._format_transcript_for_analysis(chunk_transcript)
             try:
                 chunk_violations = self._call_llm(transcript_text, prompt, preset=preset)
-            except AnalysisError as e:
+            except (AnalysisError, ProviderError) as e:
                 # Keep going: the other chunks still produce reviewable
                 # suggestions, and the caller is told exactly which span of
-                # audio went unanalyzed.
+                # audio went unanalyzed. A ProviderError belongs here for the
+                # same reason an unreadable answer does - a model that declined
+                # one chunk, or one call that timed out, is a gap in the
+                # analysis rather than a reason to lose the rest of it. If every
+                # chunk fails the job still fails, below.
                 span = f"{chunk_segments[0].start:.0f}s-{chunk_segments[-1].end:.0f}s"
                 failed_chunks.append(f"chunk {i + 1}/{num_chunks} [{span}]: {e}")
                 print(f"    Analysis failed for this chunk: {e}")
@@ -619,24 +629,18 @@ IMPORTANT:
         user_prompt: Optional[str],
         preset: str | None = None,
     ) -> list[dict]:
-        """Call GPT-4o to analyze the transcript using the preset rulebook or the user prompt."""
+        """Ask the configured model to analyze the transcript, under the preset rulebook or the user prompt."""
 
         if preset:
             system_prompt = self._preset_system_prompt(preset)
         else:
             system_prompt = self._prompt_system_prompt(user_prompt)
 
-        response = self.client.chat.completions.create(
-            model="gpt-4o",
-            messages=[
-                {"role": "system", "content": system_prompt},
-                {"role": "user", "content": f"TRANSCRIPT TO ANALYZE:\n\n{transcript_text}"},
-            ],
-            response_format={"type": "json_object"},
-            temperature=0.1,
+        content = self.provider.complete(
+            system_prompt, f"TRANSCRIPT TO ANALYZE:\n\n{transcript_text}"
         )
 
-        return _parse_llm_response(response.choices[0].message.content)
+        return _parse_llm_response(content)
 
     def _map_to_timestamps(
         self,

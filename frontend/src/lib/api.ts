@@ -188,6 +188,25 @@ export const api = {
     return handleResponse<Preset[]>(response);
   },
 
+  /**
+   * Ask a new question about a transcript that has already been made.
+   *
+   * Answers 202 with the job in `analyzing`, so the caller starts polling
+   * `status` exactly as it does after an upload - no audio is touched and no
+   * Whisper pass runs, which is the entire point of the endpoint.
+   */
+  async reanalyzeJob(
+    jobId: string,
+    request: { prompt?: string; preset?: string }
+  ): Promise<{ job_id: string; prompt: string | null; preset: string | null; status: string }> {
+    const response = await fetch(`${API_BASE}/jobs/${jobId}/reanalyze`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(request),
+    });
+    return handleResponse(response);
+  },
+
   async listJobs(): Promise<JobListItem[]> {
     const response = await fetch(`${API_BASE}/jobs`);
     return handleResponse<JobListItem[]>(response);
@@ -229,14 +248,26 @@ export const api = {
     return handleResponse<Violation>(response);
   },
 
+  /**
+   * Move several suggestions at once.
+   *
+   * `fromStatus` defaults server-side to pending, which is what keeps "Clean
+   * All" from overwriting a decision the reviewer already made by hand. Undo is
+   * the same call in reverse: the ids the sweep changed, moved back off
+   * `accepted`.
+   */
   async bulkUpdateViolations(
     jobId: string,
-    update: { status?: string; action?: string },
-    labels?: string[]
-  ): Promise<{ message: string }> {
+    update: { status?: string; action?: string; ids?: string[] },
+    labels?: string[],
+    fromStatus?: string[]
+  ): Promise<{ message: string; updated: number }> {
     const url = new URL(`${API_BASE}/jobs/${jobId}/violations/bulk-update`);
     if (labels && labels.length > 0) {
       labels.forEach(label => url.searchParams.append("labels", label));
+    }
+    if (fromStatus && fromStatus.length > 0) {
+      fromStatus.forEach(status => url.searchParams.append("from_status", status));
     }
 
     const response = await fetch(url.toString(), {
@@ -244,7 +275,7 @@ export const api = {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(update),
     });
-    return handleResponse<{ message: string }>(response);
+    return handleResponse<{ message: string; updated: number }>(response);
   },
 
   /**

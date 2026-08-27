@@ -93,6 +93,9 @@ pytest
 cd frontend
 npm install
 npm run dev
+
+# Frontend tests (vitest + Testing Library, jsdom - no browser)
+npm test
 ```
 
 Both at once: `./start.sh`. Or `docker compose up --build`.
@@ -137,9 +140,10 @@ python ../scripts/dump_demo_transcript.py
 | GET | `/api/jobs/{id}` | Job details + violation counts |
 | DELETE | `/api/jobs/{id}` | Delete job and files |
 | GET | `/api/jobs/{id}/transcript` | Stored transcript (404 when the job has none) |
+| POST | `/api/jobs/{id}/reanalyze` | Re-run analysis on the stored transcript (202; poll `status`) |
 | GET | `/api/jobs/{id}/violations` | List suggested edits |
 | PATCH | `/api/jobs/{id}/violations/{vid}` | Update status or action |
-| POST | `/api/jobs/{id}/violations/bulk-update` | Bulk update, optionally filtered by label |
+| POST | `/api/jobs/{id}/violations/bulk-update` | Bulk update, filtered by label, id, or source status |
 | GET | `/api/jobs/{id}/audio` | Stream original media |
 | GET | `/api/jobs/{id}/audio/waveform` | Waveform peaks JSON |
 | POST | `/api/jobs/{id}/export` | Queue an edited render (202; poll `export_status`) |
@@ -199,7 +203,9 @@ on every startup. Add a column there and cover it in `backend/tests/test_migrati
 A `.env` at the **repo root** (not in a subdirectory), discovered by `app/config.py`:
 
 ```
+CLEANCUT_MODEL=            # optional; "provider:model", default openai:gpt-4o
 OPENAI_API_KEY=your_key_here
+ANTHROPIC_API_KEY=         # required instead when CLEANCUT_MODEL names anthropic
 CORS_ORIGINS=http://localhost:3000
 DATABASE_PATH=            # optional; Docker sets this to a mounted volume
 NEXT_PUBLIC_API_URL=      # optional; baked into the frontend build
@@ -218,6 +224,18 @@ System dependency: `brew install ffmpeg`.
 ## Key Implementation Details
 
 - **Transcriber**: faster-whisper with int8 quantization for M-series Mac performance.
+- **Model router** (`analysis/providers.py`): `CLEANCUT_MODEL="provider:model"` picks the vendor and
+  the model - `openai:gpt-4o` (the default, unchanged behaviour) or `anthropic:claude-opus-5`. One
+  string rather than two variables, because a provider and a model that do not go together is the
+  misconfiguration worth making unrepresentable. A provider only has to answer
+  `complete(system_prompt, user_prompt) -> str`; parsing and the JSON contract stay in
+  `prompt_analyzer`, where they are the same for every vendor. `preflight` checks the key named by
+  the *configured* provider, not `OPENAI_API_KEY` unconditionally. The Anthropic path has no
+  `response_format`: the system prompts already spell the contract out and `_parse_llm_response`
+  copes with a fenced answer. It does enable server-side refusal fallbacks, and turns a
+  `stop_reason == "refusal"` into a `ProviderError` - which `analyze` catches per chunk alongside
+  `AnalysisError`, so a declined section becomes a named gap rather than an empty answer that reads
+  as a clean recording.
 - **PromptAnalyzer**: two modes.
   - *Prompt mode* (`preset=None`): the user's instruction drives analysis; returns label + action.
   - *Preset mode*: a rulebook from `analysis/presets/` replaces the prompt; returns rule_violated +
@@ -227,7 +245,12 @@ System dependency: `brew install ffmpeg`.
   - LLM-quoted text is remapped onto word-level timestamps via `_find_text_timestamps`.
 - **Adding a preset**: drop a markdown rulebook in `analysis/presets/` and add an entry to `PRESETS`
   in `prompt_analyzer.py`. It surfaces automatically via `GET /api/jobs/presets`.
-- **Scrubber**: deterministic filler detection off word timestamps, no LLM. Dead air needs *two*
+- **Scrubber**: deterministic filler detection off word timestamps, no LLM. Matching is a
+  longest-first pass per segment: `FILLER_PHRASES` holds the multi-word fillers ("you know",
+  "I mean") because a space in `FILLER_WORDS` can never match a word-at-a-time scan, and
+  `FILLER_WORDS` lists every spelling Whisper actually emits for a sound ("hm" *and* "hmm")
+  rather than inferring them. Agreement noises ("mhm", "uh-huh") are deliberately excluded:
+  cutting one deletes a spoken "yes". Dead air needs *two*
   signals to agree: the transcript proposes a span nobody speaks over, and an RMS pass
   (`services/levels.py`) has to confirm it is below `DEAD_AIR_FLOOR_DB`. The confirmed sub-interval
   is what gets emitted, which also trims Whisper's loose boundaries off the next line's onset.
@@ -261,9 +284,13 @@ System dependency: `brew install ffmpeg`.
   other two as plain Python functions, so a `Depends` on those never runs for it.
 - **Transcript persistence** (`services/transcripts.py`): the worker stores the transcript on the
   job *before* analysis runs, so a partial or failed analysis still leaves the text behind - the
-  LLM is the stage that fails, and re-running it is cheap next to re-transcribing. Stored as
-  segments only: word timing is what makes the timestamp mapping precise, but it is ~20x the bytes
-  and nothing reads it back. `GET /api/jobs/{id}/transcript` is a **404** for an unknown job, a job
+  LLM is the stage that fails, and re-running it is cheap next to re-transcribing. Stored **with
+  word timing** (schema version 2): it is ~20x the bytes of segments alone and no reader wants it,
+  but re-analysis needs it - a quote can only be placed as precisely as the timing behind it, and a
+  re-run producing coarser markers than the first pass would put two kinds of precision on one
+  screen. Words are stored and served to nobody; the route still returns lines. Version 1 rows have
+  no words and read fine; a re-run over one falls back to segment spans, which is the analyzer's
+  existing behaviour for an untimed segment. `GET /api/jobs/{id}/transcript` is a **404** for an unknown job, a job
   that never got that far, and a row from before the column existed - all three mean "nothing to
   read", where an empty segment list would claim the recording was silent. `from_json` is lenient
   by design: a truncated or hand-edited row reads as absent rather than raising.
@@ -292,6 +319,28 @@ System dependency: `brew install ffmpeg`.
   `1` a flagged control or a missed floor, and `2` the analysis was partial and `--allow-partial`
   was not given - a partial run's numbers can clear every floor, since the chunks that answered are
   graded as if they were the whole transcript.
+- **Bulk update / undo** (`routes/violations.py`): `bulk-update` selects on three filters -
+  `labels` and `from_status` as query params, `ids` in the body. `from_status` defaults to
+  `pending`, which is what stops "Clean All" from overwriting an edit the reviewer already rejected
+  by hand. Undo is the same call reversed: the review page captures the ids the sweep moved *before*
+  it runs (afterwards they are indistinguishable from edits accepted by hand) and sends them back
+  with `from_status=accepted`. An empty `ids` list means "these zero rows" and must never fall
+  through to the whole job. Both `status` and `action` are validated here as they are on the PATCH;
+  the bulk route used to write whatever it was given.
+
+- **Re-analysis** (`POST /api/jobs/{id}/reanalyze` -> `worker._process_reanalysis`): the payoff for
+  persisting the transcript. A new prompt used to mean a new Whisper pass; now it reads the stored
+  words. The route validates and queues (202, poll `status`), refusing a job with no stored
+  transcript or one still in the pipeline with a **409** - the job is real, so a 404 would send the
+  caller hunting for it. What a re-run replaces is the design: the LLM's suggestions answer the old
+  prompt so they all go, accepted and rejected included, since a decision about a suggestion that no
+  longer exists cannot be carried forward honestly; the scrubber's are deterministic and
+  prompt-independent, so they and their decisions stay. New suggestions are never pre-accepted even
+  on an `auto_fix` job - that flag was a choice about the upload, and a re-run is a choice made in
+  the review screen. A failed re-analysis leaves the job `completed` with a warning rather than
+  `failed`, the same argument as a failed export, and the old suggestions survive because the delete
+  only runs once the new analysis returns.
+
 - **Keyboard review**: the review page binds `J`/`K`, `A`/`R` (decide and advance), `M`, `Space`,
   `P`, `T` (transcript panel) and `?` on `window`, guarded against modifier keys and text inputs.
   `Space` also defers to a focused `<button>`, since the transcript's lines are buttons and the
@@ -303,6 +352,9 @@ System dependency: `brew install ffmpeg`.
 
 - Backend: Pydantic for validation (`schemas.py`), logic in `services/`, routing in `routes/`.
 - Frontend: functional components, Tailwind v4, strictly typed API interactions.
+- Frontend tests live next to what they test (`Foo.test.tsx`), run under vitest in jsdom, and are
+  included by `tsc --noEmit` but not by `next build`. `src/test/setup.ts` stubs `ResizeObserver`
+  and `scrollIntoView`, which jsdom lacks and a plain render of the sidebar reaches.
 - Fixtures in `tests/` must be synthetic. Never commit a real customer recording or transcript.
 
 ## Common Issues

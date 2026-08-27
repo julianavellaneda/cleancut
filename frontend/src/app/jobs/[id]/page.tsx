@@ -10,6 +10,7 @@ import { ViolationList, SCRUB_LABELS } from "@/components/ViolationList";
 import { ViolationCard } from "@/components/ViolationCard";
 import { ProcessingView } from "@/components/ProcessingView";
 import { KeyboardLegend } from "@/components/KeyboardLegend";
+import { ReanalyzeBar } from "@/components/ReanalyzeBar";
 import { TranscriptPanel } from "@/components/TranscriptPanel";
 import { api, ExportStatus, Job, Transcript, Violation } from "@/lib/api";
 
@@ -33,6 +34,12 @@ export default function ReviewPage() {
   const [error, setError] = useState<string | null>(null);
   const [isUpdating, setIsUpdating] = useState(false);
   const [isCleaning, setIsCleaning] = useState(false);
+  // The ids the last "Clean All" actually moved, so undo puts back that sweep
+  // rather than every scrubber edit now sitting at accepted - one the reviewer
+  // accepted by hand beforehand was never part of it. Cleared once undone.
+  const [lastSweep, setLastSweep] = useState<string[] | null>(null);
+  const [showReanalyze, setShowReanalyze] = useState(false);
+  const [isReanalyzing, setIsReanalyzing] = useState(false);
   // The edit set changed since the last render, so whatever sits in exports/ is
   // stale. Tracked separately from the server's export_status, which describes
   // the last render rather than whether it still matches the review.
@@ -99,7 +106,12 @@ export default function ReviewPage() {
           setViolations(vData);
           // Only seed the selection when there isn't one. Without this guard
           // the poll yanked the user back to the first suggestion on every tick.
-          setSelectedViolation(prev => prev ?? vData[0] ?? null);
+          // A re-analysis deletes the suggestions it replaces, so a selection
+          // pointing at one that is gone has to fall back rather than persist
+          // as a card describing a row nobody can act on.
+          setSelectedViolation(prev =>
+            (prev && vData.some(v => v.id === prev.id) ? prev : vData[0]) ?? null
+          );
         }
       } catch {}
     }, 2000);
@@ -142,22 +154,68 @@ export default function ReviewPage() {
     }
   };
 
+  /** Re-read the list after a bulk move, keeping the selection where it was. */
+  const refreshViolations = async () => {
+    const refreshed = await api.getViolations(jobId);
+    setViolations(refreshed);
+    if (selectedViolation) {
+      setSelectedViolation(
+        refreshed.find(v => v.id === selectedViolation.id) ?? selectedViolation
+      );
+    }
+    setExportStale(true);
+  };
+
   const handleCleanAll = async () => {
     setIsCleaning(true);
     try {
+      // Captured before the call: after it, these rows are indistinguishable
+      // from any scrubber edit that was already accepted.
+      const swept = violations
+        .filter(v => v.status === "pending" && v.label && SCRUB_LABELS.includes(v.label))
+        .map(v => v.id);
+
       await api.bulkUpdateViolations(jobId, { status: "accepted" }, SCRUB_LABELS);
-      const refreshed = await api.getViolations(jobId);
-      setViolations(refreshed);
-      if (selectedViolation) {
-        setSelectedViolation(
-          refreshed.find(v => v.id === selectedViolation.id) ?? selectedViolation
-        );
-      }
-      setExportStale(true);
+      await refreshViolations();
+      setLastSweep(swept);
     } catch {
       setError("Clean All failed");
     } finally {
       setIsCleaning(false);
+    }
+  };
+
+  const handleUndoCleanAll = async () => {
+    if (!lastSweep) return;
+    setIsCleaning(true);
+    try {
+      await api.bulkUpdateViolations(
+        jobId, { status: "pending", ids: lastSweep }, undefined, ["accepted"]
+      );
+      await refreshViolations();
+      setLastSweep(null);
+    } catch {
+      setError("Undo failed");
+    } finally {
+      setIsCleaning(false);
+    }
+  };
+
+  const handleReanalyze = async (request: { prompt?: string; preset?: string }) => {
+    setIsReanalyzing(true);
+    setError(null);
+    try {
+      await api.reanalyzeJob(jobId, request);
+      setShowReanalyze(false);
+      setLastSweep(null);
+      // The job comes back `analyzing`, which re-arms the poll and swaps in the
+      // processing view; loadData would race it, so the local status is what
+      // hands over.
+      setJob(prev => (prev ? { ...prev, status: "analyzing", error_message: null } : prev));
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Re-analysis failed");
+    } finally {
+      setIsReanalyzing(false);
     }
   };
 
@@ -317,6 +375,16 @@ export default function ReviewPage() {
               Transcript
             </Button>
           )}
+          {transcript && (
+            <Button
+              size="sm"
+              variant={showReanalyze ? "secondary" : "ghost"}
+              onClick={() => setShowReanalyze(v => !v)}
+              title="Ask a different question about this recording, without re-transcribing it"
+            >
+              New Prompt
+            </Button>
+          )}
           {exportStatus === "failed" && !exportStale && (
             <span className="max-w-xs truncate text-xs text-destructive" title={job.export_error ?? undefined}>
               Export failed: {job.export_error ?? "unknown error"}
@@ -338,6 +406,16 @@ export default function ReviewPage() {
           )}
         </div>
       </header>
+
+      {showReanalyze && (
+        <ReanalyzeBar
+          currentPrompt={job.prompt}
+          currentPreset={job.preset}
+          isSubmitting={isReanalyzing}
+          onSubmit={handleReanalyze}
+          onCancel={() => setShowReanalyze(false)}
+        />
+      )}
 
       {/* Set by a failed update or a rejected export. Previously assigned and
           never rendered, so an export the server refused looked like nothing
@@ -367,7 +445,8 @@ export default function ReviewPage() {
 
       <div className="flex-1 flex overflow-hidden">
         <aside className="w-80 border-r bg-muted/20">
-          <ViolationList violations={violations} selectedViolation={selectedViolation} onSelect={setSelectedViolation} onCleanAll={handleCleanAll} isCleaning={isCleaning} />
+          <ViolationList violations={violations} selectedViolation={selectedViolation} onSelect={setSelectedViolation} onCleanAll={handleCleanAll} onUndoCleanAll={handleUndoCleanAll}
+            canUndoCleanAll={lastSweep !== null && lastSweep.length > 0} isCleaning={isCleaning} />
         </aside>
 
         <main className="flex-1 flex flex-col overflow-hidden">

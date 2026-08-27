@@ -117,7 +117,8 @@
     {"id": "filler-uh-1", "category": "filler", "match": "token", "line": 1, "text": "uh"},
     {"id": "filler-ah-1", "category": "filler", "match": "token", "line": 4, "text": "ah"},
     {"id": "filler-er-1", "category": "filler", "match": "token", "line": 5, "text": "er"},
-    {"id": "filler-hm-1", "category": "filler", "match": "token", "line": 6, "text": "hm"},
+    {"id": "filler-hm-1", "category": "filler", "match": "token", "line": 6, "text": "hm",
+     "also": ["hmm"]},
     {
       "id": "filler-uh-2", "category": "filler", "match": "token", "line": 9, "text": "uh",
       "present": false, "note": "On the silent line 9 - see phone-number-1."

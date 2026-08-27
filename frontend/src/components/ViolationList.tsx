@@ -16,6 +16,9 @@ interface ViolationListProps {
   selectedViolation: Violation | null;
   onSelect: (violation: Violation) => void;
   onCleanAll: () => void;
+  onUndoCleanAll: () => void;
+  /** True only while the last sweep is still standing and undoable. */
+  canUndoCleanAll: boolean;
   isCleaning: boolean;
 }
 
@@ -24,6 +27,8 @@ export function ViolationList({
   selectedViolation,
   onSelect,
   onCleanAll,
+  onUndoCleanAll,
+  canUndoCleanAll,
   isCleaning,
 }: ViolationListProps) {
   const pendingScrubCount = violations.filter(
@@ -87,6 +92,18 @@ export function ViolationList({
             {isCleaning
               ? "Cleaning..."
               : `Clean All (${pendingScrubCount})`}
+          </Button>
+        )}
+        {canUndoCleanAll && (
+          <Button
+            size="sm"
+            variant="ghost"
+            className="w-full text-xs"
+            onClick={onUndoCleanAll}
+            disabled={isCleaning}
+            title="Put the last Clean All back to pending"
+          >
+            Undo Clean All
           </Button>
         )}
       </div>

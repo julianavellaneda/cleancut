@@ -360,20 +360,27 @@ def test_every_claim_and_every_planted_pause_was_found(demo_card):
 
 def test_the_recorded_run_misses_exactly_the_known_four(demo_card):
     """
-    Not a target - a record of what the harness found the moment it existed,
-    and all three are the scrubber's doing rather than bad luck:
+    Not a target - a record of what the harness found the moment it existed.
+    Three of the four were the scrubber's doing, and two of those are now fixed
+    in `Scrubber` but still missing *here*, because this grades a recording made
+    before the fix:
 
-    - "you know" is two words. `detect_filler_words` matches word by word
-      against `FILLER_WORDS`, so a multi-word entry in that set can never fire.
-    - "hm" is in the set; Whisper transcribes the sound as "Hmm", which is not.
-    - "Er," was dropped from the transcript altogether.
+    - "you know" is two words, and `detect_filler_words` matched word by word,
+      so a multi-word entry in `FILLER_WORDS` could never fire. Fixed by
+      `FILLER_PHRASES`; the live detector run below finds it.
+    - "hm" was in the set; Whisper transcribes the sound as "Hmm". Fixed by
+      listing the spellings the model actually emits.
+    - "Er," was dropped from the transcript altogether, which no detector
+      reading that transcript can recover.
 
     The fourth miss is not the scrubber's doing: `dead-air-seam-7-8` is 1.01s of
     measured silence that today's 0.75s floor finds and the 2.0s floor this run
     was recorded under could not.
 
-    If someone fixes any of them, this assertion is what tells them to re-record
-    `seed_job.json` rather than leaving a stale snapshot behind.
+    This assertion is what tells you the snapshot is stale: re-recording
+    `seed_job.json` costs a transcription and a completion, so it is done
+    deliberately rather than on every detector change, and until then the gap
+    between this list and the detector run below *is* the fix.
     """
     _, _, card = demo_card
     assert sorted(e.id for e in card.misses) == [
@@ -658,7 +665,7 @@ def test_the_scrubber_as_it_stands_today_is_scored_against_the_clip():
     assert card.false_positives == ()
     assert card.per_category["dead-air"] == (4, 4)
     assert card.precision >= 0.95
-    assert card.recall >= 0.70
+    assert card.recall >= 0.85
 
 
 @needs_media
@@ -666,7 +673,7 @@ def test_the_cli_runs_the_detectors(capsys):
     code = main([
         "--detectors", str(DEMO_MP3), "--transcript", str(DEMO_TRANSCRIPT),
         "--suite", "scrub", "--labels", str(LABELS),
-        "--min-precision", "0.95", "--min-recall", "0.70",
+        "--min-precision", "0.95", "--min-recall", "0.85",
     ])
     assert code == 0
     assert "dead-air" in capsys.readouterr().out

@@ -13,8 +13,31 @@ class Scrubber:
     Provides deterministic editing suggestions like silence removal and filler word detection.
     """
     
-    # Common filler words to detect
-    FILLER_WORDS = {"um", "uh", "ah", "er", "hm", "like", "you know"}
+    # Common fillers, spelled the way Whisper actually writes them. "Hmm" and
+    # "umm" are the same sound as "hm" and "um" and Whisper picks between the
+    # spellings freely, so every variant it emits has to be listed rather than
+    # inferred - collapsing repeated letters would also fold real words in.
+    FILLER_WORDS = {
+        "um", "umm", "uhm",
+        "uh", "uhh",
+        "ah", "ahh",
+        "er", "err", "erm",
+        "hm", "hmm",
+        "like",
+    }
+
+    # Fillers that span more than one word. Matching is word by word off the
+    # timestamps, so a multi-word entry in FILLER_WORDS could never fire; these
+    # are matched as a run of consecutive words instead, longest first.
+    FILLER_PHRASES = (
+        ("you", "know"),
+        ("i", "mean"),
+    )
+
+    @staticmethod
+    def _normalize(text: str) -> str:
+        """Lowercase a word and drop the punctuation Whisper hangs off it."""
+        return text.strip().lower().strip(".,?!:;\u2026\u201c\u201d\"")
 
     @staticmethod
     def detect_silence(
@@ -145,24 +168,45 @@ class Scrubber:
         Returns:
             List of suggested 'cut' violations for filler words
         """
+        max_phrase = max((len(p) for p in Scrubber.FILLER_PHRASES), default=0)
+
         fillers = []
         for segment in transcript.segments:
             if not segment.words:
                 continue
-            
-            for word in segment.words:
-                # Clean word for matching (lowercase and remove punctuation)
-                clean_word = word.text.strip().lower().strip(".,?!:;")
-                
-                if clean_word in Scrubber.FILLER_WORDS:
-                    fillers.append(Violation(
-                        text=word.text.strip(),
-                        start_time=word.start,
-                        end_time=word.end,
-                        label="Filler Word",
-                        action="cut",
-                        reasoning=f"Detected common filler word '{clean_word}'."
-                    ))
+
+            words = segment.words
+            cleaned = [Scrubber._normalize(w.text) for w in words]
+
+            i = 0
+            while i < len(words):
+                # Longest match first, so "you know" wins over a bare "you".
+                match_len = 0
+                matched = ""
+                for size in range(min(max_phrase, len(words) - i), 1, -1):
+                    if tuple(cleaned[i:i + size]) in Scrubber.FILLER_PHRASES:
+                        match_len = size
+                        matched = " ".join(cleaned[i:i + size])
+                        break
+
+                if not match_len and cleaned[i] in Scrubber.FILLER_WORDS:
+                    match_len = 1
+                    matched = cleaned[i]
+
+                if not match_len:
+                    i += 1
+                    continue
+
+                run = words[i:i + match_len]
+                fillers.append(Violation(
+                    text=" ".join(w.text.strip() for w in run),
+                    start_time=run[0].start,
+                    end_time=run[-1].end,
+                    label="Filler Word",
+                    action="cut",
+                    reasoning=f"Detected common filler word '{matched}'."
+                ))
+                i += match_len
         
         if not fillers:
             return []
