@@ -60,9 +60,10 @@ export default function AdminDashboard() {
         <Button variant="outline" size="sm" onClick={() => router.push("/")}>Exit Admin</Button>
       </header>
 
-      {/* Destructive actions are gated when the server sets ADMIN_TOKEN. It is
-          usually unset in local development, so this is a blank field rather
-          than a login wall. */}
+      {/* Destructive actions need the server's ADMIN_TOKEN. A server with none
+          configured refuses them outright (503) rather than accepting anything,
+          so this stays a field on a working dashboard rather than a login wall
+          in front of the stats. */}
       <div className="rounded-md border p-4 space-y-2">
         <label htmlFor="admin-token" className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
           Admin token
@@ -72,7 +73,7 @@ export default function AdminDashboard() {
             id="admin-token"
             type="password"
             value={token}
-            placeholder="Only needed if the server sets ADMIN_TOKEN"
+            placeholder="The ADMIN_TOKEN configured on the server"
             onChange={(e) => {
               setToken(e.target.value);
               setAdminToken(e.target.value);

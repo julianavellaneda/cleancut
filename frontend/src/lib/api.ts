@@ -109,9 +109,10 @@ const ADMIN_TOKEN_KEY = "cleancut.adminToken";
 /**
  * The admin secret, if the operator has entered one.
  *
- * The backend only requires this when ADMIN_TOKEN is set server-side, so an
- * absent token is the normal local-dev case, not an error. The header is simply
- * omitted then.
+ * The destructive routes require it unless the server was started with
+ * ALLOW_UNAUTHENTICATED_ADMIN=1. An empty token still sends no header at all: a
+ * server with no ADMIN_TOKEN configured answers 503 whatever we send, and its
+ * message is the one worth showing.
  */
 export function getAdminToken(): string {
   if (typeof window === "undefined") return "";

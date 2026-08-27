@@ -201,7 +201,7 @@ Interactive Swagger docs at http://localhost:8000/docs.
 | POST | `/api/jobs/{id}/export` | Queue the edited render (202; poll `export_status`) |
 | GET | `/api/jobs/{id}/export/download` | Download the result |
 | GET | `/api/admin/stats` | System statistics |
-| POST | `/api/admin/reset-database`, `/clear-storage`, `/reset-all` | Destructive wipes; gated by `ADMIN_TOKEN` when one is set |
+| POST | `/api/admin/reset-database`, `/clear-storage`, `/reset-all` | Destructive wipes; require `ADMIN_TOKEN`, and are disabled until one is set |
 
 ## Analysis modes
 
@@ -263,7 +263,8 @@ Set in `.env` at the repo root:
 | `MAX_DURATION_MINUTES` | `120` | Media length cap, measured with `ffprobe` before queueing; media whose duration cannot be read is rejected |
 | `RETENTION_HOURS` | unset | Delete jobs and their media once they are this old. Unset keeps everything forever |
 | `RETENTION_SWEEP_MINUTES` | `15` | How often the retention sweeper runs |
-| `ADMIN_TOKEN` | unset | Shared secret for the destructive admin routes. Unset leaves them open (fine on localhost); set it and they require an `X-Admin-Token` header |
+| `ADMIN_TOKEN` | unset | Shared secret for the destructive admin routes, sent as an `X-Admin-Token` header. Unset **disables** those routes (503) rather than leaving them open |
+| `ALLOW_UNAUTHENTICATED_ADMIN` | unset | `1` leaves the destructive admin routes open with no token, the way they used to be. For a machine you control only; ignored when `ADMIN_TOKEN` is set |
 | `SKIP_PREFLIGHT` | unset | Boot despite a failed startup check (jobs will still fail) |
 
 ## Failure modes
@@ -295,8 +296,16 @@ provider — never the audio. Jobs, uploads, exports, and the stored transcript 
 (SQLite plus `backend/uploads/` and `backend/exports/`). Use the admin dashboard at `/admin` to
 wipe both.
 
-The wipe endpoints delete everything and are open by default, which is only safe on a machine you
-control. Set `ADMIN_TOKEN` before putting the API anywhere else; the dashboard has a field for it.
+The wipe endpoints delete everything, so they are off until you configure them: with no
+`ADMIN_TOKEN` set they answer 503 rather than running. Set one — the dashboard has a field for it,
+stored in that browser only — and they require it as an `X-Admin-Token` header. If you would rather
+have the old one-click reset on your own laptop, `ALLOW_UNAUTHENTICATED_ADMIN=1` restores it; that
+is a deliberate choice to leave the delete button open to anything that can reach the port, which is
+why a blank line in `.env` no longer does it for you.
+
+The rest of the API is unauthenticated and binds to every interface. Treat CleanCut as a local-only
+tool: run it on a machine you control, and put it behind a reverse proxy that authenticates before
+exposing it to a network.
 
 Nothing is deleted on a timer unless you ask for it. Set `RETENTION_HOURS` and a background sweeper
 deletes each job — its row, its violations, its upload, and its export — once it is that old, along

@@ -149,9 +149,9 @@ python ../scripts/dump_demo_transcript.py
 | POST | `/api/jobs/{id}/export` | Queue an edited render (202; poll `export_status`) |
 | GET | `/api/jobs/{id}/export/download` | Download edited file |
 | GET | `/api/admin/stats` | System-wide statistics |
-| POST | `/api/admin/reset-database` | Wipe all database records (gated by `ADMIN_TOKEN`) |
-| POST | `/api/admin/clear-storage` | Delete all media files (gated by `ADMIN_TOKEN`) |
-| POST | `/api/admin/reset-all` | Wipe database + storage (gated by `ADMIN_TOKEN`) |
+| POST | `/api/admin/reset-database` | Wipe all database records (requires `ADMIN_TOKEN`; 503 until one is set) |
+| POST | `/api/admin/clear-storage` | Delete all media files (requires `ADMIN_TOKEN`; 503 until one is set) |
+| POST | `/api/admin/reset-all` | Wipe database + storage (requires `ADMIN_TOKEN`; 503 until one is set) |
 
 **Note:** `/api/jobs/presets` must stay declared before `/api/jobs/{job_id}` in `routes/jobs.py`,
 or the path-param route shadows it.
@@ -215,7 +215,8 @@ MAX_UPLOAD_MB=500         # optional; upload size cap
 MAX_DURATION_MINUTES=120  # optional; media length cap, probed with ffprobe (fails closed)
 DEAD_AIR_FLOOR_DB=-50     # optional; dBFS below which audio counts as silence
 DEAD_AIR_MIN_SECONDS=0.75 # optional; shortest dead-air span worth suggesting
-ADMIN_TOKEN=              # optional; when set, destructive /api/admin/* needs X-Admin-Token
+ADMIN_TOKEN=              # destructive /api/admin/* needs it as X-Admin-Token; unset = those routes 503
+ALLOW_UNAUTHENTICATED_ADMIN= # optional; 1 leaves them open with no token (local only)
 RETENTION_HOURS=          # optional; delete jobs + media older than this. Unset = keep forever
 RETENTION_SWEEP_MINUTES=15 # optional; sweeper interval
 SKIP_PREFLIGHT=           # optional; 1 to boot past a failed startup check
@@ -297,9 +298,16 @@ System dependency: `brew install ffmpeg`.
   completed, 404 missing source, 400 nothing accepted), sets `export_status="queued"`, enqueues and
   returns **202**. `export_status`/`export_error` are deliberately separate from `job.status`: a
   failed render must not mark a reviewed job `failed` and strand the user's work.
-- **Admin auth** (`app/auth.py`): `require_admin` is a no-op when `ADMIN_TOKEN` is unset and a 401
-  otherwise. It is declared on all three destructive routes individually — `reset_all` calls the
-  other two as plain Python functions, so a `Depends` on those never runs for it.
+- **Admin auth** (`app/auth.py`): `require_admin` fails **closed**. With `ADMIN_TOKEN` set it is the
+  usual 401-unless-it-matches; with no token configured it is a **503**, not a pass — an unset
+  variable is the state every deployment starts in and the one nobody notices, so it must not be the
+  state that hands out the delete button. 503 rather than 401 because no header the caller could
+  send would help: the fault is the server's configuration. `ALLOW_UNAUTHENTICATED_ADMIN=1` restores
+  the old open behaviour for local dev, and is ignored when `ADMIN_TOKEN` is set — the flag opens the
+  routes, so it must never weaken a gate an operator deliberately configured. `GET /admin/stats`
+  stays ungated throughout: the dashboard has to load on an unconfigured server. The dependency is
+  declared on all three destructive routes individually — `reset_all` calls the other two as plain
+  Python functions, so a `Depends` on those never runs for it.
 - **Transcript persistence** (`services/transcripts.py`): the worker stores the transcript on the
   job *before* analysis runs, so a partial or failed analysis still leaves the text behind - the
   LLM is the stage that fails, and re-running it is cheap next to re-transcribing. Stored **with

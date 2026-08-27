@@ -21,9 +21,10 @@ All work is on branch `code-review-fixes`, off `main` at `e6113a9`. One commit p
 | 2 — Frontend upload settings | **Done** | `23ba748` |
 | 3 — Dedup + timestamp alignment | **Done** | `dc7280c` |
 | 4 — Export staleness invalidation | **Done** | `3ee2fe5` |
-| 5–11 | Not started | — |
+| 5 — Admin auth fail-closed | **Done** | pending |
+| 6–11 | Not started | — |
 
-Baseline after Phase 4: **555 backend tests**, **34 frontend tests**, `tsc --noEmit` clean,
+Baseline after Phase 5: **573 backend tests**, **34 frontend tests**, `tsc --noEmit` clean,
 `python -m app.eval.run --detectors ../tests/fixtures/demo/demo_seminar.mp3 --suite scrub` passes
 (F1 95.7%, unchanged by these fixes).
 
@@ -51,6 +52,14 @@ Notes left behind for whoever picks this up:
 - **Phase 4** left `POST /export` free to queue a render while one is already in flight. That was
   true before and is not made worse by the revision tracking (the second render simply wins), but
   Phase 7's durable queue is the right place to make it explicit.
+- **Phase 5** chose **503** for an unconfigured server rather than 401: with no `ADMIN_TOKEN` set
+  there is no header the caller could send, so 401 would send an operator hunting for a credential
+  that does not exist. `ALLOW_UNAUTHENTICATED_ADMIN=1` restores the old open behaviour and is
+  ignored when a token *is* set. This is a **breaking change for existing dev setups** — anyone
+  relying on the one-click reset must now set one of the two variables; say so in the PR
+  description. `GET /admin/stats` is untouched, so the dashboard still loads either way.
+- **Phase 5** left the loopback-binding half of its finding to Phase 6, where it belongs; the README
+  privacy section now states the local-only trust model in words, which is the documentation half.
 - **Phase 6 still needs a decision from the user** before anyone implements it.
 
 ---
@@ -117,7 +126,7 @@ word coincidentally matches unrelated text must not be misaligned.
 
 ---
 
-## Phase 5 — Admin auth fail-closed default
+## Phase 5 — Admin auth fail-closed default — DONE
 
 **Finding #4 (High): Destructive admin routes fail open**
 - File: `backend/app/auth.py:35`
@@ -223,8 +232,8 @@ Small, mechanical validation fixes — group together:
 2. ~~Phase 2 (upload settings)~~ — done
 3. ~~Phase 3 (dedup + timestamp alignment)~~ — done
 4. ~~Phase 4 (export invalidation)~~ — done
-5. **Phase 5 — start here.** Phase 5 (admin auth default)
-6. Phase 6 (network exposure) — **needs user decision first**
+5. ~~Phase 5 (admin auth default)~~ — done
+6. **Phase 6 — start here.** Phase 6 (network exposure) — **needs user decision first**
 7. Phase 8, 9, 10 (medium batches) — any order, independent of each other
 8. Phase 11 (Next.js upgrade) — isolate dependency churn
 9. Phase 7 (durable queue) — largest, do last with its own design pass
