@@ -20,7 +20,7 @@ All work is on branch `code-review-fixes`, off `main` at `e6113a9`. One commit p
 | 1 — Export status reporting | **Done** | `aceafda` (bundled with the pre-existing working tree) |
 | 2 — Frontend upload settings | **Done** | `23ba748` |
 | 3 — Dedup + timestamp alignment | **Done** | `dc7280c` |
-| 4 — Export staleness invalidation | **Done** | (this commit) |
+| 4 — Export staleness invalidation | **Done** | `3ee2fe5` |
 | 5–11 | Not started | — |
 
 Baseline after Phase 4: **555 backend tests**, **34 frontend tests**, `tsc --noEmit` clean,
