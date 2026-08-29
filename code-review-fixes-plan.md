@@ -23,9 +23,10 @@ All work is on branch `code-review-fixes`, off `main` at `e6113a9`. One commit p
 | 4 — Export staleness invalidation | **Done** | `3ee2fe5` |
 | 5 — Admin auth fail-closed | **Done** | `a6866c0` |
 | 6 — Loopback-only binding | **Done** | `c6c9e63` |
-| 7–11 | Not started | — |
+| 8 — Validation & data integrity | **Done** | _pending_ |
+| 7, 9–11 | Not started | — |
 
-Baseline after Phase 6: **598 backend tests**, **34 frontend tests**, `tsc --noEmit` clean,
+Baseline after Phase 8: **628 backend tests**, **34 frontend tests**, `tsc --noEmit` clean,
 `python -m app.eval.run --detectors ../tests/fixtures/demo/demo_seminar.mp3 --suite scrub` passes
 (F1 95.7%, unchanged by these fixes).
 
@@ -68,6 +69,16 @@ Notes left behind for whoever picks this up:
   it is its own project, not a phase here.
 - **Phase 6** also narrowed `ALLOW_UNAUTHENTICATED_ADMIN` from Phase 5: it is honoured only on a
   loopback binding. Two settings in contradiction resolve closed, with a 503 that names which.
+- **Phase 8** put all three fixes in one test module (`tests/test_input_validation.py`), since they
+  share a failure *shape* rather than a module: each turned a bad input into a plausible result.
+- **Phase 8** made `schemas.EDIT_ACTIONS` the owner of `("cut", "mute")`; `routes/violations.ACTIONS`
+  is now that same object. Anything else needing the pair should import it, not re-spell it.
+- **Phase 8** added `TranscriptFormatError` (a `ValueError` subclass) to `transcriber`. Only the CLI
+  calls `load_transcript` today; a future caller has to catch it, or a mangled file becomes a 500.
+- **Phase 8** left `analyze()` returning an empty result for a 0-segment transcript, which is what it
+  already did — it is now explicit rather than a side effect of deriving `chunk_size=0`. Whether a
+  silent recording should *fail* instead is a real question, but it is a behaviour change to the
+  worker, not a validation fix, so it was left alone.
 - **Phase 6** pins `start.sh` and `docker-compose.yml` as *text* in
   `tests/test_network_binding.py`, since neither can be unit-tested by running it and a regression
   in either is a one-character edit that silently reopens the port. Those two assertions need
@@ -183,7 +194,7 @@ behavior and could break existing dev setups; call this out in the PR descriptio
 
 ---
 
-## Phase 8 — Medium-severity batch A: validation & data integrity
+## Phase 8 — Medium-severity batch A: validation & data integrity — DONE
 
 Small, mechanical validation fixes — group together:
 
@@ -247,6 +258,6 @@ Small, mechanical validation fixes — group together:
 4. ~~Phase 4 (export invalidation)~~ — done
 5. ~~Phase 5 (admin auth default)~~ — done
 6. ~~Phase 6 (network exposure)~~ — done
-7. **Phase 8 — start here.** Phase 8, 9, 10 (medium batches) — any order, independent of each other
+7. ~~Phase 8 (validation)~~ — done. **Phase 9 — start here.** Phase 9, 10 (medium batches) — either order
 8. Phase 11 (Next.js upgrade) — isolate dependency churn
 9. Phase 7 (durable queue) — largest, do last with its own design pass

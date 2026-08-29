@@ -135,6 +135,10 @@ class Transcriber:
         return "\n".join(lines)
 
 
+class TranscriptFormatError(ValueError):
+    """Raised when a transcript file yields no readable segments."""
+
+
 def load_transcript(file_path: str) -> TranscriptResult:
     """
     Load a transcript from a timestamped text file.
@@ -142,17 +146,30 @@ def load_transcript(file_path: str) -> TranscriptResult:
     Expected format per line:
         [0.0s - 2.2s] Text content here
 
+    Lines that do not carry a timestamp are skipped - a header or a note in the
+    margin should not stop a run - but they are **counted and reported**, and a
+    file that yields no segments at all is an error rather than an empty
+    transcript. That distinction is the whole point: an empty transcript flows
+    into the analyzer, comes back with nothing found, and is printed as a clean
+    recording. A file in the wrong format would then be indistinguishable from
+    a compliant one, which is the worst answer this tool can give.
+
     Args:
         file_path: Path to the transcript text file
 
     Returns:
         TranscriptResult with segments (no word-level data)
+
+    Raises:
+        TranscriptFormatError: the file has no timestamped lines, whether
+            because it is empty or because every line is in another format.
     """
     import re
 
     pattern = re.compile(r'\[(\d+\.?\d*)s\s*-\s*(\d+\.?\d*)s\]\s*(.+)')
     segments = []
     max_end = 0.0
+    skipped: list[str] = []
 
     with open(file_path, 'r', encoding='utf-8') as f:
         for line in f:
@@ -173,6 +190,28 @@ def load_transcript(file_path: str) -> TranscriptResult:
                     words=[],  # No word-level data from text file
                 ))
                 max_end = max(max_end, end)
+            else:
+                skipped.append(line)
+
+    if not segments:
+        detail = (
+            f"the first of its {len(skipped)} line(s) reads: {skipped[0][:80]!r}"
+            if skipped
+            else "the file is empty"
+        )
+        raise TranscriptFormatError(
+            f"No timestamped lines found in {file_path} - {detail}. "
+            "Each line must look like: [0.0s - 2.2s] Text content here"
+        )
+
+    if skipped:
+        # Not fatal - the segments that did parse are still worth analyzing -
+        # but silence here means a mangled file is analyzed in part and
+        # reported in full.
+        print(
+            f"  Warning: skipped {len(skipped)} line(s) with no timestamp, "
+            f"beginning: {skipped[0][:80]!r}"
+        )
 
     # Detect language from first segment or default to unknown
     language = "unknown"

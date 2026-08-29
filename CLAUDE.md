@@ -246,7 +246,11 @@ System dependency: `brew install ffmpeg`.
   - *Preset mode*: a rulebook from `analysis/presets/` replaces the prompt; returns rule_violated +
     severity, and falls back to the preset's `default_action` (mute for `pii-redaction`).
   - Chunked sliding window for long transcripts: 50 segments per chunk, 10 overlap, deduplicated by
-    label + timestamp proximity (5s).
+    label + timestamp proximity (5s). The window is **validated**, in `__init__` for the configured
+    values and in `_chunk_ranges` for the derived ones: a chunk size below 1 makes every chunk empty,
+    and a negative overlap makes the step wider than the window so the segments in the gap are never
+    sent anywhere — both used to run and report a result for a transcript nobody read. A 0-segment
+    transcript is answered before the chunker rather than deriving a chunk size of 0.
   - LLM-quoted text is remapped onto word-level timestamps via `_find_text_timestamps`.
 - **Adding a preset**: drop a markdown rulebook in `analysis/presets/` and add an entry to `PRESETS`
   in `prompt_analyzer.py`. It surfaces automatically via `GET /api/jobs/presets`.
@@ -267,6 +271,10 @@ System dependency: `brew install ffmpeg`.
   used by both the waveform peaks and the level pass. Do not add a second decode.
 - **MediaEditor**: FFmpeg `trim`/`atrim` + `concat`, single pass, A/V sync preserved. Mutes are
   applied before cuts, since cutting shifts the timeline under the mute timestamps.
+- **Edit actions**: `schemas.EDIT_ACTIONS` is the single owner of `("cut", "mute")`;
+  `routes/violations.ACTIONS` is that same tuple, and `ExportRequest.edit_action` validates against
+  it. `partition_edits` reads anything that is not `"mute"` as a cut, so an unvalidated override
+  turned a typo into a **cut** of every accepted span — the destructive half of the pair.
 - **exports.py**: the single owner of the `{job_id}_edited{ext}` naming rule, the cut/mute
   partition, and the render call. Both the queued export and the worker's auto-fix branch go
   through it; do not re-derive an export path anywhere else. Tests swap `exports.MediaEditor`.
@@ -408,6 +416,12 @@ A single bad chunk leaves the job `completed` with a partial-analysis warning in
 if every chunk fails, the job fails with the reason. `AnalysisResult.total_segments_analyzed`
 counts only segments a chunk answered for (`total_segments` is the denominator), and `to_json`
 serializes `is_partial` + `failed_chunks`; the CLI prints the warning and exits 2.
+
+**Unreadable transcript file**: `transcriber.load_transcript` (the CLI's `--transcript` mode) skips
+lines with no `[0.0s - 2.2s]` prefix but reports how many it skipped, and raises
+`TranscriptFormatError` when *no* line parses — empty file included. An empty transcript analyzes to
+"nothing found" and prints as a clean recording, which would make a file in the wrong format
+indistinguishable from a compliant one.
 
 **Upload rejections**: `POST /api/jobs` is a sync `def` on purpose — it streams to disk and runs
 ffprobe, so FastAPI must schedule it in the thread pool rather than on the event loop. Over the

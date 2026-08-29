@@ -9,13 +9,20 @@ from sqlalchemy.orm import Session
 
 from ..database import get_db
 from ..models import Job, Violation
-from ..schemas import BulkViolationUpdate, ViolationResponse, ViolationUpdate
+from ..schemas import (
+    EDIT_ACTIONS,
+    BulkViolationUpdate,
+    ViolationResponse,
+    ViolationUpdate,
+)
 from ..services import exports
 
 router = APIRouter()
 
 STATUSES = ("pending", "accepted", "rejected")
-ACTIONS = ("cut", "mute")
+# Re-exported rather than re-spelled: `schemas.EDIT_ACTIONS` is the owner, and
+# the export override validates against the same pair.
+ACTIONS = EDIT_ACTIONS
 
 
 @router.get("/{job_id}/violations", response_model=List[ViolationResponse])

@@ -3,7 +3,12 @@ Pydantic schemas for request/response validation.
 """
 
 from datetime import datetime
-from pydantic import BaseModel
+from pydantic import BaseModel, field_validator
+
+#: What an edit can do to its span. The single owner of the pair - the PATCH,
+#: the bulk update and the export override all mean the same two words, and a
+#: fourth spelling of them is how one of the three drifts.
+EDIT_ACTIONS = ("cut", "mute")
 
 
 class ViolationBase(BaseModel):
@@ -111,8 +116,25 @@ class PresetResponse(BaseModel):
 
 
 class ExportRequest(BaseModel):
-    # None = honor each violation's own action; set to force one action globally
-    edit_action: str | None = None  # cut or mute
+    """
+    A request to render the accepted edits.
+
+    ``edit_action`` is None to honour each violation's own action, or one of
+    ``EDIT_ACTIONS`` to force one globally. It is validated rather than passed
+    through, because `partition_edits` reads "anything that is not mute" as a
+    cut: an unrecognised value used to become a **cut** of every accepted span,
+    which is the destructive half of the pair and the opposite of what someone
+    who typed `"mutee"` was asking for.
+    """
+
+    edit_action: str | None = None
+
+    @field_validator("edit_action")
+    @classmethod
+    def _known_action(cls, value: str | None) -> str | None:
+        if value is not None and value not in EDIT_ACTIONS:
+            raise ValueError(f"edit_action must be one of {', '.join(EDIT_ACTIONS)}")
+        return value
 
 
 class ExportResponse(BaseModel):

@@ -360,6 +360,40 @@ class AnalysisResult:
         return bool(self.failed_chunks)
 
 
+def _validated_chunk_size(value: int | None) -> int | None:
+    """
+    A chunk size that can actually hold a segment, or None for "decide later".
+
+    A window of zero or fewer segments is not a smaller analysis, it is no
+    analysis: the chunker emits empty ranges and every chunk covers nothing.
+    Rejected here rather than clamped, because a caller who asked for 0 has a
+    typo, and silently substituting 50 hides it.
+    """
+    if value is None:
+        return None
+    if isinstance(value, bool) or not isinstance(value, int):
+        raise ValueError(f"chunk_size must be a whole number of segments, got {value!r}")
+    if value < 1:
+        raise ValueError(f"chunk_size must be at least 1 segment, got {value}")
+    return value
+
+
+def _validated_overlap(value: int) -> int:
+    """
+    A non-negative overlap.
+
+    A negative overlap is the dangerous one: the chunker's step is
+    ``chunk_size - overlap``, so -5 makes the window advance *further* than it
+    is wide and the segments in between are never sent to the model. The run
+    then reports a clean transcript for audio it never read.
+    """
+    if isinstance(value, bool) or not isinstance(value, int):
+        raise ValueError(f"overlap must be a whole number of segments, got {value!r}")
+    if value < 0:
+        raise ValueError(f"overlap cannot be negative, got {value}")
+    return value
+
+
 class PromptAnalyzer:
     """
     Analyzes transcripts for suggested edits using an LLM, based on a user prompt.
@@ -388,11 +422,21 @@ class PromptAnalyzer:
             overlap: Number of segments to overlap between chunks.
             provider: Anything with ``complete(system_prompt, user_prompt)``.
                 Defaults to whatever ``CLEANCUT_MODEL`` names.
+
+        Raises:
+            ValueError: for a chunk size that is not a positive whole number of
+                segments, or a negative overlap. Both used to be accepted and
+                cost transcript: a chunk size of 0 produced empty chunks, and a
+                negative overlap widened the step past the window, stepping
+                over segments nobody ever looked at. A run that skips audio
+                must not be reachable by a typo on the CLI.
         """
         self.model_spec = configured_model_spec()
         self.provider = provider if provider is not None else get_provider(self.model_spec)
-        self.chunk_size = chunk_size
-        self.overlap = overlap if overlap is not None else self.DEFAULT_OVERLAP
+        self.chunk_size = _validated_chunk_size(chunk_size)
+        self.overlap = _validated_overlap(
+            self.DEFAULT_OVERLAP if overlap is None else overlap
+        )
 
         self.default_rules = ""
         if rules_path:
@@ -424,6 +468,19 @@ class PromptAnalyzer:
         if not is_valid_preset(preset):
             raise ValueError(f"Unknown preset: {preset!r}")
         total_segments = len(transcript.segments)
+
+        # No segments is not a degenerate chunk size, it is nothing to analyze.
+        # Handled before the chunker so the window invariant below can be
+        # unconditional: a transcript of length 0 would otherwise derive a
+        # chunk size of 0, which is exactly the setting `_chunk_ranges` now
+        # refuses.
+        if total_segments == 0:
+            return AnalysisResult(
+                violations=[],
+                total_segments_analyzed=0,
+                transcript_language=transcript.language,
+                total_segments=0,
+            )
 
         # Determine if we should chunk
         chunk_size = self.chunk_size
@@ -532,7 +589,15 @@ class PromptAnalyzer:
         Ranges rather than slices so a chunk's outcome can be attributed back to
         the segments it covered - overlap means a segment may belong to two
         chunks, and it counts as analyzed if either of them succeeded.
+
+        The window invariant lives here because this is the one function whose
+        arithmetic depends on it: every range this returns must be non-empty and
+        the ranges together must cover ``[0, total)`` with no gap. `__init__`
+        checks the configured values; this checks the derived ones.
         """
+        _validated_chunk_size(chunk_size)
+        _validated_overlap(overlap)
+
         if overlap >= chunk_size:
             overlap = chunk_size // 2
 
