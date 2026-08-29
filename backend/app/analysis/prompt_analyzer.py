@@ -337,6 +337,12 @@ class Violation:
     # suggestion is still worth reviewing - the model found something - but it
     # is never applied without a human looking at it, so `auto_fix` skips it.
     is_approximate: bool = False
+    # True when the *word* is only sometimes what the detector took it for -
+    # "like" as a comparison rather than a hesitation, "you know" as a real
+    # question. The finding is still worth showing; it is the unattended cut
+    # that is not safe, so `auto_scrub` skips it. Set by the scrubber, which is
+    # the only detector matching on spelling alone.
+    is_ambiguous: bool = False
 
 
 @dataclass

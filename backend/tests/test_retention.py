@@ -153,6 +153,42 @@ def test_in_flight_job_survives_its_own_expiry(db, media_dirs, status):
     assert (uploads / f"{job_id}.mp3").exists()
 
 
+@pytest.mark.parametrize("export_status", ["queued", "exporting"])
+def test_a_render_in_flight_keeps_a_completed_job(db, media_dirs, export_status):
+    """
+    `job.status` goes back to `completed` the moment analysis finishes, so it
+    says nothing about a render queued behind it. Sweeping on that alone deleted
+    the source from under FFmpeg and raced the worker to `exports/` - the job
+    was being actively used at the moment it was collected as abandoned.
+    """
+    uploads, _ = media_dirs
+    job_id = _make_job(db, media_dirs, age_hours=30, status="completed")
+    db.query(Job).filter(Job.id == job_id).first().export_status = export_status
+    db.commit()
+
+    report = _purge(db, media_dirs, 24)
+
+    assert report.jobs_deleted == 0
+    assert report.skipped_in_flight == 1
+    assert db.query(Job).filter(Job.id == job_id).first() is not None
+    assert (uploads / f"{job_id}.mp3").exists()
+
+
+@pytest.mark.parametrize("export_status", ["none", "ready", "failed", None])
+def test_a_settled_export_does_not_hold_a_job_open(db, media_dirs, export_status):
+    """
+    The counterpart: `ready` and `failed` are finished renders, and a job that
+    never exported at all must not become immortal. Retention that quietly stops
+    collecting is the same broken promise as retention that collects too eagerly.
+    """
+    job_id = _make_job(db, media_dirs, age_hours=30, status="completed")
+    db.query(Job).filter(Job.id == job_id).first().export_status = export_status
+    db.commit()
+
+    assert _purge(db, media_dirs, 24).jobs_deleted == 1
+    assert db.query(Job).filter(Job.id == job_id).first() is None
+
+
 def test_failed_jobs_are_collectable(db, media_dirs):
     job_id = _make_job(db, media_dirs, age_hours=30, status="failed")
 

@@ -35,6 +35,27 @@ DEFAULT_SWEEP_MINUTES = 15.0
 # would fail the job for a reason that looks like a bug.
 TERMINAL_STATUSES = frozenset({"completed", "failed"})
 
+# A completed job can still have work in flight. `job.status` goes back to
+# `completed` the moment analysis finishes, so it says nothing about a render
+# queued or running behind it - and a render is exactly the operation that
+# reads the source media and writes into `exports/`. Sweeping one mid-flight
+# deletes the input under FFmpeg and then races the worker to the output
+# directory, which is how a job that was actively being used ends as a failed
+# export with no file and no row to explain it.
+ACTIVE_EXPORT_STATUSES = frozenset({"queued", "exporting"})
+
+
+def is_in_flight(job) -> bool:
+    """
+    Whether a job is still being worked on, and so not collectable by age.
+
+    Two questions, because a job has two pipelines: `status` for the analysis
+    side and `export_status` for the render. Either one moving is enough.
+    """
+    if job.status not in TERMINAL_STATUSES:
+        return True
+    return (job.export_status or "none") in ACTIVE_EXPORT_STATUSES
+
 
 @dataclass(frozen=True)
 class PurgeReport:
@@ -133,6 +154,9 @@ def purge_expired(
     """
     Delete finished jobs older than ``max_age_seconds``, plus orphaned media.
 
+    "Finished" is :func:`is_in_flight` - both pipelines idle, not just the
+    analysis one.
+
     ``now`` is injectable so tests can age a job without sleeping. It is naive
     UTC to match ``Job.created_at``, which is written by ``datetime.utcnow``.
 
@@ -154,7 +178,7 @@ def purge_expired(
     skipped = 0
 
     for job in db.query(Job).filter(Job.created_at < cutoff).all():
-        if job.status not in TERMINAL_STATUSES:
+        if is_in_flight(job):
             skipped += 1
             continue
         files_deleted += delete_job_files(job.id, upload_dir, export_dir)

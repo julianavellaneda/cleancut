@@ -38,7 +38,7 @@ def db_ready():
 @pytest.fixture
 def client(monkeypatch):
     """A client whose re-analysis requests queue rather than run."""
-    monkeypatch.setattr("app.routes.jobs.enqueue_reanalysis", lambda job_id: None)
+    monkeypatch.setattr("app.routes.jobs.enqueue_reanalysis", lambda job_id, **kwargs: None)
     return TestClient(app)
 
 
@@ -137,7 +137,9 @@ def test_a_re_analysis_is_queued_not_run(client, make_job):
     # Set before the worker sees it, so the frontend's existing status poll
     # picks the re-run up immediately.
     assert _job(job_id).status == "analyzing"
-    assert _job(job_id).prompt == "find every filler"
+    # The prompt is not. It labels the suggestion list, and the list on screen
+    # is still the answer to the old question until the worker replaces it.
+    assert _job(job_id).prompt == "find income claims"
 
 
 def test_a_job_with_no_stored_transcript_is_refused(client, make_job):
@@ -188,13 +190,16 @@ def test_an_unknown_preset_is_refused(client, make_job):
     assert response.status_code == 400
 
 
-def test_switching_to_a_preset_clears_the_prompt(client, make_job):
-    """The analyzer runs in one mode or the other; the job has to say which."""
+def test_switching_to_a_preset_clears_the_prompt(make_job, stub_analysis):
+    """
+    The analyzer runs in one mode or the other; the job has to say which. The
+    swap lands with the suggestions, in the worker.
+    """
+    stub_analysis(violations=[_violation("PII")])
     job_id = make_job()
 
-    response = client.post(f"/api/jobs/{job_id}/reanalyze", json={"preset": "pii-redaction"})
+    worker._process_reanalysis(job_id, preset="pii-redaction")
 
-    assert response.status_code == 202
     assert _job(job_id).preset == "pii-redaction"
     assert _job(job_id).prompt is None
 
@@ -306,6 +311,73 @@ def test_a_failed_re_analysis_leaves_the_review_intact(make_job, stub_analysis):
     assert job.status == "completed"
     assert "Re-analysis failed" in job.error_message
     assert _violations(job_id) == [("Income Claims", "accepted")]
+
+
+def test_the_new_question_is_what_the_analyzer_is_asked(make_job, stub_analysis):
+    """
+    It travels on the task rather than being read back off the job, precisely so
+    the job's own prompt can stay behind until there is something to label.
+    """
+    calls = stub_analysis(violations=[_violation("Health Claims")])
+    job_id = make_job()
+
+    worker._process_reanalysis(job_id, prompt="find health claims")
+
+    assert calls[0]["prompt"] == "find health claims"
+    assert calls[0]["preset"] is None
+
+
+def test_the_prompt_and_the_suggestions_land_together(make_job, stub_analysis):
+    stub_analysis(violations=[_violation("Health Claims")])
+    job_id = make_job(violations=[("Income Claims", "accepted")])
+
+    worker._process_reanalysis(job_id, prompt="find health claims")
+
+    assert _job(job_id).prompt == "find health claims"
+    assert _violations(job_id) == [("Health Claims", "pending")]
+
+
+def test_a_failed_re_run_leaves_the_old_prompt_over_the_old_suggestions(
+    make_job, stub_analysis,
+):
+    """
+    The mismatch this closes: the suggestions on screen answer the *old*
+    question, and writing the new prompt at request time relabelled them as
+    answers to a question that was never put to the model. There is nothing to
+    restore here - the row was never moved.
+    """
+    stub_analysis(raises=RuntimeError("the model returned nonsense"))
+    job_id = make_job(violations=[("Income Claims", "accepted")])
+
+    worker._process_reanalysis(job_id, prompt="find health claims")
+
+    job = _job(job_id)
+    assert job.prompt == "find income claims"
+    assert job.preset is None
+    assert _violations(job_id) == [("Income Claims", "accepted")]
+
+
+def test_a_re_run_with_no_stored_transcript_does_not_move_the_prompt(
+    make_job, stub_analysis,
+):
+    """The other early return out of the worker, which never reaches the swap."""
+    stub_analysis()
+    job_id = make_job(transcript=None)
+
+    worker._process_reanalysis(job_id, prompt="find health claims")
+
+    assert _job(job_id).prompt == "find income claims"
+
+
+def test_the_route_hands_the_question_to_the_queue(client, make_job, monkeypatch):
+    queued = []
+    monkeypatch.setattr("app.routes.jobs.enqueue_reanalysis",
+                        lambda job_id, **kwargs: queued.append((job_id, kwargs)))
+    job_id = make_job()
+
+    client.post(f"/api/jobs/{job_id}/reanalyze", json={"prompt": "find every filler"})
+
+    assert queued == [(job_id, {"prompt": "find every filler", "preset": None})]
 
 
 def test_a_version_1_row_re_analyzes_at_segment_precision(make_job, stub_analysis):

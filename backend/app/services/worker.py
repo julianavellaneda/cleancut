@@ -46,6 +46,11 @@ class QueuedTask:
     job_id: str
     file_path: str | None = None
     edit_action: str | None = None
+    # The question a re-analysis is being asked. Carried on the task rather
+    # than read back off the job, so `jobs.prompt` can stay describing the
+    # suggestions that are actually on screen until the new ones replace them.
+    prompt: str | None = None
+    preset: str | None = None
 
 
 def enqueue_job(job_id: str, file_path: str):
@@ -66,14 +71,17 @@ def enqueue_export(job_id: str, edit_action: str | None = None):
     logger.info(f"Export for job {job_id} enqueued. Queue size: {job_queue.qsize()}")
 
 
-def enqueue_reanalysis(job_id: str):
+def enqueue_reanalysis(job_id: str, prompt: str | None = None, preset: str | None = None):
     """
     Queue a fresh analysis of a job's stored transcript.
 
     Same single worker thread as everything else, so a re-run queues behind any
     job already transcribing rather than competing with it for the machine.
+
+    The new question travels with the task. It is not written onto the job
+    until the answer comes back - see :func:`_process_reanalysis`.
     """
-    job_queue.put(QueuedTask(kind="reanalyze", job_id=job_id))
+    job_queue.put(QueuedTask(kind="reanalyze", job_id=job_id, prompt=prompt, preset=preset))
     logger.info(f"Re-analysis for job {job_id} enqueued. Queue size: {job_queue.qsize()}")
 
 
@@ -93,7 +101,7 @@ def _worker_loop():
             if task.kind == "export":
                 _process_export(task.job_id, task.edit_action)
             elif task.kind == "reanalyze":
-                _process_reanalysis(task.job_id)
+                _process_reanalysis(task.job_id, prompt=task.prompt, preset=task.preset)
             else:
                 _process_job_sequentially(task.job_id, task.file_path)
             job_queue.task_done()
@@ -113,8 +121,16 @@ def _is_pre_accepted(suggestion, job) -> bool:
     applying an estimate unattended cuts whatever happens to be there. Those land
     as `pending` however the job was configured: the flag was a statement about
     trusting the *findings*, not about trusting a guess at where one is.
+
+    `is_ambiguous` is the same argument one level down. The scrubber matches on
+    spelling, and a few of the spellings it matches are ordinary words - cutting
+    an unevidenced "like" unattended turns "I like this" into "I this". Neither
+    flag says the suggestion is wrong; both say it is not the kind of thing that
+    gets applied with nobody in the room.
     """
     if getattr(suggestion, "is_approximate", False):
+        return False
+    if getattr(suggestion, "is_ambiguous", False):
         return False
     if suggestion.label in exports.SCRUBBER_LABELS:
         return bool(job.auto_scrub)
@@ -240,7 +256,7 @@ def _process_export(job_id: str, edit_action: str | None = None):
         db.close()
 
 
-def _process_reanalysis(job_id: str):
+def _process_reanalysis(job_id: str, prompt: str | None = None, preset: str | None = None):
     """
     Re-run the LLM analysis over a job's stored transcript.
 
@@ -254,6 +270,14 @@ def _process_reanalysis(job_id: str):
     that no longer exists cannot be carried forward honestly. The scrubber's
     are deterministic, unrelated to the prompt, and would come back identical,
     so they and every decision made on them stay exactly as they are.
+
+    The new question is written onto the job in the *same commit* as the
+    suggestions it produced, and not before. `jobs.prompt` is what the review
+    screen labels the list with, so writing it at request time made a failed
+    re-run - or a crash, or a shutdown - leave the old suggestions sitting under
+    the new prompt, each one apparently the answer to a question nobody had
+    asked when it was made. Deferring it means there is nothing to restore on
+    failure: the row was never moved.
     """
     db = SessionLocal()
     try:
@@ -278,7 +302,7 @@ def _process_reanalysis(job_id: str):
 
         transcript = transcripts.to_transcript_result(stored)
         analysis = get_processor().analyze(
-            transcript, prompt=job.prompt, preset=job.preset,
+            transcript, prompt=prompt, preset=preset,
         )
 
         (db.query(Violation)
@@ -313,6 +337,9 @@ def _process_reanalysis(job_id: str):
             )
             logger.warning(f"Job {job_id} re-analyzed with {skipped} failed chunk(s).")
 
+        # The new suggestions and the question they answer land together.
+        job.prompt = prompt
+        job.preset = preset
         job.status = "completed"
         db.commit()
 
@@ -339,7 +366,7 @@ def _mark_reanalysis_failed(db, job_id: str, message: str):
     strand that behind an error screen. The old suggestions are still there -
     the delete only runs once the new analysis has come back - so putting the
     status back to `completed` describes what the reviewer is actually looking
-    at.
+    at. So does `job.prompt`, which the failed run never got as far as writing.
     """
     try:
         db.rollback()

@@ -293,6 +293,46 @@ def test_an_unplaced_suggestion_is_not_rendered_into_the_export(run_job):
     assert RecordingEditor.last["cuts"] == [(1.0, 2.0)]
 
 
+# The same argument one level down, for the deterministic side. The scrubber
+# matches fillers on spelling, and a few of those spellings are ordinary words -
+# an unevidenced "like" cut unattended turns "I like this" into "I this".
+
+def _ambiguous(start, end, label, action):
+    v = _violation(start, end, label, action)
+    v.is_ambiguous = True
+    return v
+
+
+def test_auto_scrub_leaves_an_ambiguous_filler_pending(run_job):
+    job_id = run_job(
+        scrubber_violations=[_ambiguous(1.0, 2.0, "Filler Word", "cut")],
+        auto_scrub=True,
+    )
+
+    assert [row.status for row in _rows(job_id)] == ["pending"]
+
+
+def test_an_ambiguous_filler_is_not_rendered_into_the_export(run_job):
+    run_job(
+        scrubber_violations=[
+            _violation(1.0, 2.0, "Filler Word", "cut"),
+            _ambiguous(5.0, 6.0, "Filler Word", "cut"),
+        ],
+        auto_scrub=True,
+    )
+
+    assert RecordingEditor.last["cuts"] == [(1.0, 2.0)]
+
+
+def test_an_evidenced_filler_is_still_auto_accepted(run_job):
+    job_id = run_job(
+        scrubber_violations=[_violation(1.0, 2.0, "Filler Word", "cut")],
+        auto_scrub=True,
+    )
+
+    assert [row.status for row in _rows(job_id)] == ["accepted"]
+
+
 def test_placed_suggestions_are_still_auto_accepted(run_job):
     job_id = run_job(
         llm_violations=[_violation(1.0, 2.0, "Income Claims", "cut")],

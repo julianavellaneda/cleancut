@@ -259,7 +259,17 @@ System dependency: `brew install ffmpeg`.
   "I mean") because a space in `FILLER_WORDS` can never match a word-at-a-time scan, and
   `FILLER_WORDS` lists every spelling Whisper actually emits for a sound ("hm" *and* "hmm")
   rather than inferring them. Agreement noises ("mhm", "uh-huh") are deliberately excluded:
-  cutting one deletes a spoken "yes". Dead air needs *two*
+  cutting one deletes a spoken "yes". The set is split in two: `UNAMBIGUOUS_FILLERS` are sounds
+  that carry no meaning in any sentence, while `AMBIGUOUS_FILLERS` ("like", "err") and both
+  `FILLER_PHRASES` are ordinary words some of the time. An ambiguous match is still *suggested* -
+  in a seminar recording it usually is a hesitation - but it is only trusted when
+  `_has_disfluency_cue` finds evidence: Whisper punctuated it as an aside (the word before closes
+  a clause **and** the run ends on a comma or dash - a full stop can open a gap but never close
+  one, since "that's what I like." is the sentence this must not cut), or it is touching an
+  unambiguous filler. Without a cue the suggestion carries `is_ambiguous`, which
+  `worker._is_pre_accepted` reads exactly like `is_approximate`: `auto_scrub` leaves it pending
+  rather than cutting "I like this" down to "I this". Merging inherits ambiguity from any member,
+  since the merged span covers them all. Dead air needs *two*
   signals to agree: the transcript proposes a span nobody speaks over, and an RMS pass
   (`services/levels.py`) has to confirm it is below `DEAD_AIR_FLOOR_DB`. The confirmed sub-interval
   is what gets emitted, which also trims Whisper's loose boundaries off the next line's onset.
@@ -299,11 +309,17 @@ System dependency: `brew install ffmpeg`.
   nobody chose (the opposite of `limits.py`, which fails closed). The sweeper is a daemon thread
   started in the lifespan; it deletes expired jobs whose status is terminal, their media, and any
   file on disk with no live job behind it. Jobs still in the pipeline are skipped however old they
-  are - the queue is sequential, so age alone does not mean abandoned. `delete_job_files` is the
+  are - the queue is sequential, so age alone does not mean abandoned. "Still in the pipeline" is
+  `is_in_flight`, which asks about **both** pipelines: `status` for the analysis side and
+  `export_status` (`queued`/`exporting`) for the render. `status` goes back to `completed` the
+  moment analysis finishes and says nothing about a render queued behind it, so sweeping on it
+  alone deleted the source out from under FFmpeg and raced the worker to `exports/`.
+  `delete_job_files` is the
   single owner of "remove a job's media"; `DELETE /api/jobs/{id}` calls it too, which is what fixed
   that route leaving the export behind.
 - **Worker**: threaded queue, sequential processing, per-stage job status polled by the frontend.
-  Queue items are `QueuedTask(kind, job_id, ...)` with `kind` either `"process"` or `"export"`.
+  Queue items are `QueuedTask(kind, job_id, ...)` with `kind` one of `"process"`, `"export"` or
+  `"reanalyze"`; a re-analysis carries its `prompt`/`preset` on the task.
 - **Export is asynchronous**: `POST /export` validates synchronously (404 unknown job, 400 not
   completed, 404 missing source, 400 nothing accepted), sets `export_status="queued"`, enqueues and
   returns **202**. `export_status`/`export_error` are deliberately separate from `job.status`: a
@@ -386,7 +402,12 @@ System dependency: `brew install ffmpeg`.
   longer exists cannot be carried forward honestly; the scrubber's are deterministic and
   prompt-independent, so they and their decisions stay. New suggestions are never pre-accepted even
   on an `auto_fix` job - that flag was a choice about the upload, and a re-run is a choice made in
-  the review screen. A failed re-analysis leaves the job `completed` with a warning rather than
+  the review screen. The new prompt/preset rides on the `QueuedTask` and is written onto the job in
+  the *same commit* as the suggestions it produced, never at request time: `jobs.prompt` labels the
+  list on screen, so moving it early left the old suggestions reading as answers to a question
+  nobody had asked when they were made - permanently, if the run then failed. Deferring it means a
+  failure has nothing to restore. Only `status` moves in the route, so the frontend poll still
+  picks the re-run up immediately. A failed re-analysis leaves the job `completed` with a warning rather than
   `failed`, the same argument as a failed export, and the old suggestions survive because the delete
   only runs once the new analysis returns.
 

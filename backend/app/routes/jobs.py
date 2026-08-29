@@ -238,16 +238,17 @@ def reanalyze_job(job_id: str, request: ReanalyzeRequest, db: Session = Depends(
             detail="Re-analysis needs a prompt or a preset.",
         )
 
-    # The job's own prompt and preset are updated, not shadowed: the review
-    # screen shows what was asked, and after a re-run the suggestions on it are
-    # the answer to *this* question. A preset replaces a prompt and vice versa,
-    # since the analyzer runs in one mode or the other.
-    job.prompt = prompt
-    job.preset = preset
+    # `status` moves now, so the frontend's existing poll picks the re-run up
+    # immediately. The prompt does not: the review screen labels the suggestion
+    # list with `job.prompt`, and until the new suggestions exist that list is
+    # still the answer to the old question. The worker writes both together
+    # when the analysis comes back, so a failed run leaves nothing to undo.
+    # A preset replaces a prompt and vice versa, since the analyzer runs in one
+    # mode or the other; that swap happens there too.
     job.status = "analyzing"
     db.commit()
 
-    enqueue_reanalysis(job_id)
+    enqueue_reanalysis(job_id, prompt=prompt, preset=preset)
 
     return ReanalyzeResponse(job_id=job_id, prompt=prompt, preset=preset)
 

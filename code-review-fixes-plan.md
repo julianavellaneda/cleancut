@@ -24,9 +24,10 @@ All work is on branch `code-review-fixes`, off `main` at `e6113a9`. One commit p
 | 5 — Admin auth fail-closed | **Done** | `a6866c0` |
 | 6 — Loopback-only binding | **Done** | `c6c9e63` |
 | 8 — Validation & data integrity | **Done** | `2134a9c` |
-| 7, 9–11 | Not started | — |
+| 9 — Retention, reanalysis, scrubber | **Done** | `_pending_` |
+| 7, 10–11 | Not started | — |
 
-Baseline after Phase 8: **628 backend tests**, **34 frontend tests**, `tsc --noEmit` clean,
+Baseline after Phase 9: **656 backend tests**, **34 frontend tests**, `tsc --noEmit` clean,
 `python -m app.eval.run --detectors ../tests/fixtures/demo/demo_seminar.mp3 --suite scrub` passes
 (F1 95.7%, unchanged by these fixes).
 
@@ -258,6 +259,6 @@ Small, mechanical validation fixes — group together:
 4. ~~Phase 4 (export invalidation)~~ — done
 5. ~~Phase 5 (admin auth default)~~ — done
 6. ~~Phase 6 (network exposure)~~ — done
-7. ~~Phase 8 (validation)~~ — done. **Phase 9 — start here.** Phase 9, 10 (medium batches) — either order
+7. ~~Phase 8 (validation)~~ — done. ~~Phase 9 (retention/reanalysis/scrubber)~~ — done. **Phase 10 — start here.**
 8. Phase 11 (Next.js upgrade) — isolate dependency churn
 9. Phase 7 (durable queue) — largest, do last with its own design pass
