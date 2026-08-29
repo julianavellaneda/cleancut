@@ -26,7 +26,7 @@ All work is on branch `code-review-fixes`, off `main` at `e6113a9`. One commit p
 | 8 — Validation & data integrity | **Done** | `2134a9c` |
 | 9 — Retention, reanalysis, scrubber | **Done** | `d4b9f9f` |
 | 10 — Performance & infra hygiene | **Done** | `58befa8` |
-| 11 — Next.js upgrade | **Done** | _pending_ |
+| 11 — Next.js upgrade | **Done** | `0d0343c` |
 | 7 | Not started | — |
 
 Baseline after Phase 11: **666 backend tests**, **34 frontend tests**, `tsc --noEmit` clean,
