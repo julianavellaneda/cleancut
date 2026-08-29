@@ -23,7 +23,7 @@ All work is on branch `code-review-fixes`, off `main` at `e6113a9`. One commit p
 | 4 — Export staleness invalidation | **Done** | `3ee2fe5` |
 | 5 — Admin auth fail-closed | **Done** | `a6866c0` |
 | 6 — Loopback-only binding | **Done** | `c6c9e63` |
-| 8 — Validation & data integrity | **Done** | _pending_ |
+| 8 — Validation & data integrity | **Done** | `2134a9c` |
 | 7, 9–11 | Not started | — |
 
 Baseline after Phase 8: **628 backend tests**, **34 frontend tests**, `tsc --noEmit` clean,
