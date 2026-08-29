@@ -278,7 +278,30 @@ System dependency: `brew install ffmpeg`.
   cannot run, silence detection is **skipped** and the job carries a warning - never downgraded back
   to gaps.
 - **decode_pcm_mono** (`services/media_editor.py`): one shared FFmpeg decode to 8 kHz mono f32le,
-  used by both the waveform peaks and the level pass. Do not add a second decode.
+  used by both the waveform peaks and the level pass. Do not add a second decode. It returns a
+  **read-only** `np.frombuffer` view over FFmpeg's stdout rather than a copy — an hour of audio is
+  ~115 MB and copying held two of those at the peak of every request. Every caller reads (peaks
+  slice, `find_quiet_regions` reshapes and casts); one that needs to write must copy the part it
+  writes, and numpy raises rather than corrupting if it forgets. `generate_waveform_peaks` takes its
+  normalizing maximum from `max(samples.max(), -samples.min())` for the same reason:
+  `np.max(np.abs(samples))` materializes a second full-size array to find one number.
+- **Waveform single-flight** (`routes/audio.py`): peaks are cached on `jobs.waveform_data`, but the
+  cache is only populated once the decode finishes, so a reload or a second tab mid-decode used to
+  start a second FFmpeg pass holding its own full buffer. `_waveform_lock(job_id)` serializes them;
+  the waiter re-reads the column (via `db.expire`, since the writer was a different session) and
+  serves the cache instead of repeating the work. A job deleted while a request waited answers
+  **404**, not a 500 from reading an expired attribute off a deleted row.
+- **Job counts are aggregates, not collections** (`routes/jobs.py`): both `GET /api/jobs` and
+  `_build_job_response` are polled on a timer, and both used to derive their counts from
+  `job.violations` — one SELECT per job for the list, and every suggestion's quoted text and
+  reasoning pulled across to produce a number. Each is now a single grouped `COUNT`. A job with no
+  suggestions has no row in the aggregate, so every lookup defaults to 0.
+- **Container builds are hermetic**: `backend/.dockerignore` and `frontend/.dockerignore` keep the
+  build contexts clean. The frontend one is a correctness fix, not a size one — the Dockerfile runs
+  `npm ci` and then `COPY . .`, so a host `node_modules/` lands on top of the image's and hands a
+  Linux container macOS native binaries. Fonts are self-hosted from `frontend/src/app/fonts/`
+  through `next/font/local`; `next/font/google` downloaded the face during `next build`, so a build
+  needed working DNS and a reachable Google CDN. `tests/test_docker_layout.py` pins all three.
 - **MediaEditor**: FFmpeg `trim`/`atrim` + `concat`, single pass, A/V sync preserved. Mutes are
   applied before cuts, since cutting shifts the timeline under the mute timestamps.
 - **Edit actions**: `schemas.EDIT_ACTIONS` is the single owner of `("cut", "mute")`;
@@ -448,6 +471,11 @@ indistinguishable from a compliant one.
 ffprobe, so FastAPI must schedule it in the thread pool rather than on the event loop. Over the
 size cap is a 413, over the duration cap is a 413, and an unprobeable duration is a **422**:
 `enforce_duration_limit` fails closed rather than letting an unbounded stream past the cap.
+Both caps run *after* Starlette has spooled the multipart body to a temp file, so `MAX_UPLOAD_MB`
+bounds what CleanCut **keeps**, not what a client can make it receive — a 50 GB POST costs 50 GB of
+scratch disk on the way to its 413. That cannot be fixed in the handler (the body is already on disk
+when application code first runs); on a non-loopback deployment, cap the body at the reverse proxy
+too. Documented under "Failure modes" in the README.
 
 **Server won't start**: `preflight.verify_environment()` runs first in the lifespan and lists every
 unmet requirement (`OPENAI_API_KEY`, `ffmpeg`, `ffprobe`). `SKIP_PREFLIGHT=1` boots anyway.

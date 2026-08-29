@@ -284,6 +284,14 @@ rejected job is not left behind in the jobs list. The duration cap fails closed 
 cannot read a duration from is rejected with a 422, since a limit that any unprobeable stream can
 skip is not a limit.
 
+Both caps are enforced **after** the multipart body has been read, so `MAX_UPLOAD_MB` bounds what
+CleanCut *keeps*, not what a client can make it receive: Starlette spools the upload to a temp file
+before the handler runs, and a 50 GB POST costs 50 GB of scratch disk on its way to a 413. That is a
+storage-hygiene control, not a DoS control, and it cannot be fixed inside the handler — the body is
+already on disk by the time any application code sees it. On loopback, which is the default trust
+model here, the client is you. Anywhere else, cap the body at the reverse proxy in front of CleanCut
+(`client_max_body_size` in nginx, `limitRequestBody` in Caddy) and set it to match `MAX_UPLOAD_MB`.
+
 When the model returns something that isn't a readable list of suggestions, that is reported rather
 than silently treated as "nothing found" — a distinction that matters when the output is a
 compliance review. A single unreadable chunk of a long transcript leaves the job completed with a

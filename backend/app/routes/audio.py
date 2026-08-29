@@ -3,11 +3,13 @@ Audio routes - streaming, waveform, and export endpoints.
 """
 
 import json
+import threading
 from pathlib import Path
 
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import FileResponse, StreamingResponse
 from sqlalchemy.orm import Session
+from sqlalchemy.orm.exc import ObjectDeletedError
 
 from ..database import get_db
 from ..models import Job, Violation
@@ -34,6 +36,26 @@ MEDIA_TYPES = {
     ".mp4": "video/mp4",
     ".mov": "video/quicktime",
 }
+
+
+# One lock per job, so two requests for the same waveform take turns instead of
+# each running its own FFmpeg decode. `_waveform_locks_guard` protects the dict
+# itself; the per-job locks are what the requests actually wait on.
+#
+# This route is a sync `def`, so FastAPI runs it in the thread pool - which is
+# exactly why the pile-up was possible. A page reload before the first decode
+# finishes, or a second tab, meant two threads each holding a full decode of the
+# same recording (~115 MB an hour at 8 kHz f32) to compute a byte-identical
+# answer. The waiter does not repeat the work: it re-reads the cached column
+# after acquiring, by which time the winner has written it.
+_waveform_locks: dict[str, threading.Lock] = {}
+_waveform_locks_guard = threading.Lock()
+
+
+def _waveform_lock(job_id: str) -> threading.Lock:
+    """The lock for one job's waveform generation, created on first ask."""
+    with _waveform_locks_guard:
+        return _waveform_locks.setdefault(job_id, threading.Lock())
 
 
 def _get_audio_path(job_id: str) -> Path | None:
@@ -90,17 +112,37 @@ def get_waveform(job_id: str, db: Session = Depends(get_db)):
     if not audio_path:
         raise HTTPException(status_code=404, detail="Audio file not found")
 
-    # Generate waveform peaks
-    try:
-        peaks = generate_waveform_peaks(str(audio_path), num_peaks=800)
+    # Generate waveform peaks, one decode at a time per job.
+    with _waveform_lock(job_id):
+        # Re-read the cache now that it is our turn. Whoever held the lock just
+        # committed the peaks for this exact file, so the second request through
+        # is a cache hit rather than a duplicate decode. `expire` drops this
+        # session's copy of the row, forcing the read to go back to the DB - the
+        # writer was a different session and this one would otherwise serve the
+        # NULL it loaded before waiting.
+        #
+        # The row can also be gone by now - a retention sweep or a manual delete
+        # while we waited - and re-reading an expired attribute off a deleted row
+        # raises. That is a 404, the same answer the job lookup above would have
+        # given a moment later, not a 500.
+        try:
+            db.expire(job, ["waveform_data"])
+            cached = job.waveform_data
+        except ObjectDeletedError:
+            raise HTTPException(status_code=404, detail="Job not found")
+        if cached:
+            return {"peaks": json.loads(cached)}
 
-        # Cache the waveform data
-        job.waveform_data = json.dumps(peaks)
-        db.commit()
+        try:
+            peaks = generate_waveform_peaks(str(audio_path), num_peaks=800)
 
-        return {"peaks": peaks}
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to generate waveform: {str(e)}")
+            # Cache the waveform data
+            job.waveform_data = json.dumps(peaks)
+            db.commit()
+
+            return {"peaks": peaks}
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=f"Failed to generate waveform: {str(e)}")
 
 
 @router.post("/{job_id}/export", response_model=ExportResponse, status_code=202)

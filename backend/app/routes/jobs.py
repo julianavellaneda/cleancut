@@ -7,6 +7,7 @@ from pathlib import Path
 from typing import List
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
+from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from ..database import get_db
@@ -19,7 +20,7 @@ from ..limits import (
     max_upload_bytes,
     save_within_limit,
 )
-from ..models import Job
+from ..models import Job, Violation
 from ..schemas import (
     JobResponse,
     JobListResponse,
@@ -153,8 +154,26 @@ def create_job(
 
 @router.get("", response_model=List[JobListResponse])
 def list_jobs(db: Session = Depends(get_db)):
-    """List all jobs."""
+    """
+    List all jobs.
+
+    The home page polls this on a timer, so the cost of one call is paid over
+    and over. `len(job.violations)` made it one SELECT per job on top of the
+    list query - and each of those SELECTs loaded every column of every
+    suggestion to arrive at a number. A job with 400 suggestions pulled 400 rows
+    of quoted text and reasoning across the wire so the card could print "400".
+    One grouped COUNT answers the whole page instead: two queries, no row
+    bodies, and the count is computed by SQLite rather than by Python.
+
+    A job with no suggestions has no rows in the aggregate at all, so the lookup
+    defaults to 0 rather than assuming every job id appears.
+    """
     jobs = db.query(Job).order_by(Job.created_at.desc()).all()
+    counts = dict(
+        db.query(Violation.job_id, func.count(Violation.id))
+        .group_by(Violation.job_id)
+        .all()
+    )
     return [
         JobListResponse(
             id=job.id,
@@ -168,7 +187,7 @@ def list_jobs(db: Session = Depends(get_db)):
             preset=job.preset,
             duration_seconds=job.duration_seconds,
             created_at=job.created_at,
-            violation_count=len(job.violations)
+            violation_count=counts.get(job.id, 0)
         )
         for job in jobs
     ]
@@ -320,8 +339,20 @@ def _build_job_response(job: Job, db: Session) -> JobResponse:
 
     `or "none"` covers rows migrated in before the column existed, which are NULL
     rather than 'none' until something writes them.
+
+    The four counts come from one grouped COUNT rather than from
+    `job.violations`. The review page polls this endpoint for the whole time a
+    job is open, and loading the relationship pulled every suggestion's text and
+    reasoning on every poll purely to length-check the list. `status` is the only
+    column any of the four counts reads, and SQLite can count faster than we can
+    materialize ORM objects to do it.
     """
-    violations = job.violations
+    by_status = dict(
+        db.query(Violation.status, func.count(Violation.id))
+        .filter(Violation.job_id == job.id)
+        .group_by(Violation.status)
+        .all()
+    )
     return JobResponse(
         id=job.id,
         filename=job.filename,
@@ -340,8 +371,8 @@ def _build_job_response(job: Job, db: Session) -> JobResponse:
         export_error=job.export_error,
         edit_revision=job.edit_revision or 0,
         export_revision=job.export_revision,
-        violation_count=len(violations),
-        pending_count=sum(1 for v in violations if v.status == "pending"),
-        accepted_count=sum(1 for v in violations if v.status == "accepted"),
-        rejected_count=sum(1 for v in violations if v.status == "rejected")
+        violation_count=sum(by_status.values()),
+        pending_count=by_status.get("pending", 0),
+        accepted_count=by_status.get("accepted", 0),
+        rejected_count=by_status.get("rejected", 0)
     )

@@ -1,15 +1,31 @@
 import type { Metadata } from "next";
-import { Geist, Geist_Mono } from "next/font/google";
+import localFont from "next/font/local";
 import "./globals.css";
 
-const geistSans = Geist({
+// Self-hosted rather than fetched from fonts.googleapis.com at build time.
+// `next/font/google` downloads the face during `next build`, which made
+// `docker compose build` fail on a machine with no network - or, worse, on a
+// network that resolves but blocks the CDN, where it fails minutes in with a
+// fetch error rather than at the point anyone would look. The two variable
+// faces are committed under ./fonts (SIL OFL, see GEIST-LICENSE.txt); a build
+// now needs nothing but the repo.
+//
+// Both are the variable-weight files, so one 70 KB face covers 100-900 and
+// there is no per-weight list to keep in sync with the classes in use.
+const geistSans = localFont({
+  src: "./fonts/Geist-Variable.woff2",
   variable: "--font-body",
-  subsets: ["latin"],
+  weight: "100 900",
+  display: "swap",
+  fallback: ["ui-sans-serif", "system-ui", "sans-serif"],
 });
 
-const geistMono = Geist_Mono({
+const geistMono = localFont({
+  src: "./fonts/GeistMono-Variable.woff2",
   variable: "--font-mono",
-  subsets: ["latin"],
+  weight: "100 900",
+  display: "swap",
+  fallback: ["ui-monospace", "SFMono-Regular", "Menlo", "monospace"],
 });
 
 export const metadata: Metadata = {

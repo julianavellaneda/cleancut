@@ -25,7 +25,12 @@ All work is on branch `code-review-fixes`, off `main` at `e6113a9`. One commit p
 | 6 — Loopback-only binding | **Done** | `c6c9e63` |
 | 8 — Validation & data integrity | **Done** | `2134a9c` |
 | 9 — Retention, reanalysis, scrubber | **Done** | `d4b9f9f` |
-| 7, 10–11 | Not started | — |
+| 10 — Performance & infra hygiene | **Done** | _pending_ |
+| 7, 11 | Not started | — |
+
+Baseline after Phase 10: **666 backend tests**, **34 frontend tests**, `tsc --noEmit` clean,
+`npm run build` clean, `python -m app.eval.run --detectors ../tests/fixtures/demo/demo_seminar.mp3
+--suite scrub` passes (F1 95.7%, unchanged).
 
 Baseline after Phase 9: **656 backend tests**, **34 frontend tests**, `tsc --noEmit` clean,
 `python -m app.eval.run --detectors ../tests/fixtures/demo/demo_seminar.mp3 --suite scrub` passes
@@ -80,6 +85,27 @@ Notes left behind for whoever picks this up:
   already did — it is now explicit rather than a side effect of deriving `chunk_size=0`. Whether a
   silent recording should *fail* instead is a real question, but it is a behaviour change to the
   worker, not a validation fix, so it was left alone.
+- **Phase 10** turned both polled endpoints' counts into grouped `COUNT` queries. `_build_job_response`
+  no longer touches `job.violations` at all, so the relationship is now loaded only where individual
+  rows are actually wanted (`routes/violations.py`, the worker). Keep it that way — anything reaching
+  for `len(job.violations)` in a route is the N+1 coming back.
+- **Phase 10** made `decode_pcm_mono` return a **read-only** array. All four callers only read, and a
+  future one that writes gets a numpy exception rather than silent corruption — but it is a real
+  contract change, so a new caller has to `.copy()` deliberately.
+- **Phase 10** keys the waveform lock dict by job id and never evicts. That is a `threading.Lock`
+  (~48 bytes) per job the process has ever generated peaks for, which is not worth the eviction race
+  it would take to clean up; revisit only if a deployment holds six figures of jobs in one process.
+- **Phase 10**'s test module counts *emitted SQL*, not wall-clock, and listens on the SQLAlchemy
+  `Engine` **class** rather than on `database.engine`. Other modules in the suite repoint the app at
+  a temp-file database, which builds a different Engine; a listener bound to the import-time instance
+  counted zero statements and passed vacuously (it did, on the first run — the full suite caught it).
+- **Phase 10** copied the two Geist variable faces into `frontend/src/app/fonts/` (SIL OFL, licence
+  committed alongside) rather than adding the `geist` npm package. One less dependency, and
+  `next/font/local` gets to keep the existing `--font-body`/`--font-mono` variable names, so
+  `globals.css` did not have to change.
+- **Phase 10** item 4 (upload limits after multipart spooling) is documented, not coded, as the plan
+  called for: the body is on disk before any handler runs, so the fix is a reverse-proxy body cap.
+  It is now in the README's "Failure modes" and in `CLAUDE.md` under "Upload rejections".
 - **Phase 6** pins `start.sh` and `docker-compose.yml` as *text* in
   `tests/test_network_binding.py`, since neither can be unit-tested by running it and a regression
   in either is a one-character edit that silently reopens the port. Those two assertions need
@@ -223,7 +249,7 @@ Small, mechanical validation fixes — group together:
 
 ---
 
-## Phase 10 — Medium-severity batch C: performance & infra hygiene
+## Phase 10 — Medium-severity batch C: performance & infra hygiene — DONE
 
 1. **Home polling performs an unbounded N+1 query** — `backend/app/routes/jobs.py:154`. Use a
    count query / eager load instead of materializing every job's violation collection.
@@ -259,6 +285,7 @@ Small, mechanical validation fixes — group together:
 4. ~~Phase 4 (export invalidation)~~ — done
 5. ~~Phase 5 (admin auth default)~~ — done
 6. ~~Phase 6 (network exposure)~~ — done
-7. ~~Phase 8 (validation)~~ — done. ~~Phase 9 (retention/reanalysis/scrubber)~~ — done. **Phase 10 — start here.**
-8. Phase 11 (Next.js upgrade) — isolate dependency churn
+7. ~~Phase 8 (validation)~~ — done. ~~Phase 9 (retention/reanalysis/scrubber)~~ — done.
+   ~~Phase 10 (performance/infra)~~ — done.
+8. **Phase 11 (Next.js upgrade) — start here.** Isolate dependency churn
 9. Phase 7 (durable queue) — largest, do last with its own design pass
