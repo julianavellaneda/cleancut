@@ -24,7 +24,7 @@ All work is on branch `code-review-fixes`, off `main` at `e6113a9`. One commit p
 | 5 — Admin auth fail-closed | **Done** | `a6866c0` |
 | 6 — Loopback-only binding | **Done** | `c6c9e63` |
 | 8 — Validation & data integrity | **Done** | `2134a9c` |
-| 9 — Retention, reanalysis, scrubber | **Done** | `_pending_` |
+| 9 — Retention, reanalysis, scrubber | **Done** | `d4b9f9f` |
 | 7, 10–11 | Not started | — |
 
 Baseline after Phase 9: **656 backend tests**, **34 frontend tests**, `tsc --noEmit` clean,
