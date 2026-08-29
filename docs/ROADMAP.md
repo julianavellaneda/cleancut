@@ -1,7 +1,8 @@
 # Roadmap: CleanCut Revamp
 
-**Status: Phases 1–4 are shipped.** Kept as the record of how the product got here; new work is
-tracked in `notes/2026-08-21-repo-analysis.md`.
+**Status: Phases 1–4 are shipped.** Kept as the record of how the product got here. The decisions
+behind the current shape live in `DESIGN_NOTES.md`; the factual inventory is in
+`notes/REDESIGN_CONTEXT.md`.
 
 This document outlines the phased transition from a specialized "Compliance Review" tool to a generalized, prompt-based AI Audio/Video Editor.
 

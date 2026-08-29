@@ -43,7 +43,7 @@ export a single re-encoded file.
 | Layer | Stack |
 |---|---|
 | Backend | FastAPI, SQLAlchemy (SQLite), FFmpeg, OpenAI API |
-| Frontend | Next.js 15, Tailwind CSS v4, Wavesurfer.js |
+| Frontend | Next.js 16, Tailwind CSS v4, Wavesurfer.js |
 | Analysis | `faster-whisper` transcription, chunked sliding-window LLM analysis (OpenAI or Anthropic) |
 
 ```

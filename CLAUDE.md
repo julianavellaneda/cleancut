@@ -53,7 +53,7 @@ ai-audio-editing/
 │   ├── tests/                      # pytest suite
 │   ├── uploads/                    # Uploaded media
 │   └── exports/                    # Edited output
-├── frontend/                       # Next.js 15 frontend
+├── frontend/                       # Next.js 16 frontend
 │   └── src/
 │       ├── app/
 │       │   ├── page.tsx            # Upload + prompt/preset selection
