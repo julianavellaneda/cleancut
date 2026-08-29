@@ -16,6 +16,7 @@ from ..models import Job, Violation
 from ..schemas import ExportRequest, ExportResponse
 from ..services import exports
 from ..services.media_editor import generate_waveform_peaks
+from ..services import task_store
 from ..services.worker import enqueue_export
 
 router = APIRouter()
@@ -166,6 +167,18 @@ def export_media(
 
     if job.status != "completed":
         raise HTTPException(status_code=400, detail="Job not completed")
+
+    # One render per job at a time. Queuing a second used to be silently
+    # allowed - the later one simply overwrote the earlier's output - which
+    # burned an FFmpeg pass over the length of the media for nothing, and let a
+    # double-click leave `export_status` describing whichever finished last.
+    # 409 rather than 202: the request is refused, and the caller is already
+    # polling the state that will tell it when the first one lands.
+    if task_store.has_outstanding(db, job_id, "export"):
+        raise HTTPException(
+            status_code=409,
+            detail="An export is already in progress for this job. Wait for it to finish.",
+        )
 
     audio_path = _get_audio_path(job_id)
     if not audio_path:

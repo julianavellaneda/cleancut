@@ -240,6 +240,23 @@ def test_bsm_migration_is_idempotent(bsm_db):
     assert value == "income-claims"
 
 
+def test_init_db_adds_the_task_table_to_an_existing_database(legacy_db):
+    """
+    The durable queue arrived as a whole table rather than a column, so it is
+    `create_all` and not `_apply_migrations` that has to pick it up on a
+    database that predates it. An existing install must gain `tasks` on the
+    next boot; without it every enqueue would fail on a missing table.
+    """
+    assert "tasks" not in inspect(legacy_db).get_table_names()
+
+    database.init_db()
+
+    assert "tasks" in inspect(legacy_db).get_table_names()
+    assert {"id", "kind", "job_id", "state", "attempts"} <= {
+        c["name"] for c in inspect(legacy_db).get_columns("tasks")
+    }
+
+
 def test_migration_noop_on_empty_database(tmp_path, monkeypatch):
     """No jobs table yet (fresh install) - must return quietly."""
     engine = create_engine(f"sqlite:///{tmp_path / 'empty.db'}")

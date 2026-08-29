@@ -12,7 +12,7 @@ from sqlalchemy.orm import Session
 
 from ..auth import require_admin
 from ..database import get_db
-from ..models import Job, Violation
+from ..models import Job, Task, Violation
 from ..schemas import AdminStats
 
 router = APIRouter()
@@ -69,8 +69,13 @@ def get_admin_stats(db: Session = Depends(get_db)):
 def reset_database(db: Session = Depends(get_db)):
     """Wipe all data from the database."""
     try:
-        # Delete all violations first (though cascade should handle it)
+        # Delete all violations first (though cascade should handle it).
+        # Queued work goes too: this is a bulk delete, so the ORM cascade that
+        # normally clears a job's tasks never runs, and a task pointing at a
+        # wiped job would sit on the books until the next restart replayed it
+        # against nothing.
         db.query(Violation).delete()
+        db.query(Task).delete()
         db.query(Job).delete()
         db.commit()
         return {"message": "Database wiped successfully"}

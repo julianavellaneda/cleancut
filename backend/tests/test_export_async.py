@@ -21,7 +21,7 @@ import app.services.exports as exports
 import app.services.worker as worker
 from app.database import SessionLocal, init_db
 from app.main import app
-from app.models import Job, Violation
+from app.models import Job, Task, Violation
 
 
 @pytest.fixture(autouse=True)
@@ -111,6 +111,27 @@ def test_export_returns_202_without_rendering(client, make_job, enqueued):
     assert response.json()["export_status"] == "queued"
     assert RecordingEditor.last is None, "the render must not run on the request thread"
     assert enqueued == [(job_id, None)]
+
+
+def test_a_second_export_is_refused_while_one_is_outstanding(client, make_job, enqueued):
+    """
+    One render per job. Queuing a second burned a second FFmpeg pass over the
+    length of the media for a file the first was about to write anyway, and let
+    a double-click leave `export_status` describing whichever finished last.
+    """
+    job_id = make_job()
+    db = SessionLocal()
+    try:
+        db.add(Task(id=str(uuid.uuid4()), kind="export", job_id=job_id, state="running"))
+        db.commit()
+    finally:
+        db.close()
+
+    response = client.post(f"/api/jobs/{job_id}/export", json={})
+
+    assert response.status_code == 409
+    assert "already in progress" in response.json()["detail"]
+    assert enqueued == []
 
 
 def test_export_marks_the_job_queued(client, make_job):

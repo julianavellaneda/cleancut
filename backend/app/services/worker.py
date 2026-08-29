@@ -11,6 +11,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 import ffmpeg
+from sqlalchemy import or_
 
 from ..database import SessionLocal
 from ..models import Job, Violation
@@ -20,6 +21,8 @@ from ..services.scrubber import Scrubber
 from ..services import transcripts
 from ..services.levels import find_quiet_regions
 from ..services import exports
+from ..services import task_store
+from ..services.task_store import MAX_ATTEMPTS, QueuedTask
 
 # Logging
 logging.basicConfig(level=logging.INFO)
@@ -33,29 +36,23 @@ UPLOAD_DIR = Path(__file__).parent.parent.parent / "uploads"
 EXPORT_DIR = Path(__file__).parent.parent.parent / "exports"
 
 
-@dataclass(frozen=True)
-class QueuedTask:
+def _enqueue(task: QueuedTask) -> QueuedTask:
     """
-    One unit of background work.
+    Write the task down, then hand it to the worker thread.
 
-    A named record rather than a positional tuple: the queue now carries two
-    kinds of work, and "which element was the file path again" is not a question
-    worth re-answering at every unpack site.
+    That order is the whole guarantee. The durable row is never behind the
+    in-memory queue, so the worst a crash between the two lines can do is
+    replay a task nobody was waiting on - as against dropping one an HTTP
+    caller has already been told was accepted.
     """
-    kind: str  # "process", "export" or "reanalyze"
-    job_id: str
-    file_path: str | None = None
-    edit_action: str | None = None
-    # The question a re-analysis is being asked. Carried on the task rather
-    # than read back off the job, so `jobs.prompt` can stay describing the
-    # suggestions that are actually on screen until the new ones replace them.
-    prompt: str | None = None
-    preset: str | None = None
+    task = task_store.record(task)
+    job_queue.put(task)
+    return task
 
 
 def enqueue_job(job_id: str, file_path: str):
     """Add a job to the queue for sequential processing."""
-    job_queue.put(QueuedTask(kind="process", job_id=job_id, file_path=file_path))
+    _enqueue(QueuedTask(kind="process", job_id=job_id, file_path=file_path))
     logger.info(f"Job {job_id} enqueued. Queue size: {job_queue.qsize()}")
 
 
@@ -67,7 +64,7 @@ def enqueue_export(job_id: str, edit_action: str | None = None):
     two-hour re-encode cannot hold an HTTP request open, and so two exports
     never contend for FFmpeg at once.
     """
-    job_queue.put(QueuedTask(kind="export", job_id=job_id, edit_action=edit_action))
+    _enqueue(QueuedTask(kind="export", job_id=job_id, edit_action=edit_action))
     logger.info(f"Export for job {job_id} enqueued. Queue size: {job_queue.qsize()}")
 
 
@@ -81,8 +78,157 @@ def enqueue_reanalysis(job_id: str, prompt: str | None = None, preset: str | Non
     The new question travels with the task. It is not written onto the job
     until the answer comes back - see :func:`_process_reanalysis`.
     """
-    job_queue.put(QueuedTask(kind="reanalyze", job_id=job_id, prompt=prompt, preset=preset))
+    _enqueue(QueuedTask(kind="reanalyze", job_id=job_id, prompt=prompt, preset=preset))
     logger.info(f"Re-analysis for job {job_id} enqueued. Queue size: {job_queue.qsize()}")
+
+
+@dataclass(frozen=True)
+class RecoveryReport:
+    """What one startup reconciliation did. Returned for logging and tests."""
+
+    replayed: int = 0
+    abandoned: int = 0
+    reconciled: int = 0
+    dropped: int = 0
+
+    @property
+    def did_something(self) -> bool:
+        return bool(self.replayed or self.abandoned or self.reconciled or self.dropped)
+
+
+# The statuses that mean the analysis pipeline still owes this job an answer.
+# Mirrors `retention.TERMINAL_STATUSES` from the other side: a job in one of
+# these was mid-flight when the process ended.
+UNFINISHED_STATUSES = frozenset({"pending", "converting", "transcribing", "analyzing", "exporting"})
+ACTIVE_EXPORT_STATUSES = frozenset({"queued", "exporting"})
+
+
+def _abandon(db, job, kind: str, attempts: int):
+    """
+    Give up on a task that has already been tried too many times.
+
+    A task that takes the process down with it comes back on the next boot and
+    takes it down again; without a stop, one unreadable upload is a permanent
+    crash loop. Where the reason gets recorded follows the same split as every
+    other failure here: an export or a re-analysis leaves the reviewed job
+    `completed`, because neither is allowed to strand finished work behind an
+    error screen, while a first-pass failure is a failed job.
+    """
+    detail = f"abandoned after {attempts} attempt(s); it did not survive being retried"
+    if kind == "export":
+        job.export_status = "failed"
+        job.export_error = f"Export {detail}."
+    elif kind == "reanalyze":
+        job.status = "completed"
+        job.error_message = (
+            f"Re-analysis {detail}. The previous suggestions are unchanged."
+        )
+    else:
+        job.status = "failed"
+        job.error_message = f"Processing {detail}."
+    logger.error(f"Task {kind} for job {job.id} {detail}.")
+
+
+def recover_interrupted_work() -> RecoveryReport:
+    """
+    Put the queue back the way the last process left it.
+
+    Two passes, because there are two ways work can be outstanding.
+
+    The first is a task row: written before the in-memory put and deleted after
+    the work, so anything still here was interrupted. Those are replayed in
+    their original order - unless the job they name is gone (nothing to run), or
+    they have already used up `MAX_ATTEMPTS`.
+
+    The second is a job whose *status* says it is mid-flight with no task to
+    explain it. That is the narrow window between committing the job row and
+    recording its task, plus every row created before this table existed. A
+    first pass that never stored a transcript is safe to simply run again, so it
+    is re-queued. Anything else is not: a job already carrying a transcript,
+    suggestions and a reviewer's decisions could be sitting in `analyzing`
+    because a *re-analysis* was interrupted, and re-running it as a fresh job
+    would re-transcribe over the top and delete a review to fix a status field.
+    Those are marked failed with a message saying what to do, which is a
+    recoverable state; guessing wrong is not.
+    """
+    db = SessionLocal()
+    try:
+        replayed = abandoned = reconciled = dropped = 0
+
+        for row in task_store.outstanding(db):
+            job = db.query(Job).filter(Job.id == row.job_id).first()
+            if job is None:
+                # The job was deleted while its task sat in the queue. The
+                # cascade normally takes these; a row from a wiped database
+                # (`/api/admin/reset-database` deletes in bulk) can outlive it.
+                db.delete(row)
+                dropped += 1
+                continue
+            if (row.attempts or 0) >= MAX_ATTEMPTS:
+                _abandon(db, job, row.kind, row.attempts or 0)
+                db.delete(row)
+                abandoned += 1
+                continue
+            row.state = "pending"
+            job_queue.put(task_store.to_task(row))
+            replayed += 1
+
+        db.commit()
+
+        kinds_by_job = task_store.outstanding_kinds_by_job(db)
+        stranded = db.query(Job).filter(
+            or_(
+                Job.status.in_(UNFINISHED_STATUSES),
+                Job.export_status.in_(ACTIVE_EXPORT_STATUSES),
+            )
+        ).all()
+
+        for job in stranded:
+            kinds = kinds_by_job.get(job.id, set())
+
+            if job.status in UNFINISHED_STATUSES and not (kinds & {"process", "reanalyze"}):
+                source = _find_source_file(job.id)
+                if transcripts.from_json(job.transcript) is None and source is not None:
+                    job.status = "pending"
+                    _enqueue(QueuedTask(kind="process", job_id=job.id, file_path=str(source)))
+                    logger.info(f"Job {job.id} was interrupted before it ran; re-queued.")
+                else:
+                    job.status = "failed"
+                    job.error_message = (
+                        "Interrupted by a server restart. Re-analyze this job, or upload "
+                        "the file again, to try once more."
+                    )
+                reconciled += 1
+
+            if ((job.export_status or "none") in ACTIVE_EXPORT_STATUSES
+                    and not (kinds & {"export", "process"})):
+                # `process` counts here too: an `auto_fix` job renders inside its
+                # own task, so a replayed process task is already going to
+                # produce the export this status is waiting on.
+                #
+                # Not re-queued: `edit_action` lived on the task row and is gone,
+                # so the only render we could start is one nobody asked for.
+                job.export_status = "failed"
+                job.export_error = (
+                    "The render was interrupted by a server restart. Export again."
+                )
+                reconciled += 1
+
+        db.commit()
+
+        report = RecoveryReport(replayed, abandoned, reconciled, dropped)
+        if report.did_something:
+            logger.info(
+                f"Startup recovery: replayed {replayed} task(s), abandoned {abandoned}, "
+                f"reconciled {reconciled} job(s), dropped {dropped} orphan(s)."
+            )
+        return report
+    except Exception:
+        logger.exception("Startup recovery failed; the queue starts empty.")
+        db.rollback()
+        return RecoveryReport()
+    finally:
+        db.close()
 
 
 def start_worker():
@@ -92,21 +238,50 @@ def start_worker():
     logger.info("Sequential Job Worker started.")
 
 
+def _dispatch(task: QueuedTask):
+    """Run one task. Split out so recovery and tests can drive it directly."""
+    if task.kind == "export":
+        _process_export(task.job_id, task.edit_action)
+    elif task.kind == "reanalyze":
+        _process_reanalysis(task.job_id, prompt=task.prompt, preset=task.preset)
+    else:
+        _process_job_sequentially(task.job_id, task.file_path)
+
+
+def _run_task(task: QueuedTask):
+    """
+    Claim one task, run it, and clear it from the books.
+
+    The durable row is opened before the work and deleted after it, in a
+    `finally`: an exception escaping a handler must still retire the task.
+    Anything that got this far has already recorded its own failure on the job,
+    and replaying it on the next boot would re-run a pipeline expected to fail
+    again while overwriting the reason it failed the first time.
+    """
+    try:
+        task_store.begin(task)
+        logger.info(f"Worker picking up {task.kind} task for Job {task.job_id}...")
+        _dispatch(task)
+    except Exception as e:
+        logger.error(f"Worker loop error: {str(e)}")
+    finally:
+        task_store.finish(task)
+
+
 def _worker_loop():
-    """Continuously pull and process tasks from the queue."""
+    """
+    Continuously pull and process tasks from the queue.
+
+    `task_done()` sits in a `finally`; it used to be the last line of a `try`,
+    where an escaping exception skipped it and left the queue's unfinished
+    count permanently wrong.
+    """
     while True:
+        task = job_queue.get()
         try:
-            task = job_queue.get()
-            logger.info(f"Worker picking up {task.kind} task for Job {task.job_id}...")
-            if task.kind == "export":
-                _process_export(task.job_id, task.edit_action)
-            elif task.kind == "reanalyze":
-                _process_reanalysis(task.job_id, prompt=task.prompt, preset=task.preset)
-            else:
-                _process_job_sequentially(task.job_id, task.file_path)
+            _run_task(task)
+        finally:
             job_queue.task_done()
-        except Exception as e:
-            logger.error(f"Worker loop error: {str(e)}")
 
 
 def _is_pre_accepted(suggestion, job) -> bool:
@@ -397,6 +572,19 @@ def _process_job_sequentially(job_id: str, file_path: str):
         job = db.query(Job).filter(Job.id == job_id).first()
         if not job:
             return
+
+        # A replayed task starts from scratch, so anything a previous attempt
+        # managed to write has to go first. Without this, a job interrupted
+        # after its suggestions were committed comes back with two copies of
+        # every one of them. A first attempt finds nothing to delete.
+        removed = (
+            db.query(Violation)
+            .filter(Violation.job_id == job_id)
+            .delete(synchronize_session=False)
+        )
+        if removed:
+            db.commit()
+            logger.info(f"Job {job_id} is being re-run; cleared {removed} stale suggestion(s).")
 
         file_path_obj = Path(file_path)
         file_ext = file_path_obj.suffix.lower()

@@ -53,6 +53,10 @@ class Job(Base):
     export_revision = Column(Integer, nullable=True)
 
     violations = relationship("Violation", back_populates="job", cascade="all, delete-orphan")
+    # Background work outstanding for this job. Cascaded so deleting a job -
+    # by hand or by the retention sweeper - cannot leave a task behind that a
+    # restart would then try to replay against a row that is gone.
+    tasks = relationship("Task", back_populates="job", cascade="all, delete-orphan")
 
 
 class Violation(Base):
@@ -72,3 +76,43 @@ class Violation(Base):
     action = Column(String, default="cut")  # cut, mute
 
     job = relationship("Job", back_populates="violations")
+
+
+class Task(Base):
+    """
+    One unit of background work, on disk rather than only in memory.
+
+    The worker's queue is a `queue.Queue` in a single process, so before this
+    table existed a restart - a deploy, a crash, a laptop lid - silently threw
+    away every job that had been accepted but not yet run. The upload had
+    returned 202, the row said `pending`, and nothing was ever going to move it
+    again. The row here is written *before* the in-memory put, so the durable
+    record is never behind the queue; the worker deletes it when the task is
+    done, which makes "what is outstanding" a query rather than a guess.
+
+    `attempts` is what keeps a task that kills the process from killing it
+    again on every boot: the worker increments it as it picks the task up, and
+    a task that has burned through `MAX_ATTEMPTS` is abandoned with the reason
+    recorded on the job instead of being replayed forever.
+    """
+
+    __tablename__ = "tasks"
+
+    id = Column(String, primary_key=True, default=generate_uuid)
+    kind = Column(String, nullable=False)  # process, export, reanalyze
+    job_id = Column(String, ForeignKey("jobs.id"), nullable=False, index=True)
+    # The arguments each kind of task needs. Carried here rather than re-derived
+    # at replay time: an export's `edit_action` override and a re-analysis's
+    # prompt exist nowhere else, and guessing them would run a different job
+    # from the one that was asked for.
+    file_path = Column(Text, nullable=True)
+    edit_action = Column(String, nullable=True)
+    prompt = Column(Text, nullable=True)
+    preset = Column(String, nullable=True)
+    state = Column(String, nullable=False, default="pending")  # pending, running
+    attempts = Column(Integer, nullable=False, default=0)
+    # Replay order. FIFO is the only ordering the queue ever had, and a restart
+    # should not reshuffle work that was already waiting in a particular order.
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+    job = relationship("Job", back_populates="tasks")

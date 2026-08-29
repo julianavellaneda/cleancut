@@ -42,7 +42,8 @@ ai-audio-editing/
 │   │   │   ├── audio.py            # Stream, waveform, export, download
 │   │   │   └── admin.py            # Reset, storage, stats
 │   │   └── services/
-│   │       ├── worker.py           # Threaded job queue, per-stage status
+│   │       ├── worker.py           # Threaded job queue, per-stage status, restart recovery
+│   │       ├── task_store.py       # The queue's durable record: the `tasks` table
 │   │       ├── processor.py        # Wraps transcriber + analyzer
 │   │       ├── exports.py          # Export naming, cut/mute partition, render
 │   │       ├── retention.py        # RETENTION_HOURS sweeper: expired jobs + orphan media
@@ -147,7 +148,7 @@ python ../scripts/dump_demo_transcript.py
 | POST | `/api/jobs/{id}/violations/bulk-update` | Bulk update, filtered by label, id, or source status |
 | GET | `/api/jobs/{id}/audio` | Stream original media |
 | GET | `/api/jobs/{id}/audio/waveform` | Waveform peaks JSON |
-| POST | `/api/jobs/{id}/export` | Queue an edited render (202; poll `export_status`) |
+| POST | `/api/jobs/{id}/export` | Queue an edited render (202; poll `export_status`, 409 if one is already running) |
 | GET | `/api/jobs/{id}/export/download` | Download edited file |
 | GET | `/api/admin/stats` | System-wide statistics |
 | POST | `/api/admin/reset-database` | Wipe all database records (requires `ADMIN_TOKEN`; 503 until one is set) |
@@ -196,10 +197,25 @@ CREATE TABLE violations (
     status TEXT DEFAULT 'pending',     -- pending, accepted, rejected
     action TEXT DEFAULT 'cut'          -- cut, mute
 );
+
+CREATE TABLE tasks (                   -- the durable half of the worker queue
+    id TEXT PRIMARY KEY,
+    kind TEXT NOT NULL,                -- process, export, reanalyze
+    job_id TEXT REFERENCES jobs(id),
+    file_path TEXT,                    -- process: the uploaded media
+    edit_action TEXT,                  -- export: the global cut/mute override
+    prompt TEXT,                       -- reanalyze: the new question
+    preset TEXT,
+    state TEXT NOT NULL DEFAULT 'pending',  -- pending, running
+    attempts INTEGER NOT NULL DEFAULT 0,    -- abandoned at MAX_ATTEMPTS
+    created_at TIMESTAMP                    -- replay order
+);
 ```
 
 Schema changes to `jobs` go in `database._apply_migrations()` — a hand-rolled additive migration run
-on every startup. Add a column there and cover it in `backend/tests/test_migrations.py`.
+on every startup. Add a column there and cover it in `backend/tests/test_migrations.py`. A whole
+new *table* needs no entry there: `init_db`'s `create_all` picks it up on an existing database
+(`tasks` is the worked example, pinned in the same test module).
 
 ## Environment
 
@@ -343,9 +359,27 @@ System dependency: `brew install ffmpeg`.
 - **Worker**: threaded queue, sequential processing, per-stage job status polled by the frontend.
   Queue items are `QueuedTask(kind, job_id, ...)` with `kind` one of `"process"`, `"export"` or
   `"reanalyze"`; a re-analysis carries its `prompt`/`preset` on the task.
+- **The queue is durable** (`services/task_store.py` + the `tasks` table): the in-memory
+  `queue.Queue` is still what the worker blocks on, but every enqueue writes a row **first** and
+  puts second, so a restart cannot silently drop work an upload already answered 202 for. The
+  worker claims the row (`state="running"`, `attempts += 1`) before the handler and deletes it
+  after — in a `finally`, so a handler that raises still retires its task rather than being
+  replayed into the same failure. `worker.recover_interrupted_work()` runs in the lifespan
+  **before** `start_worker`, and does two passes: outstanding task rows are replayed oldest-first
+  (dropped if the job is gone, *abandoned* with the reason on the job past `MAX_ATTEMPTS = 3`,
+  which is the stop on a task that kills the process on every boot); then jobs whose *status*
+  claims they are mid-flight with no task to explain it — the window between committing the job
+  row and recording its task, plus every row predating the table. Those are only re-queued when
+  re-running is safe: no stored transcript and the media still on disk. A job carrying a
+  transcript could be an interrupted *re-analysis*, and re-running it as a fresh job would
+  re-transcribe over a review, so it is failed with an actionable message instead. An interrupted
+  render is never restarted either — `edit_action` lived on the task row. `_process_job_sequentially`
+  deletes the job's existing suggestions on entry, which is what makes a replay idempotent.
+  `tasks` cascades off `Job`, and `/api/admin/reset-database` deletes it explicitly (a bulk
+  delete runs no ORM cascade).
 - **Export is asynchronous**: `POST /export` validates synchronously (404 unknown job, 400 not
-  completed, 404 missing source, 400 nothing accepted), sets `export_status="queued"`, enqueues and
-  returns **202**. `export_status`/`export_error` are deliberately separate from `job.status`: a
+  completed, 404 missing source, 400 nothing accepted, **409 an export is already outstanding**),
+  sets `export_status="queued"`, enqueues and returns **202**. `export_status`/`export_error` are deliberately separate from `job.status`: a
   failed render must not mark a reviewed job `failed` and strand the user's work.
 - **Network binding** (`app/network.py`): every route but the admin wipes is unauthenticated, so the
   interface the port sits on *is* the access control. `CLEANCUT_HOST` defaults to **127.0.0.1** and

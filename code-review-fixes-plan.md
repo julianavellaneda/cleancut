@@ -27,7 +27,12 @@ All work is on branch `code-review-fixes`, off `main` at `e6113a9`. One commit p
 | 9 — Retention, reanalysis, scrubber | **Done** | `d4b9f9f` |
 | 10 — Performance & infra hygiene | **Done** | `58befa8` |
 | 11 — Next.js upgrade | **Done** | `0d0343c` |
-| 7 | Not started | — |
+| 7 — Durable job queue | **Done** | _(this commit)_ |
+
+**All 11 phases are done.**
+
+Baseline after Phase 7: **690 backend tests**, **34 frontend tests**, `tsc --noEmit` clean,
+eval unchanged (F1 95.7%).
 
 Baseline after Phase 11: **666 backend tests**, **34 frontend tests**, `tsc --noEmit` clean,
 `npm run build` clean, `npm audit` clean (0 vulnerabilities, dev included), eval unchanged
@@ -125,6 +130,32 @@ Notes left behind for whoever picks this up:
 - **Phase 11** left the 9 `npm run lint` warnings alone. All are pre-existing (`no-unused-vars`,
   `react-hooks/exhaustive-deps`) and none is an error, so cleaning them here would have mixed
   unrelated churn into a dependency diff that wants to be readable on its own.
+- **Phase 7** kept the in-memory `queue.Queue` and added a durable record beside it
+  (`services/task_store.py`, the `tasks` table) rather than replacing the queue with polling. The
+  worker's blocking `get()` is what makes the pipeline sequential and idle-cheap; the table only
+  has to answer "what is outstanding" after a restart. Order matters and is the whole guarantee:
+  the row is written **before** the in-memory put, so the durable copy is never behind the queue.
+- **Phase 7** deletes the task row even when the handler raised. Each `_process_*` already records
+  its own failure on the job, and replaying a handler that failed for a real reason would re-run a
+  pipeline expected to fail again while overwriting the recorded reason. Retries exist for
+  *crashes*, not for handled failures — which is why `attempts` is incremented on pick-up rather
+  than on failure, and why `MAX_ATTEMPTS = 3` is a crash-loop stop rather than a retry policy.
+- **Phase 7**'s reconciliation deliberately does **not** re-run a job that already has a stored
+  transcript. A job stuck in `analyzing` is ambiguous - a first pass or an interrupted re-analysis
+  - and re-running it as a fresh `process` task would re-transcribe and delete the reviewer's
+  decisions to tidy up a status field. Guessing wrong there is unrecoverable; a `failed` status
+  with "re-analyze, or upload again" is not. Same argument for an interrupted render: `edit_action`
+  lived on the task row, so the only render left to start is one nobody asked for.
+- **Phase 7** made `_process_job_sequentially` delete the job's existing suggestions on entry.
+  That is what makes a replay idempotent, and it is safe only because a first attempt has none —
+  anything that starts calling it on a reviewed job needs a different guard.
+- **Phase 7** closed the double-export hole Phase 4 left open: `POST /export` now answers **409**
+  when a task of kind `export` is already on the books. `tests/test_durable_queue.py` is the new
+  module; the 409 lives in `test_export_async.py` next to the rest of that route's contract.
+- **Phase 7**'s test module repoints `SessionLocal` on `database`, `worker` **and** `task_store` at
+  a per-test temp database. Recovery is a global pass over the whole table, so it cannot be
+  asserted against the shared file the other modules write into — and both services bind
+  `SessionLocal` at import, so patching `database` alone leaves them on the old engine.
 - **Phase 6** pins `start.sh` and `docker-compose.yml` as *text* in
   `tests/test_network_binding.py`, since neither can be unit-tested by running it and a regression
   in either is a one-character edit that silently reopens the port. Those two assertions need
@@ -226,7 +257,7 @@ behavior and could break existing dev setups; call this out in the PR descriptio
 
 ---
 
-## Phase 7 — Durable job queue (largest, do last, own session)
+## Phase 7 — Durable job queue (largest, do last, own session) — DONE
 
 **Finding #5 (High): All queued work disappears on restart**
 - File: `backend/app/services/worker.py:28`
@@ -237,6 +268,13 @@ behavior and could break existing dev setups; call this out in the PR descriptio
   design pass (schema for the task table, idempotency on reconciliation, migration) before coding.
 - Do this after the smaller correctness fixes (Phases 1–5) so the queue changes aren't fighting
   concurrent edits to `worker.py` from Phase 4.
+- **Taken:** a `tasks` table beside the existing `queue.Queue` (row written before the put, deleted
+  after the work), `attempts`-capped replay, and a two-pass `recover_interrupted_work()` in the
+  lifespan — outstanding rows first, then jobs whose status is mid-flight with no row to explain
+  it. Idempotency is a delete of the job's existing suggestions at the top of the process handler.
+  A reviewed job is reconciled to `failed` with an actionable message rather than re-run; see the
+  notes above for why guessing there is the unrecoverable direction. Also closes the
+  double-export hole with a 409.
 
 ---
 
@@ -307,4 +345,4 @@ Small, mechanical validation fixes — group together:
 7. ~~Phase 8 (validation)~~ — done. ~~Phase 9 (retention/reanalysis/scrubber)~~ — done.
    ~~Phase 10 (performance/infra)~~ — done.
 8. ~~Phase 11 (Next.js upgrade)~~ — done
-9. **Phase 7 (durable queue) — start here.** Largest, with its own design pass
+9. ~~Phase 7 (durable queue)~~ — done. Every phase in this plan is now complete.

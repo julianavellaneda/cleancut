@@ -299,6 +299,14 @@ partial-analysis warning naming the unanalyzed timespans; if every chunk fails, 
 same applies to entries that parse but say nothing actionable — an item with no quoted text or an
 unknown action fails its chunk rather than becoming an empty edit that `auto_fix` would apply.
 
+Work queued for the worker survives a restart. The queue is a table, not just a list in memory, so
+a deploy, a crash or a closed laptop no longer throws away every job that had been accepted and not
+yet run — on the next boot the outstanding tasks are picked up in the order they were queued. A
+task that has taken the process down three times is abandoned rather than replayed a fourth, with
+the reason recorded on the job; one interrupted so late that only the job's status remembers it is
+marked failed with a message saying to try again, rather than re-run over the top of a review you
+have already done.
+
 The CLI carries the same status: the saved JSON includes `is_partial` and `failed_chunks`,
 `total_segments_analyzed` counts only segments a chunk actually answered for, and a partial run
 exits 2 so a script cannot read it as clean.
