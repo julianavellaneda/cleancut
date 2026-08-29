@@ -25,7 +25,7 @@ All work is on branch `code-review-fixes`, off `main` at `e6113a9`. One commit p
 | 6 — Loopback-only binding | **Done** | `c6c9e63` |
 | 8 — Validation & data integrity | **Done** | `2134a9c` |
 | 9 — Retention, reanalysis, scrubber | **Done** | `d4b9f9f` |
-| 10 — Performance & infra hygiene | **Done** | _pending_ |
+| 10 — Performance & infra hygiene | **Done** | `58befa8` |
 | 7, 11 | Not started | — |
 
 Baseline after Phase 10: **666 backend tests**, **34 frontend tests**, `tsc --noEmit` clean,
