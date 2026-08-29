@@ -26,7 +26,7 @@ Note: the domain object is named `Violation` in the API and DB, but user-facing 
 
 | Item | Value |
 |---|---|
-| Framework | Next.js 16.1.6, App Router, all pages `"use client"` |
+| Framework | Next.js 16.3.3, App Router, all pages `"use client"` |
 | React | 19.2.3 |
 | Styling | Tailwind v4 (`@import "tailwindcss"`), CSS-variable theme in `globals.css` |
 | Component layer | shadcn-style local primitives in `components/ui/` built on `radix-ui` + `class-variance-authority` |

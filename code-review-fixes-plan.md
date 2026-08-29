@@ -26,7 +26,12 @@ All work is on branch `code-review-fixes`, off `main` at `e6113a9`. One commit p
 | 8 — Validation & data integrity | **Done** | `2134a9c` |
 | 9 — Retention, reanalysis, scrubber | **Done** | `d4b9f9f` |
 | 10 — Performance & infra hygiene | **Done** | `58befa8` |
-| 7, 11 | Not started | — |
+| 11 — Next.js upgrade | **Done** | _pending_ |
+| 7 | Not started | — |
+
+Baseline after Phase 11: **666 backend tests**, **34 frontend tests**, `tsc --noEmit` clean,
+`npm run build` clean, `npm audit` clean (0 vulnerabilities, dev included), eval unchanged
+(F1 95.7%).
 
 Baseline after Phase 10: **666 backend tests**, **34 frontend tests**, `tsc --noEmit` clean,
 `npm run build` clean, `python -m app.eval.run --detectors ../tests/fixtures/demo/demo_seminar.mp3
@@ -106,6 +111,20 @@ Notes left behind for whoever picks this up:
 - **Phase 10** item 4 (upload limits after multipart spooling) is documented, not coded, as the plan
   called for: the body is on disk before any handler runs, so the fix is a reverse-proxy body cap.
   It is now in the README's "Failure modes" and in `CLAUDE.md` under "Upload rejections".
+- **Phase 11** was 16.1.6 -> 16.3.3, a minor bump inside v16, so there was no codemod and no API
+  surface to migrate — the advisory list is what made it urgent, not a feature. `npm audit
+  --omit=dev` went from 3 high (next itself, plus its bundled `postcss` and `sharp`) to **zero**.
+  A plain `npm audit fix` then cleared six dev-only transitives (`brace-expansion`, `flatted`,
+  `js-yaml`, `minimatch` under the eslint toolchain); no `--force` was needed anywhere, so nothing
+  crossed a major boundary.
+- **Phase 11**: `npm install` prints an `EBADENGINE` warning on this machine. It is **not** Next —
+  Next's own floor is `>=20.9.0`, which is why `frontend/Dockerfile`'s `node:20-slim` is still
+  correct and was left alone. It is `jsdom@30`/`undici@8` (devDependencies) wanting `>=22.19.0`
+  against a local 22.17.0, which predates this phase. Tests and build pass regardless; CI is on
+  node 22. Bump the local node if the warning ever turns into a failure.
+- **Phase 11** left the 9 `npm run lint` warnings alone. All are pre-existing (`no-unused-vars`,
+  `react-hooks/exhaustive-deps`) and none is an error, so cleaning them here would have mixed
+  unrelated churn into a dependency diff that wants to be readable on its own.
 - **Phase 6** pins `start.sh` and `docker-compose.yml` as *text* in
   `tests/test_network_binding.py`, since neither can be unit-tested by running it and a regression
   in either is a one-character edit that silently reopens the port. Those two assertions need
@@ -266,7 +285,7 @@ Small, mechanical validation fixes — group together:
 
 ---
 
-## Phase 11 — Dependency upgrade
+## Phase 11 — Dependency upgrade — DONE
 
 **Finding #10 (High): The pinned Next.js version has known high-severity advisories**
 - File: `frontend/package.json:17`
@@ -287,5 +306,5 @@ Small, mechanical validation fixes — group together:
 6. ~~Phase 6 (network exposure)~~ — done
 7. ~~Phase 8 (validation)~~ — done. ~~Phase 9 (retention/reanalysis/scrubber)~~ — done.
    ~~Phase 10 (performance/infra)~~ — done.
-8. **Phase 11 (Next.js upgrade) — start here.** Isolate dependency churn
-9. Phase 7 (durable queue) — largest, do last with its own design pass
+8. ~~Phase 11 (Next.js upgrade)~~ — done
+9. **Phase 7 (durable queue) — start here.** Largest, with its own design pass
