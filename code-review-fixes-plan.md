@@ -27,7 +27,7 @@ All work is on branch `code-review-fixes`, off `main` at `e6113a9`. One commit p
 | 9 — Retention, reanalysis, scrubber | **Done** | `d4b9f9f` |
 | 10 — Performance & infra hygiene | **Done** | `58befa8` |
 | 11 — Next.js upgrade | **Done** | `0d0343c` |
-| 7 — Durable job queue | **Done** | _(this commit)_ |
+| 7 — Durable job queue | **Done** | `402a8b4` |
 
 **All 11 phases are done.**
 
