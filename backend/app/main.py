@@ -19,6 +19,7 @@ if _ROOT_ENV:
     load_dotenv(_ROOT_ENV)
 
 from .database import init_db
+from .network import exposure_warning
 from .preflight import verify_environment
 from .routes import jobs, violations, audio, admin
 from .services.retention import start_retention_sweeper
@@ -35,8 +36,15 @@ async def lifespan(app: FastAPI):
     later as a mysteriously failed job.
 
     The retention sweeper is a no-op unless RETENTION_HOURS is set.
+
+    A non-loopback CLEANCUT_HOST is warned about but never refused: exposing the
+    port is a supported choice, and the operator who made it should be reminded
+    that the media routes carry no authentication.
     """
     verify_environment()
+    warning = exposure_warning()
+    if warning:
+        print(warning)
     init_db()
     start_worker()
     start_retention_sweeper()

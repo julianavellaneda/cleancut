@@ -21,6 +21,7 @@ ai-audio-editing/
 │   │   ├── main.py                 # FastAPI entry, CORS, lifespan startup
 │   │   ├── config.py               # Root .env discovery
 │   │   ├── auth.py                 # ADMIN_TOKEN gate for the destructive admin routes
+│   │   ├── network.py              # CLEANCUT_HOST: loopback-by-default binding
 │   │   ├── preflight.py            # Startup checks: OPENAI_API_KEY, ffmpeg/ffprobe
 │   │   ├── limits.py               # Upload size + duration caps
 │   │   ├── database.py             # SQLite setup + hand-rolled column migrations
@@ -208,6 +209,7 @@ A `.env` at the **repo root** (not in a subdirectory), discovered by `app/config
 CLEANCUT_MODEL=            # optional; "provider:model", default openai:gpt-4o
 OPENAI_API_KEY=your_key_here
 ANTHROPIC_API_KEY=         # required instead when CLEANCUT_MODEL names anthropic
+CLEANCUT_HOST=127.0.0.1   # optional; interface to listen on. Loopback default; 0.0.0.0 exposes it
 CORS_ORIGINS=http://localhost:3000
 DATABASE_PATH=            # optional; Docker sets this to a mounted volume
 NEXT_PUBLIC_API_URL=      # optional; baked into the frontend build
@@ -298,13 +300,26 @@ System dependency: `brew install ffmpeg`.
   completed, 404 missing source, 400 nothing accepted), sets `export_status="queued"`, enqueues and
   returns **202**. `export_status`/`export_error` are deliberately separate from `job.status`: a
   failed render must not mark a reviewed job `failed` and strand the user's work.
+- **Network binding** (`app/network.py`): every route but the admin wipes is unauthenticated, so the
+  interface the port sits on *is* the access control. `CLEANCUT_HOST` defaults to **127.0.0.1** and
+  names the interface CleanCut is *reachable* on, not the argument any one process hands a socket:
+  `start.sh` passes it to uvicorn and to `next dev` (which binds every interface otherwise), while
+  `docker-compose.yml` uses it as the published interface and the container still binds `0.0.0.0`
+  internally - a container's network is not the host's. One variable rather than a bind/publish
+  pair, because that is what lets the running app answer the only question it cares about: can
+  anyone but this machine reach us. `is_loopback` treats anything unrecognised as exposed and never
+  does a DNS lookup - a security decision that depends on a network round-trip fails in whichever
+  direction the network does. A non-loopback host is warned about at startup, never refused.
 - **Admin auth** (`app/auth.py`): `require_admin` fails **closed**. With `ADMIN_TOKEN` set it is the
   usual 401-unless-it-matches; with no token configured it is a **503**, not a pass — an unset
   variable is the state every deployment starts in and the one nobody notices, so it must not be the
   state that hands out the delete button. 503 rather than 401 because no header the caller could
   send would help: the fault is the server's configuration. `ALLOW_UNAUTHENTICATED_ADMIN=1` restores
   the old open behaviour for local dev, and is ignored when `ADMIN_TOKEN` is set — the flag opens the
-  routes, so it must never weaken a gate an operator deliberately configured. `GET /admin/stats`
+  routes, so it must never weaken a gate an operator deliberately configured. It is also ignored
+  once `CLEANCUT_HOST` is not loopback: the flag means "anything that can reach the port may wipe
+  everything", which is not what was agreed to once a network can reach it, so the two settings in
+  contradiction resolve to the closed reading with a 503 that names the conflict. `GET /admin/stats`
   stays ungated throughout: the dashboard has to load on an unconfigured server. The dependency is
   declared on all three destructive routes individually — `reset_all` calls the other two as plain
   Python functions, so a `Depends` on those never runs for it.

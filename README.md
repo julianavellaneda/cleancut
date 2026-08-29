@@ -82,6 +82,11 @@ npm run dev
 
 Or run both with `./start.sh`.
 
+Both quickstarts listen on **127.0.0.1** — CleanCut is reachable from this machine and nothing else.
+Everything except the admin wipes is unauthenticated, so opening the port to a network is a decision
+you type rather than a default you inherit: set `CLEANCUT_HOST=0.0.0.0` in `.env` and put a reverse
+proxy that authenticates in front of it. See [Privacy](#privacy).
+
 ## Tests
 
 ```bash
@@ -256,6 +261,7 @@ Set in `.env` at the repo root:
 | `CLEANCUT_MODEL` | `openai:gpt-4o` | Which model analyses the transcript, as `provider:model`. `openai` or `anthropic` |
 | `OPENAI_API_KEY` | — | Required when `CLEANCUT_MODEL` names `openai` |
 | `ANTHROPIC_API_KEY` | — | Required when `CLEANCUT_MODEL` names `anthropic` |
+| `CLEANCUT_HOST` | `127.0.0.1` | Which interface CleanCut listens on. Loopback by default; `0.0.0.0` exposes it to the network, which the unauthenticated media routes are not built for |
 | `CORS_ORIGINS` | `http://localhost:3000` | Comma-separated allowed origins |
 | `DATABASE_PATH` | `backend/audio_compliance.db` | SQLite file location |
 | `NEXT_PUBLIC_API_URL` | `http://localhost:8000/api` | Backend URL baked into the frontend build |
@@ -264,7 +270,7 @@ Set in `.env` at the repo root:
 | `RETENTION_HOURS` | unset | Delete jobs and their media once they are this old. Unset keeps everything forever |
 | `RETENTION_SWEEP_MINUTES` | `15` | How often the retention sweeper runs |
 | `ADMIN_TOKEN` | unset | Shared secret for the destructive admin routes, sent as an `X-Admin-Token` header. Unset **disables** those routes (503) rather than leaving them open |
-| `ALLOW_UNAUTHENTICATED_ADMIN` | unset | `1` leaves the destructive admin routes open with no token, the way they used to be. For a machine you control only; ignored when `ADMIN_TOKEN` is set |
+| `ALLOW_UNAUTHENTICATED_ADMIN` | unset | `1` leaves the destructive admin routes open with no token, the way they used to be. For a machine you control only; ignored when `ADMIN_TOKEN` is set, and ignored once `CLEANCUT_HOST` is not loopback |
 | `SKIP_PREFLIGHT` | unset | Boot despite a failed startup check (jobs will still fail) |
 
 ## Failure modes
@@ -303,9 +309,16 @@ have the old one-click reset on your own laptop, `ALLOW_UNAUTHENTICATED_ADMIN=1`
 is a deliberate choice to leave the delete button open to anything that can reach the port, which is
 why a blank line in `.env` no longer does it for you.
 
-The rest of the API is unauthenticated and binds to every interface. Treat CleanCut as a local-only
-tool: run it on a machine you control, and put it behind a reverse proxy that authenticates before
-exposing it to a network.
+The rest of the API is unauthenticated: anything that can reach the port can list the jobs, stream
+the original recording, read the transcript and download the export. So the port is the access
+control, and it is **loopback by default** — `start.sh` binds `127.0.0.1` and `docker compose`
+publishes on `127.0.0.1`. CleanCut is a local-only tool, and running it that way needs no flag.
+
+`CLEANCUT_HOST=0.0.0.0` opens it to the network, in both the script and Compose. That is supported,
+and it is a decision: the backend prints a warning at startup saying what is now readable, and
+`ALLOW_UNAUTHENTICATED_ADMIN` stops being honoured, since "anything that can reach the port may wipe
+everything" is not what an operator agreed to once a network can reach it. Put a reverse proxy that
+authenticates in front before you do this.
 
 Nothing is deleted on a timer unless you ask for it. Set `RETENTION_HOURS` and a background sweeper
 deletes each job — its row, its violations, its upload, and its export — once it is that old, along

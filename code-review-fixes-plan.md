@@ -22,9 +22,10 @@ All work is on branch `code-review-fixes`, off `main` at `e6113a9`. One commit p
 | 3 — Dedup + timestamp alignment | **Done** | `dc7280c` |
 | 4 — Export staleness invalidation | **Done** | `3ee2fe5` |
 | 5 — Admin auth fail-closed | **Done** | `a6866c0` |
-| 6–11 | Not started | — |
+| 6 — Loopback-only binding | **Done** | _pending_ |
+| 7–11 | Not started | — |
 
-Baseline after Phase 5: **573 backend tests**, **34 frontend tests**, `tsc --noEmit` clean,
+Baseline after Phase 6: **598 backend tests**, **34 frontend tests**, `tsc --noEmit` clean,
 `python -m app.eval.run --detectors ../tests/fixtures/demo/demo_seminar.mp3 --suite scrub` passes
 (F1 95.7%, unchanged by these fixes).
 
@@ -60,7 +61,17 @@ Notes left behind for whoever picks this up:
   description. `GET /admin/stats` is untouched, so the dashboard still loads either way.
 - **Phase 5** left the loopback-binding half of its finding to Phase 6, where it belongs; the README
   privacy section now states the local-only trust model in words, which is the documentation half.
-- **Phase 6 still needs a decision from the user** before anyone implements it.
+- **Phase 6** took option (a): loopback by default, one `CLEANCUT_HOST` variable to open it up. The
+  variable names *the interface CleanCut is reachable on*, not a socket argument — `start.sh` hands
+  it to uvicorn and to `next dev`, Compose uses it as the published interface while the container
+  keeps binding `0.0.0.0` inside. Per-owner auth was explicitly **not** taken; if it is ever wanted
+  it is its own project, not a phase here.
+- **Phase 6** also narrowed `ALLOW_UNAUTHENTICATED_ADMIN` from Phase 5: it is honoured only on a
+  loopback binding. Two settings in contradiction resolve closed, with a 503 that names which.
+- **Phase 6** pins `start.sh` and `docker-compose.yml` as *text* in
+  `tests/test_network_binding.py`, since neither can be unit-tested by running it and a regression
+  in either is a one-character edit that silently reopens the port. Those two assertions need
+  updating if the scripts are reformatted.
 
 ---
 
@@ -141,7 +152,7 @@ behavior and could break existing dev setups; call this out in the PR descriptio
 
 ---
 
-## Phase 6 — Network exposure / auth posture (design decision needed)
+## Phase 6 — Network exposure / auth posture — DONE
 
 **Finding #3 (High): Recordings and transcripts have no authentication**
 - Files: `backend/app/main.py:65`, `backend/app/routes/jobs.py:154`, `backend/app/routes/audio.py:58`
@@ -151,8 +162,10 @@ behavior and could break existing dev setups; call this out in the PR descriptio
   explicit opt-in flag/env var to bind `0.0.0.0`, and document the local-only trust model clearly.
   Full multi-user auth is a much larger effort and should be its own separate project if ever
   needed.
-- **This phase needs a decision from the user before implementation** — flag it rather than
-  guessing which direction to take.
+- **Decision (taken):** (a). `CLEANCUT_HOST` defaults to `127.0.0.1` in `start.sh` (uvicorn *and*
+  `next dev`) and as the published interface in `docker-compose.yml`; `app/network.py` owns what
+  counts as loopback; a non-loopback host prints a startup warning; `ALLOW_UNAUTHENTICATED_ADMIN`
+  is honoured only on loopback. Full multi-user auth was declined as out of scope.
 
 ---
 
@@ -233,7 +246,7 @@ Small, mechanical validation fixes — group together:
 3. ~~Phase 3 (dedup + timestamp alignment)~~ — done
 4. ~~Phase 4 (export invalidation)~~ — done
 5. ~~Phase 5 (admin auth default)~~ — done
-6. **Phase 6 — start here.** Phase 6 (network exposure) — **needs user decision first**
-7. Phase 8, 9, 10 (medium batches) — any order, independent of each other
+6. ~~Phase 6 (network exposure)~~ — done
+7. **Phase 8 — start here.** Phase 8, 9, 10 (medium batches) — any order, independent of each other
 8. Phase 11 (Next.js upgrade) — isolate dependency churn
 9. Phase 7 (durable queue) — largest, do last with its own design pass
