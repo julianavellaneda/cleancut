@@ -33,8 +33,11 @@ function firstCall(spy: ReturnType<typeof mockFetch>): FetchArgs {
   return spy.mock.calls[0];
 }
 
+// The client's paths are relative now - the Next server proxies them - so this
+// needs a base to parse against. jsdom's own origin is the one the browser
+// would resolve them against anyway.
 function calledUrl(spy: ReturnType<typeof mockFetch>): URL {
-  return new URL(String(firstCall(spy)[0]));
+  return new URL(String(firstCall(spy)[0]), window.location.origin);
 }
 
 function calledBody(spy: ReturnType<typeof mockFetch>): unknown {

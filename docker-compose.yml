@@ -16,10 +16,13 @@ services:
     restart: unless-stopped
 
   frontend:
-    build:
-      context: ./frontend
-      args:
-        NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://localhost:8000/api}
+    build: ./frontend
+    # The browser calls the frontend's own /api; the Next server proxies it to
+    # the backend over the Compose network. That name only resolves in here,
+    # which is the point: the browser never needs to know where the backend is,
+    # so nothing about it has to be decided at build time.
+    environment:
+      - BACKEND_ORIGIN=${BACKEND_ORIGIN:-http://backend:8000}
     ports:
       - "${CLEANCUT_HOST:-127.0.0.1}:3000:3000"
     depends_on:

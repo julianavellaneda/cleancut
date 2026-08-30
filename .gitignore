@@ -73,6 +73,11 @@ node_modules/
 .next/
 out/
 
+# Written by `next dev` on every run, and re-created if deleted. Generated
+# tooling notes rather than anything this project decided, so they stay local.
+frontend/AGENTS.md
+frontend/CLAUDE.md
+
 # JSON output files (not package.json etc)
 *_violations.json
 

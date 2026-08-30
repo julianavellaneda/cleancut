@@ -2,7 +2,37 @@
  * API client for the CleanCut backend.
  */
 
-const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000/api";
+/**
+ * Where the API is, from the browser's point of view.
+ *
+ * Relative by default, and proxied to the backend by the Next server (see
+ * `next.config.ts`). That is what stops a built frontend from being pinned to
+ * whichever origin happened to be set when it was built - the published
+ * container image would otherwise point wherever CI pointed it.
+ *
+ * An absolute NEXT_PUBLIC_API_URL still wins, for anyone who wants the browser
+ * to talk to the backend directly. That path is cross-origin, so it needs the
+ * backend's CORS_ORIGINS to name the frontend.
+ *
+ * `||` rather than `??` on purpose: `start.sh` sources the root .env with
+ * `set -a`, so a variable left blank there arrives as an empty string rather
+ * than as absent, and `??` would take it - leaving every request pointed at a
+ * base of "".
+ */
+const API_BASE = process.env.NEXT_PUBLIC_API_URL || "/api";
+
+/**
+ * A `URL` for an API path, for the one call that has a query string to build.
+ *
+ * `new URL` needs a base when what it is given is relative, which `API_BASE`
+ * now is - without one it raises `TypeError: Invalid URL` rather than
+ * resolving against the page. The base is ignored when NEXT_PUBLIC_API_URL
+ * supplies an absolute base, so both configurations go through here unchanged.
+ */
+function apiUrl(path: string): URL {
+  const origin = typeof window === "undefined" ? "http://localhost" : window.location.origin;
+  return new URL(`${API_BASE}${path}`, origin);
+}
 
 export interface Job {
   id: string;
@@ -281,7 +311,7 @@ export const api = {
     labels?: string[],
     fromStatus?: string[]
   ): Promise<{ message: string; updated: number }> {
-    const url = new URL(`${API_BASE}/jobs/${jobId}/violations/bulk-update`);
+    const url = apiUrl(`/jobs/${jobId}/violations/bulk-update`);
     if (labels && labels.length > 0) {
       labels.forEach(label => url.searchParams.append("labels", label));
     }

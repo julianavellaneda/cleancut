@@ -264,7 +264,8 @@ Set in `.env` at the repo root:
 | `CLEANCUT_HOST` | `127.0.0.1` | Which interface CleanCut listens on. Loopback by default; `0.0.0.0` exposes it to the network, which the unauthenticated media routes are not built for |
 | `CORS_ORIGINS` | `http://localhost:3000` | Comma-separated allowed origins |
 | `DATABASE_PATH` | `backend/audio_compliance.db` | SQLite file location |
-| `NEXT_PUBLIC_API_URL` | `http://localhost:8000/api` | Backend URL baked into the frontend build |
+| `BACKEND_ORIGIN` | `http://localhost:8000` | Where the frontend's own server finds the backend. The browser calls the frontend's `/api` and Next proxies it here, so the backend's address is never compiled into the page |
+| `NEXT_PUBLIC_API_URL` | unset | Set it to have the browser call the backend directly instead of through the proxy. Cross-origin, so `CORS_ORIGINS` must name the frontend — and it is baked into the build, so changing it means rebuilding |
 | `MAX_UPLOAD_MB` | `500` | Upload size cap; larger uploads are rejected with a 413 |
 | `MAX_DURATION_MINUTES` | `120` | Media length cap, measured with `ffprobe` before queueing; media whose duration cannot be read is rejected |
 | `RETENTION_HOURS` | unset | Delete jobs and their media once they are this old. Unset keeps everything forever |

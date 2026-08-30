@@ -146,3 +146,8 @@ The CLI is a module, not a script: `analysis/` imports are package-relative, so
 - **Network binding**: every other route is unauthenticated, so the interface *is* the access
   control. `CLEANCUT_HOST` defaults to `127.0.0.1`; treat exposing it as a deployment decision, and
   add real per-owner auth before hosting this for more than one person.
+- **API routing**: the browser calls a relative `/api` and the Next server rewrites it to
+  `BACKEND_ORIGIN` (`frontend/next.config.ts`), evaluated at run time. `NEXT_PUBLIC_API_URL` is
+  baked in at build time, so it is left unset by default — a published frontend image must not be
+  pinned to the origin that built it. Setting it restores the direct cross-origin call, which needs
+  `CORS_ORIGINS` to name the frontend.

@@ -418,6 +418,21 @@ System dependency: `brew install ffmpeg`.
   anyone but this machine reach us. `is_loopback` treats anything unrecognised as exposed and never
   does a DNS lookup - a security decision that depends on a network round-trip fails in whichever
   direction the network does. A non-loopback host is warned about at startup, never refused.
+- **The API is reached through the frontend** (`frontend/next.config.ts` + `lib/api.ts`): the
+  browser calls a **relative** `/api`, and the Next server rewrites it to `BACKEND_ORIGIN`
+  (default `http://localhost:8000`; Compose sets `http://backend:8000`). `rewrites()` is evaluated
+  by the *running* server, which is the whole point — `NEXT_PUBLIC_API_URL` is inlined at build
+  time, so the published GHCR frontend image would otherwise be pinned forever to whichever origin
+  CI happened to have, and pointing it at a different backend would mean rebuilding it. Nothing
+  about the backend's address is compiled into the page now. `NEXT_PUBLIC_API_URL` is still
+  honoured and still wins when set: that is the direct cross-origin call, which needs
+  `CORS_ORIGINS` to name the frontend and skips the proxy hop that audio streaming and export
+  downloads otherwise take. Both are read with `||`, not `??` — `start.sh` sources the root `.env`
+  with `set -a`, so a variable left blank there arrives as `""` rather than as absent, and `??`
+  would take the empty string and point every request at a base of nothing. `api.ts` has exactly
+  one `new URL` (the `bulk-update` query string) and it goes through the `apiUrl` helper, because
+  `new URL` on a relative string with no base raises rather than resolving against the page; the
+  same trap is in `api.test.ts`'s `calledUrl`.
 - **Admin auth** (`app/auth.py`): `require_admin` fails **closed**. With `ADMIN_TOKEN` set it is the
   usual 401-unless-it-matches; with no token configured it is a **503**, not a pass — an unset
   variable is the state every deployment starts in and the one nobody notices, so it must not be the
