@@ -38,6 +38,28 @@ export a single re-encoded file.
 - **Measured, not asserted** — a labelled synthetic clip and an eval harness that scores the
   detectors against it: precision, recall, and per-category coverage, run on every build.
 
+## Screenshots
+
+**Describe the job.** Free-form instructions, or a rule preset in place of them. Scrubber mode adds
+the deterministic filler and silence pass; auto-apply pre-accepts what the detectors are sure of.
+
+![The CleanCut upload screen: instructions field, rule preset picker, auto-apply and scrubber checkboxes, and a drop zone](docs/assets/01-upload.png)
+
+**Review on the waveform.** Every suggestion is a marker over the audio and a row in the sidebar.
+This one is the scrubber's: a filler word, found off the word timestamps with no model involved.
+
+![The review screen: fourteen suggested edits beside a waveform with the suggested spans shaded, and a card for the filler word “um”](docs/assets/02-review.png)
+
+**Read the reasoning before deciding.** The same screen with an LLM-found income claim selected —
+the quoted span, why it was flagged, and the choice between cutting it and muting it.
+
+![The review screen with an income claim selected, showing the quoted sentence, the model's reasoning, and the cut/mute toggle](docs/assets/03-marker-card.png)
+
+**Export what you accepted.** One FFmpeg pass over the accepted edits — 1:14 of recording down to
+0:53, playable in place before you download it.
+
+![The review screen after an export: accepted edits ticked, a result player showing 0:53 against the original's 1:14, and a Download Master button](docs/assets/04-export-complete.png)
+
 ## Architecture
 
 | Layer | Stack |
