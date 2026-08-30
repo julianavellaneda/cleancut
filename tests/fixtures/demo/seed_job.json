@@ -1,6 +1,6 @@
 {
   "job": {
-    "filename": "04773df3-233b-4f1f-a3b3-f93b7a2dc6fa.mp3",
+    "filename": "b5194f7b-de61-418c-8aff-35cd329f09a0.mp3",
     "original_filename": "demo_seminar.mp3",
     "media_type": "audio",
     "prompt": "Find every income, lifestyle, and health claim, then cut the filler words and dead air",
@@ -22,18 +22,35 @@
       "severity": null,
       "reasoning": "Detected common filler word 'um'.",
       "status": "pending",
-      "action": "cut"
+      "action": "cut",
+      "is_approximate": false,
+      "is_ambiguous": false
+    },
+    {
+      "text": "you know,",
+      "start_time": 2.12,
+      "end_time": 2.52,
+      "label": "Filler Word",
+      "rule_violated": null,
+      "severity": null,
+      "reasoning": "Detected common filler word 'you know'.",
+      "status": "pending",
+      "action": "cut",
+      "is_approximate": false,
+      "is_ambiguous": false
     },
     {
       "text": "Uh, yeah. So in my fourth month I brought home $11,400 and that changed everything.",
       "start_time": 5.38,
-      "end_time": 12.82,
+      "end_time": 13.32,
       "label": "Income Claim",
       "rule_violated": null,
       "severity": null,
-      "reasoning": "This segment makes a specific income claim which may not be typical or verifiable.",
+      "reasoning": "This is a specific income claim that may not be typical or verifiable.",
       "status": "pending",
-      "action": "cut"
+      "action": "cut",
+      "is_approximate": false,
+      "is_ambiguous": false
     },
     {
       "text": "Uh,",
@@ -44,18 +61,22 @@
       "severity": null,
       "reasoning": "Detected common filler word 'uh'.",
       "status": "pending",
-      "action": "cut"
+      "action": "cut",
+      "is_approximate": false,
+      "is_ambiguous": false
     },
     {
       "text": "[Gap]",
       "start_time": 13.32,
-      "end_time": 16.29,
+      "end_time": 16.25,
       "label": "Dead Air",
       "rule_violated": null,
       "severity": null,
-      "reasoning": "Silence gap of 3.0s detected between segments.",
+      "reasoning": "2.9s below -50 dBFS with no speech transcribed - a 3.0s gap between transcript segments.",
       "status": "pending",
-      "action": "cut"
+      "action": "cut",
+      "is_approximate": false,
+      "is_ambiguous": false
     },
     {
       "text": "Honestly, by December I quit my job right before Christmas and it felt unreal.",
@@ -64,9 +85,11 @@
       "label": "Lifestyle Claim",
       "rule_violated": null,
       "severity": null,
-      "reasoning": "This segment implies a significant lifestyle change based on income claims, which may not be typical.",
+      "reasoning": "This implies a significant lifestyle change based on income claims, which may not be typical.",
       "status": "pending",
-      "action": "cut"
+      "action": "cut",
+      "is_approximate": false,
+      "is_ambiguous": false
     },
     {
       "text": "And, ah, three months later there was a shiny little sports car sitting in my driveway.",
@@ -75,9 +98,11 @@
       "label": "Lifestyle Claim",
       "rule_violated": null,
       "severity": null,
-      "reasoning": "This segment suggests a luxury purchase resulting from income claims, which may not be typical.",
+      "reasoning": "This suggests a luxury purchase based on income claims, which may not be typical.",
       "status": "pending",
-      "action": "cut"
+      "action": "cut",
+      "is_approximate": false,
+      "is_ambiguous": false
     },
     {
       "text": "ah,",
@@ -88,7 +113,9 @@
       "severity": null,
       "reasoning": "Detected common filler word 'ah'.",
       "status": "pending",
-      "action": "cut"
+      "action": "cut",
+      "is_approximate": false,
+      "is_ambiguous": false
     },
     {
       "text": "Paid for in cash.",
@@ -97,20 +124,24 @@
       "label": "Lifestyle Claim",
       "rule_violated": null,
       "severity": null,
-      "reasoning": "This segment reinforces the previous lifestyle claim about a luxury purchase.",
+      "reasoning": "This reinforces the previous lifestyle claim about a luxury purchase.",
       "status": "pending",
-      "action": "cut"
+      "action": "cut",
+      "is_approximate": false,
+      "is_ambiguous": false
     },
     {
       "text": "[Gap]",
       "start_time": 34.47,
-      "end_time": 38.32,
+      "end_time": 37.9,
       "label": "Dead Air",
       "rule_violated": null,
       "severity": null,
-      "reasoning": "Silence gap of 3.9s detected between segments.",
+      "reasoning": "3.4s below -50 dBFS with no speech transcribed - a 3.9s gap between transcript segments.",
       "status": "pending",
-      "action": "cut"
+      "action": "cut",
+      "is_approximate": false,
+      "is_ambiguous": false
     },
     {
       "text": "Yeah. Hmm. My mother's migraines just disappeared after she started on the wellness pack.",
@@ -119,9 +150,24 @@
       "label": "Health Claim",
       "rule_violated": null,
       "severity": null,
-      "reasoning": "This segment makes a health claim about a product that may not be substantiated.",
+      "reasoning": "This is a health claim suggesting a product cured migraines, which requires evidence and may not be typical.",
       "status": "pending",
-      "action": "cut"
+      "action": "cut",
+      "is_approximate": false,
+      "is_ambiguous": false
+    },
+    {
+      "text": "Hmm.",
+      "start_time": 43.68,
+      "end_time": 43.76,
+      "label": "Filler Word",
+      "rule_violated": null,
+      "severity": null,
+      "reasoning": "Detected common filler word 'hmm'.",
+      "status": "pending",
+      "action": "cut",
+      "is_approximate": false,
+      "is_ambiguous": false
     },
     {
       "text": "It genuinely cleared them up.",
@@ -130,9 +176,24 @@
       "label": "Health Claim",
       "rule_violated": null,
       "severity": null,
-      "reasoning": "This segment reinforces the previous health claim about a product.",
+      "reasoning": "This reinforces the previous health claim about curing migraines.",
       "status": "pending",
-      "action": "cut"
+      "action": "cut",
+      "is_approximate": false,
+      "is_ambiguous": false
+    },
+    {
+      "text": "[Gap]",
+      "start_time": 53.9,
+      "end_time": 54.85,
+      "label": "Dead Air",
+      "rule_violated": null,
+      "severity": null,
+      "reasoning": "1.0s below -50 dBFS with no speech transcribed - a 1.0s gap between transcript segments.",
+      "status": "pending",
+      "action": "cut",
+      "is_approximate": false,
+      "is_ambiguous": false
     },
     {
       "text": "[Gap]",
@@ -141,9 +202,11 @@
       "label": "Dead Air",
       "rule_violated": null,
       "severity": null,
-      "reasoning": "Silence gap of 3.4s detected between segments.",
+      "reasoning": "3.4s below -50 dBFS with no speech transcribed - a 3.4s gap between transcript segments.",
       "status": "pending",
-      "action": "cut"
+      "action": "cut",
+      "is_approximate": false,
+      "is_ambiguous": false
     },
     {
       "text": "um,",
@@ -154,7 +217,9 @@
       "severity": null,
       "reasoning": "Detected common filler word 'um'.",
       "status": "pending",
-      "action": "cut"
+      "action": "cut",
+      "is_approximate": false,
+      "is_ambiguous": false
     },
     {
       "text": "like",
@@ -165,7 +230,9 @@
       "severity": null,
       "reasoning": "Detected common filler word 'like'.",
       "status": "pending",
-      "action": "cut"
+      "action": "cut",
+      "is_approximate": false,
+      "is_ambiguous": true
     }
   ]
 }

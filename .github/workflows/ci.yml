@@ -42,7 +42,7 @@ jobs:
 
       # Scorer regression, not accuracy: this grades a recorded run, so what it
       # protects is the matching rules and the labels. It prints the scorecard
-      # into the build log, so a run that drifts from 12/16 to 11/16 while still
+      # into the build log, so a run that drifts from 15/16 to 14/16 while still
       # passing is visible rather than merely green.
       - name: Eval scorecard (recorded run - scorer regression)
         working-directory: backend

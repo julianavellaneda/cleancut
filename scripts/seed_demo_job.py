@@ -55,7 +55,7 @@ JOB_FIELDS = (
 )
 VIOLATION_FIELDS = (
     "text", "start_time", "end_time", "label", "rule_violated", "severity",
-    "reasoning", "status", "action",
+    "reasoning", "status", "action", "is_approximate", "is_ambiguous",
 )
 
 
