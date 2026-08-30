@@ -323,7 +323,9 @@ System dependency: `brew install ffmpeg`.
   start a second FFmpeg pass holding its own full buffer. `_waveform_lock(job_id)` serializes them;
   the waiter re-reads the column (via `db.expire`, since the writer was a different session) and
   serves the cache instead of repeating the work. A job deleted while a request waited answers
-  **404**, not a 500 from reading an expired attribute off a deleted row.
+  **404**, not a 500 from reading an expired attribute off a deleted row. The lock dict itself never
+  evicts — one `threading.Lock` per job the process has ever generated peaks for. Judged not worth
+  the eviction race; revisit only at six figures of jobs in one process.
 - **Job counts are aggregates, not collections** (`routes/jobs.py`): both `GET /api/jobs` and
   `_build_job_response` are polled on a timer, and both used to derive their counts from
   `job.violations` — one SELECT per job for the list, and every suggestion's quoted text and
@@ -511,6 +513,8 @@ System dependency: `brew install ffmpeg`.
 
 - Backend: Pydantic for validation (`schemas.py`), logic in `services/`, routing in `routes/`.
 - Frontend: functional components, Tailwind v4, strictly typed API interactions.
+- `GEMINI.md` mirrors this file for Gemini CLI and has drifted badly enough in the past to state the
+  opposite of the truth about admin auth. If you change the architecture, update both.
 - **Memoization is a decision, not a dependency-array reflex.** `useCallback` is for callbacks that
   close over nothing reactive — setters, refs, the API client — where a stable identity is what lets
   an effect honestly list what it calls (`app/page.tsx`'s `stopPolling`/`startPolling`/`loadJobs`
