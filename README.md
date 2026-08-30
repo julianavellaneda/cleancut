@@ -81,6 +81,23 @@ docker compose up --build
 
 Open http://localhost:3000.
 
+### Published images
+
+Every `v*` tag publishes both images to GHCR, for running CleanCut without building it:
+
+```bash
+docker pull ghcr.io/old-owner/cleancut-backend:v0.1.0
+docker pull ghcr.io/old-owner/cleancut-frontend:v0.1.0
+```
+
+The frontend image is not tied to any particular backend: the browser calls the frontend's own
+`/api` and its server proxies to `BACKEND_ORIGIN`, which is read at startup, so pointing it
+somewhere else is an environment variable rather than a rebuild.
+
+`docker compose up --build` stays the path this repo is set up for — Compose is what wires the two
+together, mounts the volumes and publishes on loopback. The published images are for anyone who
+would rather not build.
+
 ## Quickstart (local)
 
 Requires Python 3.10+, Node 18+, and FFmpeg (`brew install ffmpeg`).

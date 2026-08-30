@@ -1,0 +1,60 @@
+name: Release
+
+# A version tag is the only trigger. CI already gates every push; this is the
+# separate question of whether a commit is one someone should be able to pull,
+# and a tag is how that gets said out loud.
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: read
+  # What lets the automatic GITHUB_TOKEN push to GHCR. No PAT is involved, and
+  # nothing here needs write access to the repository itself.
+  packages: write
+
+jobs:
+  images:
+    name: ${{ matrix.service }} image
+    runs-on: ubuntu-latest
+    strategy:
+      # Independent images, so a frontend build failing should not stop the
+      # backend from publishing - the two are pulled separately anyway.
+      fail-fast: false
+      matrix:
+        service: [backend, frontend]
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: docker/setup-buildx-action@v3
+
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      # The image name is derived from the owner rather than the repository,
+      # which is `ai-audio-editing` - the product is CleanCut, and that is the
+      # name someone pulling this will be looking for.
+      - id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ghcr.io/${{ github.repository_owner }}/cleancut-${{ matrix.service }}
+          # A moving major.minor alongside the exact version, so a deployment
+          # can follow patch releases without editing a tag on every one.
+          tags: |
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+
+      # No build-args. The frontend used to bake NEXT_PUBLIC_API_URL at build
+      # time, which would have pinned every published image to whatever backend
+      # this runner imagined; it now proxies to BACKEND_ORIGIN, read when the
+      # container starts. The absence is the point.
+      - uses: docker/build-push-action@v5
+        with:
+          context: ./${{ matrix.service }}
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
