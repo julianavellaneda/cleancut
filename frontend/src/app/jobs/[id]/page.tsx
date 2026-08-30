@@ -4,7 +4,6 @@ import { useEffect, useState, useCallback, useRef } from "react";
 import { useParams } from "next/navigation";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
 import { Waveform, WaveformHandle } from "@/components/Waveform";
 import { ViolationList, SCRUB_LABELS } from "@/components/ViolationList";
 import { ViolationCard } from "@/components/ViolationCard";
@@ -66,6 +65,7 @@ export default function ReviewPage() {
   const waveformRef = useRef<WaveformHandle>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
 
+  const jobStatus = job?.status;
   const exportStatus: ExportStatus = job?.export_status ?? "none";
   const exportStale = isExportStale(job);
   const exportReady = exportStatus === "ready" && !exportStale;
@@ -93,16 +93,22 @@ export default function ReviewPage() {
       if (jobData.status === "completed") {
         const violationsData = await api.getViolations(jobId);
         setViolations(violationsData);
-        if (violationsData.length > 0 && !selectedViolation) setSelectedViolation(violationsData[0]);
+        // Seeded through the functional form rather than by reading
+        // `selectedViolation` here: closing over it would put it in this
+        // callback's dependencies, and the effect below would then re-fetch the
+        // job and the whole violation list every time the reviewer moved the
+        // selection. The rule is the same one the poll applies - only seed when
+        // nothing is selected yet.
+        setSelectedViolation(prev => prev ?? violationsData[0] ?? null);
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to load job");
     } finally {
       setIsLoading(false);
     }
-  }, [jobId, selectedViolation]);
+  }, [jobId]);
 
-  useEffect(() => { loadData(); }, [jobId]);
+  useEffect(() => { loadData(); }, [loadData]);
 
   // Fetched separately from the job: it can be large, it never changes once the
   // job completes, and a job without one is a normal case rather than an error.
@@ -118,10 +124,14 @@ export default function ReviewPage() {
   // One poll covers both halves of the pipeline: the processing stages, and the
   // export render, which now runs on the same worker queue instead of inline in
   // the request.
+  // Reads the two statuses as extracted values rather than off `job`, so the
+  // dependency list can name exactly what it re-arms on. Depending on the whole
+  // object would restart the interval on every poll tick, since each response is
+  // a new object even when nothing about it changed.
   useEffect(() => {
-    if (!job) return;
-    const watchingProcessing = isProcessing(job.status);
-    const watchingExport = isExportPending(job.export_status);
+    if (!jobStatus) return;
+    const watchingProcessing = isProcessing(jobStatus);
+    const watchingExport = isExportPending(exportStatus);
     if (!watchingProcessing && !watchingExport) return;
 
     const interval = setInterval(async () => {
@@ -143,7 +153,7 @@ export default function ReviewPage() {
       } catch {}
     }, 2000);
     return () => clearInterval(interval);
-  }, [job?.status, job?.export_status, jobId]);
+  }, [jobStatus, exportStatus, jobId]);
 
   const handleStatusUpdate = async (
     status: "accepted" | "rejected",
@@ -159,7 +169,7 @@ export default function ReviewPage() {
       const index = violations.findIndex(vi => vi.id === updated.id);
       setSelectedViolation(advance ? violations[index + 1] ?? updated : updated);
       markExportInvalidated();
-    } catch (err) {
+    } catch {
       setError("Update failed");
     } finally {
       setIsUpdating(false);

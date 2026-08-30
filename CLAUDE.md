@@ -504,6 +504,20 @@ System dependency: `brew install ffmpeg`.
 
 - Backend: Pydantic for validation (`schemas.py`), logic in `services/`, routing in `routes/`.
 - Frontend: functional components, Tailwind v4, strictly typed API interactions.
+- **Memoization is a decision, not a dependency-array reflex.** `useCallback` is for callbacks that
+  close over nothing reactive — setters, refs, the API client — where a stable identity is what lets
+  an effect honestly list what it calls (`app/page.tsx`'s `stopPolling`/`startPolling`/`loadJobs`
+  chain, so the mount effect no longer claims `[]`). Anything reading component state stays
+  un-memoized: `handleFiles` reads `prompt`, `preset`, `autoFix` and `autoScrub`, and the
+  `useCallback(..., [])` it once carried froze the whole upload form around the first render. A
+  callback that must stay current *inside* a long-lived effect goes through a ref instead —
+  `Waveform`'s `onTimeUpdate`, because the effect that would otherwise depend on it is the one that
+  builds and destroys WaveSurfer, so listing it reloads the audio on every parent render and
+  omitting it calls the first render's callback forever. Same shape on the review page: `loadData`
+  seeds the selection through the functional setter rather than reading `selectedViolation`, since
+  depending on it would re-fetch the job and the whole violation list on every click in the sidebar.
+  `eslint` runs clean; a suppression needs a comment saying why, and the review page's keyboard
+  effect is the only one.
 - Frontend tests live next to what they test (`Foo.test.tsx`), run under vitest in jsdom, and are
   included by `tsc --noEmit` but not by `next build`. `src/test/setup.ts` stubs `ResizeObserver`
   and `scrollIntoView`, which jsdom lacks and a plain render of the sidebar reaches.

@@ -105,6 +105,44 @@ describe("dropping a file on the drop zone", () => {
   });
 });
 
+describe("a multi-file drop", () => {
+  /**
+   * One request per file, so a blanket "Processing Upload..." cannot say which
+   * of them landed and `error` only ever holds the last failure. The per-file
+   * state was tracked from the beginning and never rendered, which made a
+   * partially failed drop read as a wholly failed one.
+   */
+  it("names what happened to each file", async () => {
+    vi.mocked(api.uploadAudio)
+      .mockResolvedValueOnce({} as never)
+      .mockRejectedValueOnce(new Error("File exceeds the 500 MB limit"));
+
+    render(<UploadPage />);
+    await userEvent.upload(document.getElementById("file-input") as HTMLInputElement, [
+      new File(["a"], "keynote.mp3", { type: "audio/mpeg" }),
+      new File(["b"], "too-big.wav", { type: "audio/wav" }),
+    ]);
+
+    const row = async (name: string) =>
+      (await screen.findByText(name)).parentElement as HTMLElement;
+    expect(await row("keynote.mp3")).toHaveTextContent("Queued");
+    expect(await row("too-big.wav")).toHaveTextContent("Failed");
+  });
+});
+
+it("loads the job list once, not once per render", async () => {
+  // The mount effect now names the four callbacks it calls. That is only safe
+  // because each is memoized over nothing reactive; if one stopped being
+  // stable, the effect would re-run on every render it caused - so the call
+  // count is the assertion that keeps the dependency list honest.
+  render(<UploadPage />);
+
+  await waitFor(() => expect(api.listJobs).toHaveBeenCalled());
+  await new Promise(resolve => setTimeout(resolve, 100));
+  expect(api.listJobs).toHaveBeenCalledTimes(1);
+  expect(api.listPresets).toHaveBeenCalledTimes(1);
+});
+
 it("still rejects a file the backend would not accept", async () => {
   render(<UploadPage />);
 

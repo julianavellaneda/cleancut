@@ -133,6 +133,38 @@ describe("deciding on an edit after an export finished", () => {
   });
 });
 
+describe("moving the selection", () => {
+  /**
+   * `loadData` deliberately does not read `selectedViolation` - it seeds the
+   * selection through the functional setter instead - so it depends on nothing
+   * but the job id and the effect that runs it can list it honestly.
+   *
+   * This guards the obvious wrong fix for that effect's exhaustive-deps
+   * warning: leave `selectedViolation` in `loadData`'s dependencies and add
+   * `loadData` to the effect's, and every click in the sidebar re-fetches the
+   * job *and* the whole violation list.
+   */
+  it("re-fetches nothing", async () => {
+    vi.spyOn(api, "getJob").mockResolvedValue(job());
+    vi.spyOn(api, "getViolations").mockResolvedValue([
+      violation,
+      { ...violation, id: "v2", label: "Filler Word", text: "um", status: "pending" },
+    ]);
+
+    render(<ReviewPage />);
+    await waitFor(() => expect(screen.getByText("Filler Word")).toBeInTheDocument());
+    expect(api.getJob).toHaveBeenCalledTimes(1);
+
+    await userEvent.click(screen.getByText("Filler Word"));
+
+    await waitFor(() =>
+      expect(screen.getByRole("option", { selected: true })).toHaveTextContent("Filler Word")
+    );
+    expect(api.getJob).toHaveBeenCalledTimes(1);
+    expect(api.getViolations).toHaveBeenCalledTimes(1);
+  });
+});
+
 describe("an edit made while a render is in flight", () => {
   it("leaves the in-flight state alone for the worker to settle", async () => {
     vi.spyOn(api, "getJob").mockResolvedValue(

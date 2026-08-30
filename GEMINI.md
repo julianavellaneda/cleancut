@@ -109,6 +109,11 @@ The CLI is a module, not a script: `analysis/` imports are package-relative, so
   - `wavesurfer.js` regions to visualize suggested-edit intervals.
   - Strictly type all API interactions and component props.
   - Read the API base from `NEXT_PUBLIC_API_URL`; never hardcode a host.
+  - Memoize a callback only when it closes over nothing reactive (setters, refs, the API client),
+    so an effect can honestly list what it calls. Anything reading component state stays
+    un-memoized — a `useCallback(..., [])` over one froze the upload form around its first render.
+    A callback that must stay current inside a long-lived effect goes through a ref instead.
+  - `eslint` runs clean. A suppression needs a comment saying why.
 
 ### Workflow
 0. **Conversion**: AIFF/AIF is converted to MP3, and video has its audio extracted, via FFmpeg.
