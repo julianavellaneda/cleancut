@@ -383,6 +383,14 @@ is never collected however old it is, since the queue is sequential and a job ca
 behind a long one. The default is unset, because on your own laptop the recordings are yours and
 deleting them by surprise is the worse failure.
 
+## Contributing
+
+[CONTRIBUTING.md](CONTRIBUTING.md) covers setup, the checks CI runs and the conventions that are
+load-bearing; [`CLAUDE.md`](CLAUDE.md) is the full architecture reference.
+
+Security reports go through [SECURITY.md](SECURITY.md), not a public issue — and note that the
+unauthenticated routes described under [Privacy](#privacy) are a design decision, documented there.
+
 ## License
 
 MIT — see [LICENSE](LICENSE).
