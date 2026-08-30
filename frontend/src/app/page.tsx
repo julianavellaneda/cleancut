@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useCallback, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -23,36 +23,22 @@ export default function UploadPage() {
   
   const pollInterval = useRef<NodeJS.Timeout | null>(null);
 
-  useEffect(() => {
-    loadJobs();
-    loadPresets();
-    startPolling();
-    return () => stopPolling();
+  // These four *are* memoized, unlike the handlers further down, and the
+  // difference is what they close over: nothing reactive. Between them they
+  // touch the poll ref, the API client and four setters, all of which React
+  // guarantees stable, so a `useCallback` with these dependencies is honest
+  // rather than a frozen first-render closure - and it is what lets the mount
+  // effect below list what it calls instead of claiming to depend on nothing.
+  // Anything reading `prompt`, `preset`, `autoFix` or `autoScrub` belongs with
+  // the un-memoized handlers, not here. See the note above `handleDragOver`.
+  const stopPolling = useCallback(() => {
+    if (pollInterval.current) {
+      clearInterval(pollInterval.current);
+      pollInterval.current = null;
+    }
   }, []);
 
-  async function loadPresets() {
-    try {
-      setPresets(await api.listPresets());
-    } catch {
-      // Presets are optional - fall back to prompt-only mode.
-    }
-  }
-
-  async function loadJobs() {
-    setLoadingJobs(true);
-    try {
-      const jobList = await api.listJobs();
-      setJobs(jobList);
-      const hasActiveJobs = jobList.some(j => !["completed", "failed"].includes(j.status));
-      if (hasActiveJobs) startPolling();
-    } catch {
-      // Ignore errors loading jobs
-    } finally {
-      setLoadingJobs(false);
-    }
-  }
-
-  function startPolling() {
+  const startPolling = useCallback(() => {
     if (pollInterval.current) return;
     pollInterval.current = setInterval(async () => {
       try {
@@ -64,36 +50,65 @@ export default function UploadPage() {
         console.error("Polling error:", err);
       }
     }, 3000);
-  }
+  }, [stopPolling]);
 
-  function stopPolling() {
-    if (pollInterval.current) {
-      clearInterval(pollInterval.current);
-      pollInterval.current = null;
+  const loadPresets = useCallback(async () => {
+    try {
+      setPresets(await api.listPresets());
+    } catch {
+      // Presets are optional - fall back to prompt-only mode.
     }
-  }
+  }, []);
 
-  const handleDragOver = useCallback((e: React.DragEvent) => {
+  const loadJobs = useCallback(async () => {
+    setLoadingJobs(true);
+    try {
+      const jobList = await api.listJobs();
+      setJobs(jobList);
+      const hasActiveJobs = jobList.some(j => !["completed", "failed"].includes(j.status));
+      if (hasActiveJobs) startPolling();
+    } catch {
+      // Ignore errors loading jobs
+    } finally {
+      setLoadingJobs(false);
+    }
+  }, [startPolling]);
+
+  useEffect(() => {
+    loadJobs();
+    loadPresets();
+    startPolling();
+    return () => stopPolling();
+  }, [loadJobs, loadPresets, startPolling, stopPolling]);
+
+  // None of these are memoized, deliberately. They are handed to plain DOM
+  // elements, so a stable identity buys no re-render that React was not going
+  // to do anyway - and the empty dependency list it needs is a trap here: the
+  // two that reach `handleFiles` used to be `useCallback(..., [])`, which froze
+  // them around the *first* render's closure. `handleFiles` reads prompt,
+  // preset, autoFix and autoScrub, so every upload shipped the initial values
+  // and the settings above the drop zone did nothing at all.
+  function handleDragOver(e: React.DragEvent) {
     e.preventDefault();
     setIsDragging(true);
-  }, []);
+  }
 
-  const handleDragLeave = useCallback((e: React.DragEvent) => {
+  function handleDragLeave(e: React.DragEvent) {
     e.preventDefault();
     setIsDragging(false);
-  }, []);
+  }
 
-  const handleDrop = useCallback((e: React.DragEvent) => {
+  function handleDrop(e: React.DragEvent) {
     e.preventDefault();
     setIsDragging(false);
     const files = Array.from(e.dataTransfer.files);
     if (files.length > 0) handleFiles(files);
-  }, []);
+  }
 
-  const handleFileInput = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
+  function handleFileInput(e: React.ChangeEvent<HTMLInputElement>) {
     const files = e.target.files ? Array.from(e.target.files) : [];
     if (files.length > 0) handleFiles(files);
-  }, []);
+  }
 
   async function handleFiles(files: File[]) {
     const allowedExtensions = /\.(mp3|wav|m4a|flac|ogg|webm|aif|aiff|mp4|mov)$/i;
@@ -231,6 +246,27 @@ export default function UploadPage() {
               </div>
             )}
           </div>
+          {/* Per-file upload state. A multi-file drop is one request per file,
+              so the blanket "Processing Upload..." above cannot say which ones
+              landed, and `error` only ever holds the last failure. This was
+              tracked but never rendered, which is why a partially failed drop
+              read as a wholly failed one. */}
+          {Object.keys(uploadProgress).length > 0 && (
+            <ul className="space-y-1 text-xs">
+              {Object.entries(uploadProgress).map(([name, state]) => (
+                <li key={name} className="flex items-center justify-between gap-4">
+                  <span className="truncate text-muted-foreground">{name}</span>
+                  <span className={cn(
+                    "font-semibold uppercase tracking-wider shrink-0",
+                    state === "Failed" ? "text-destructive" : "text-muted-foreground"
+                  )}>
+                    {state}
+                  </span>
+                </li>
+              ))}
+            </ul>
+          )}
+
           {error && <div className="text-xs font-medium text-destructive text-center">{error}</div>}
         </CardContent>
       </Card>

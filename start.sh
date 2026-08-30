@@ -48,13 +48,23 @@ cleanup() {
 }
 trap cleanup EXIT INT TERM
 
+# Which interface to listen on. Loopback by default: every route but the admin
+# wipes is unauthenticated, so reaching CleanCut from another machine has to be
+# something an operator typed. Set CLEANCUT_HOST=0.0.0.0 in .env to open it up.
+BIND_HOST="${CLEANCUT_HOST:-127.0.0.1}"
+if [ "$BIND_HOST" != "127.0.0.1" ] && [ "$BIND_HOST" != "::1" ] && [ "$BIND_HOST" != "localhost" ]; then
+    echo ""
+    echo "WARNING: CLEANCUT_HOST=$BIND_HOST - CleanCut will be reachable from other machines."
+    echo "         Uploads, transcripts and exports are served without authentication."
+fi
+
 cd "$ROOT_DIR/backend"
 source .venv/bin/activate
-uvicorn app.main:app --host 0.0.0.0 --port 8000 &
+uvicorn app.main:app --host "$BIND_HOST" --port 8000 &
 BACKEND_PID=$!
 
 cd "$ROOT_DIR/frontend"
-npm run dev &
+npm run dev -- --hostname "$BIND_HOST" &
 FRONTEND_PID=$!
 
 echo ""

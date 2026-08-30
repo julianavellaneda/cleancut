@@ -21,7 +21,7 @@ import app.services.exports as exports
 import app.services.worker as worker
 from app.database import SessionLocal, init_db
 from app.main import app
-from app.models import Job, Violation
+from app.models import Job, Task, Violation
 
 
 @pytest.fixture(autouse=True)
@@ -62,8 +62,7 @@ def enqueued(monkeypatch):
 @pytest.fixture
 def client(monkeypatch, tmp_path, enqueued):
     monkeypatch.setattr(exports, "MediaEditor", RecordingEditor)
-    monkeypatch.setattr(audio_routes, "EXPORT_DIR", tmp_path)
-    monkeypatch.setattr(worker, "EXPORT_DIR", tmp_path)
+    monkeypatch.setattr(exports, "EXPORT_DIR", tmp_path)
     monkeypatch.setattr(worker, "UPLOAD_DIR", tmp_path)
     RecordingEditor.last = None
     return TestClient(app)
@@ -111,6 +110,27 @@ def test_export_returns_202_without_rendering(client, make_job, enqueued):
     assert response.json()["export_status"] == "queued"
     assert RecordingEditor.last is None, "the render must not run on the request thread"
     assert enqueued == [(job_id, None)]
+
+
+def test_a_second_export_is_refused_while_one_is_outstanding(client, make_job, enqueued):
+    """
+    One render per job. Queuing a second burned a second FFmpeg pass over the
+    length of the media for a file the first was about to write anyway, and let
+    a double-click leave `export_status` describing whichever finished last.
+    """
+    job_id = make_job()
+    db = SessionLocal()
+    try:
+        db.add(Task(id=str(uuid.uuid4()), kind="export", job_id=job_id, state="running"))
+        db.commit()
+    finally:
+        db.close()
+
+    response = client.post(f"/api/jobs/{job_id}/export", json={})
+
+    assert response.status_code == 409
+    assert "already in progress" in response.json()["detail"]
+    assert enqueued == []
 
 
 def test_export_marks_the_job_queued(client, make_job):
@@ -225,3 +245,85 @@ def test_missing_source_media_is_an_export_failure_not_a_crash(client, make_job,
 
 def test_export_for_an_unknown_job_is_a_no_op(client):
     worker._process_export(str(uuid.uuid4()))  # must not raise
+
+
+# --- the poll can actually see the export state -----------------------------
+#
+# Regression: `_build_job_response` assembled the response field by field and
+# left both export columns out, so GET /api/jobs/{id} answered with the schema
+# default "none" no matter what the worker had written. Every state below was
+# invisible to the client polling it: the button stayed on "Export" through a
+# running render and never became a download when one finished.
+
+def _polled(client, job_id):
+    response = client.get(f"/api/jobs/{job_id}")
+    assert response.status_code == 200
+    return response.json()
+
+
+def _set_export_state(job_id, status, error=None):
+    """Park a job in a state the worker passes through too fast to catch."""
+    db = SessionLocal()
+    try:
+        job = db.query(Job).filter(Job.id == job_id).first()
+        job.export_status = status
+        job.export_error = error
+        db.commit()
+    finally:
+        db.close()
+
+
+def test_poll_reports_queued_after_the_export_request(client, make_job):
+    job_id = make_job()
+
+    client.post(f"/api/jobs/{job_id}/export", json={})
+
+    assert _polled(client, job_id)["export_status"] == "queued"
+
+
+def test_poll_reports_exporting_while_the_render_runs(client, make_job):
+    job_id = make_job()
+    _set_export_state(job_id, "exporting")
+
+    assert _polled(client, job_id)["export_status"] == "exporting"
+
+
+def test_poll_reports_ready_once_the_render_finishes(client, make_job):
+    """Without this the download link never appears, whatever the worker did."""
+    job_id = make_job()
+    client.post(f"/api/jobs/{job_id}/export", json={})
+
+    worker._process_export(job_id)
+
+    body = _polled(client, job_id)
+    assert body["export_status"] == "ready"
+    assert body["export_error"] is None
+
+
+def test_poll_reports_a_failed_render_and_its_reason(client, make_job, monkeypatch):
+    monkeypatch.setattr(exports, "MediaEditor", ExplodingEditor)
+    job_id = make_job()
+
+    worker._process_export(job_id)
+
+    body = _polled(client, job_id)
+    assert body["export_status"] == "failed"
+    assert "ffmpeg fell over" in body["export_error"]
+    # The review survives a bad render; only the export is failed.
+    assert body["status"] == "completed"
+
+
+def test_poll_reports_none_before_any_export(client, make_job):
+    job_id = make_job()
+
+    body = _polled(client, job_id)
+    assert body["export_status"] == "none"
+    assert body["export_error"] is None
+
+
+def test_a_row_predating_the_column_reads_as_no_export(client, make_job):
+    """Migrated rows carry NULL, which the response must render as "none"."""
+    job_id = make_job()
+    _set_export_state(job_id, None)
+
+    assert _polled(client, job_id)["export_status"] == "none"

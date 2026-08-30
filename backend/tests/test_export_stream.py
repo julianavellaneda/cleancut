@@ -14,6 +14,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 import app.routes.audio as audio_routes
+import app.services.exports as exports
 from app.database import SessionLocal, init_db
 from app.main import app
 from app.models import Job
@@ -27,7 +28,7 @@ def db_ready():
 
 @pytest.fixture
 def client(monkeypatch, tmp_path):
-    monkeypatch.setattr(audio_routes, "EXPORT_DIR", tmp_path)
+    monkeypatch.setattr(exports, "EXPORT_DIR", tmp_path)
     return TestClient(app)
 
 

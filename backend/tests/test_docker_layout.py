@@ -107,3 +107,55 @@ def test_cors_origins_read_from_container_env(container_root):
     assert result.returncode == 0, result.stderr
     assert "https://example.com" in result.stdout
     assert "https://two.example.com" in result.stdout
+
+
+REPO_ROOT = BACKEND_DIR.parent
+
+
+def _ignored_patterns(dockerignore: Path) -> set[str]:
+    return {
+        line.strip()
+        for line in dockerignore.read_text().splitlines()
+        if line.strip() and not line.startswith("#")
+    }
+
+
+def test_frontend_dockerignore_excludes_host_node_modules():
+    """
+    `frontend/Dockerfile` runs `npm ci` and then `COPY . .`, so a host
+    `node_modules/` in the build context is copied straight over the one the
+    image just installed - handing a Linux container macOS native binaries
+    (sharp, unrs-resolver, fsevents). This is the correctness half of the
+    .dockerignore work, and it is a one-line deletion away from coming back.
+    """
+    ignored = _ignored_patterns(REPO_ROOT / "frontend" / ".dockerignore")
+    assert "node_modules/" in ignored
+    assert ".next/" in ignored
+
+
+def test_backend_dockerignore_excludes_media_and_venv():
+    """
+    The backend context is uploaded to the daemon whole, whatever the Dockerfile
+    later COPYs. Without these the upload carried `.venv` (macOS wheels a Linux
+    image cannot use) plus every recording, export and the SQLite database -
+    customer audio going into an image build.
+    """
+    ignored = _ignored_patterns(REPO_ROOT / "backend" / ".dockerignore")
+    for pattern in (".venv/", "uploads/", "exports/", "*.db"):
+        assert pattern in ignored, f"{pattern} missing from backend/.dockerignore"
+
+
+def test_frontend_build_fetches_no_fonts_over_the_network():
+    """
+    `next/font/google` downloads the face during `next build`, so a container
+    build needed working DNS and reachable fonts.googleapis.com. Both faces are
+    committed under `src/app/fonts/` and loaded with `next/font/local`.
+    """
+    layout = (REPO_ROOT / "frontend" / "src" / "app" / "layout.tsx").read_text()
+    imports = [line for line in layout.splitlines() if line.startswith("import ")]
+    assert not any("next/font/google" in line for line in imports)
+    assert any("next/font/local" in line for line in imports)
+
+    fonts = REPO_ROOT / "frontend" / "src" / "app" / "fonts"
+    assert (fonts / "Geist-Variable.woff2").exists()
+    assert (fonts / "GeistMono-Variable.woff2").exists()

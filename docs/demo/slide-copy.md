@@ -61,7 +61,7 @@ land), then wipe to the one-pass block. Don't show both halves at once.
 
 **Body:**
 FastAPI + threaded worker → faster-whisper (int8, local) → FFmpeg, one pass
-Next.js 15 + wavesurfer.js on top · SQLAlchemy/SQLite underneath
+Next.js 16 + wavesurfer.js on top · SQLAlchemy/SQLite underneath
 
 - The model returns quoted text, not timestamps
 - That quote is remapped onto word-level timing

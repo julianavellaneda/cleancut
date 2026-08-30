@@ -20,6 +20,13 @@ export interface Job {
   error_message: string | null;
   export_status: ExportStatus;
   export_error: string | null;
+  /**
+   * Staleness, straight from the server. The export in `exports/` is current
+   * only while `export_revision === edit_revision`; a null `export_revision`
+   * means no export of known provenance, which is not the same as stale.
+   */
+  edit_revision: number;
+  export_revision: number | null;
   violation_count: number;
   pending_count: number;
   accepted_count: number;
@@ -53,6 +60,17 @@ export interface Violation {
   reasoning: string | null;
   status: "pending" | "accepted" | "rejected";
   action: "cut" | "mute";
+  /**
+   * Why the server refused to apply this one unreviewed. Both are display
+   * only: whether a suggestion may be pre-accepted is decided server-side, and
+   * a second copy of that rule here is how the two would drift apart.
+   *
+   * `is_approximate` - the quote could not be matched to the transcript, so
+   * the span is the model's estimate. `is_ambiguous` - the word is only
+   * sometimes a filler ("like", "you know").
+   */
+  is_approximate: boolean;
+  is_ambiguous: boolean;
 }
 
 /** One line of the stored transcript, with the timing the panel seeks to. */
@@ -102,9 +120,10 @@ const ADMIN_TOKEN_KEY = "cleancut.adminToken";
 /**
  * The admin secret, if the operator has entered one.
  *
- * The backend only requires this when ADMIN_TOKEN is set server-side, so an
- * absent token is the normal local-dev case, not an error. The header is simply
- * omitted then.
+ * The destructive routes require it unless the server was started with
+ * ALLOW_UNAUTHENTICATED_ADMIN=1. An empty token still sends no header at all: a
+ * server with no ADMIN_TOKEN configured answers 503 whatever we send, and its
+ * message is the one worth showing.
  */
 export function getAdminToken(): string {
   if (typeof window === "undefined") return "";
@@ -188,6 +207,25 @@ export const api = {
     return handleResponse<Preset[]>(response);
   },
 
+  /**
+   * Ask a new question about a transcript that has already been made.
+   *
+   * Answers 202 with the job in `analyzing`, so the caller starts polling
+   * `status` exactly as it does after an upload - no audio is touched and no
+   * Whisper pass runs, which is the entire point of the endpoint.
+   */
+  async reanalyzeJob(
+    jobId: string,
+    request: { prompt?: string; preset?: string }
+  ): Promise<{ job_id: string; prompt: string | null; preset: string | null; status: string }> {
+    const response = await fetch(`${API_BASE}/jobs/${jobId}/reanalyze`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(request),
+    });
+    return handleResponse(response);
+  },
+
   async listJobs(): Promise<JobListItem[]> {
     const response = await fetch(`${API_BASE}/jobs`);
     return handleResponse<JobListItem[]>(response);
@@ -229,14 +267,26 @@ export const api = {
     return handleResponse<Violation>(response);
   },
 
+  /**
+   * Move several suggestions at once.
+   *
+   * `fromStatus` defaults server-side to pending, which is what keeps "Clean
+   * All" from overwriting a decision the reviewer already made by hand. Undo is
+   * the same call in reverse: the ids the sweep changed, moved back off
+   * `accepted`.
+   */
   async bulkUpdateViolations(
     jobId: string,
-    update: { status?: string; action?: string },
-    labels?: string[]
-  ): Promise<{ message: string }> {
+    update: { status?: string; action?: string; ids?: string[] },
+    labels?: string[],
+    fromStatus?: string[]
+  ): Promise<{ message: string; updated: number }> {
     const url = new URL(`${API_BASE}/jobs/${jobId}/violations/bulk-update`);
     if (labels && labels.length > 0) {
       labels.forEach(label => url.searchParams.append("labels", label));
+    }
+    if (fromStatus && fromStatus.length > 0) {
+      fromStatus.forEach(status => url.searchParams.append("from_status", status));
     }
 
     const response = await fetch(url.toString(), {
@@ -244,7 +294,7 @@ export const api = {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(update),
     });
-    return handleResponse<{ message: string }>(response);
+    return handleResponse<{ message: string; updated: number }>(response);
   },
 
   /**

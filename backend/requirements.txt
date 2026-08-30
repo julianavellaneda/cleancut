@@ -5,7 +5,12 @@ sqlalchemy>=2.0.25
 pydantic>=2.5.3
 python-dotenv>=1.0.0
 ffmpeg-python>=0.2.0
+# The two model providers `CLEANCUT_MODEL` can name. Both are installed rather
+# than made optional: the choice is one line of .env, and a deployment that
+# discovers its provider is not installed only when the first job reaches the
+# analysis stage has learned it too late.
 openai>=1.0.0
+anthropic>=1.0.0
 # Brings onnxruntime and a bundled Silero VAD model (assets/silero_vad_v6.onnx)
 # with it - transcriber.py already runs that VAD via vad_filter=True. Do not add
 # silero-vad/torch/torchaudio back: that installs a second copy of the same

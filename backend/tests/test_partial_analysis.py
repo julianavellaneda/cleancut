@@ -12,6 +12,7 @@ import json
 import pytest
 
 from app.analysis.prompt_analyzer import AnalysisError, PromptAnalyzer, to_json
+from app.analysis.providers import ProviderError
 from app.analysis.transcriber import Segment, TranscriptResult, Word
 
 
@@ -156,6 +157,34 @@ def test_non_analysis_errors_still_propagate(monkeypatch, transcript):
     analyzer = _analyzer_with(monkeypatch, [ConnectionError("no route to host")])
 
     with pytest.raises(ConnectionError):
+        analyzer.analyze(transcript, prompt="find claims")
+
+
+def test_a_refused_chunk_is_a_gap_not_a_dead_job(monkeypatch, transcript):
+    """
+    A model that declines one section - plausible for a tool whose job is to
+    quote the objectionable parts of a recording - leaves that span unanalyzed
+    and named, exactly like an unreadable answer. Losing the other chunks over
+    it would be the worse trade.
+    """
+    analyzer = _analyzer_with(monkeypatch, [
+        [_suggestion(1)],
+        ProviderError("claude-opus-5 declined to analyze this section"),
+        [_suggestion(101)],
+    ])
+
+    result = analyzer.analyze(transcript, prompt="find claims")
+
+    assert len(result.violations) == 2
+    assert result.is_partial
+    assert "declined" in result.failed_chunks[0]
+
+
+def test_every_chunk_refusing_still_fails_the_job(monkeypatch, transcript):
+    """"Nothing was analyzed" must never read as "nothing was found"."""
+    analyzer = _analyzer_with(monkeypatch, [ProviderError("declined")] * 3)
+
+    with pytest.raises(AnalysisError):
         analyzer.analyze(transcript, prompt="find claims")
 
 

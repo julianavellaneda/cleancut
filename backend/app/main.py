@@ -19,10 +19,11 @@ if _ROOT_ENV:
     load_dotenv(_ROOT_ENV)
 
 from .database import init_db
+from .network import exposure_warning
 from .preflight import verify_environment
 from .routes import jobs, violations, audio, admin
 from .services.retention import start_retention_sweeper
-from .services.worker import start_worker
+from .services.worker import recover_interrupted_work, start_worker
 
 
 @asynccontextmanager
@@ -34,10 +35,25 @@ async def lifespan(app: FastAPI):
     the server at boot with an actionable message instead of surfacing minutes
     later as a mysteriously failed job.
 
+    The queue is reconciled against the `tasks` table before the worker thread
+    starts, so work the previous process was holding in memory when it stopped
+    is picked up rather than lost.
+
     The retention sweeper is a no-op unless RETENTION_HOURS is set.
+
+    A non-loopback CLEANCUT_HOST is warned about but never refused: exposing the
+    port is a supported choice, and the operator who made it should be reminded
+    that the media routes carry no authentication.
     """
     verify_environment()
+    warning = exposure_warning()
+    if warning:
+        print(warning)
     init_db()
+    # Before the worker thread exists, so the tasks the last process was in the
+    # middle of are already in the queue when it starts pulling - and ahead of
+    # anything a request enqueues once the port is open.
+    recover_interrupted_work()
     start_worker()
     start_retention_sweeper()
     yield

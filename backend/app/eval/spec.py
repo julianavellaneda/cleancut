@@ -39,6 +39,11 @@ class Expectation:
     start: float
     end: float
     text: str | None = None
+    # Other spellings of the same sound that count as this label. A filler is a
+    # noise before it is a word, and Whisper picks between "hm" and "Hmm"
+    # freely; the label records what the script wrote, so the alternatives it
+    # will accept belong next to it rather than in the scorer.
+    also: tuple[str, ...] = ()
     quote: str | None = None
     # False when the clip does not actually contain this, despite the script
     # calling for it. Excluded from scoring rather than deleted: the reason it
@@ -193,6 +198,7 @@ def load_spec(
             start=start,
             end=end,
             text=entry.get("text"),
+            also=tuple(entry.get("also", ())),
             quote=entry.get("quote"),
             present=bool(entry.get("present", True)),
             note=entry.get("note"),

@@ -42,7 +42,7 @@ jobs:
 
       # Scorer regression, not accuracy: this grades a recorded run, so what it
       # protects is the matching rules and the labels. It prints the scorecard
-      # into the build log, so a run that drifts from 12/16 to 11/16 while still
+      # into the build log, so a run that drifts from 15/16 to 14/16 while still
       # passing is visible rather than merely green.
       - name: Eval scorecard (recorded run - scorer regression)
         working-directory: backend
@@ -53,14 +53,15 @@ jobs:
       # word-level transcript. No model and no API key, so it can gate every
       # push - the LLM half stays opt-in behind `--live`, which costs money and
       # cannot be deterministic. Floors, not exact numbers: the run scores
-      # 1.00 / 0.75 today, the three misses being fillers the scrubber cannot
-      # say (see test_eval.py).
+      # 1.00 / 0.92 today, the one miss being "Er," - a filler Whisper dropped
+      # from the transcript, which a detector reading that transcript cannot
+      # recover (see test_eval.py).
       - name: Detector eval (scrubber, deterministic)
         working-directory: backend
         run: >
           python -m app.eval.run
           --detectors ../tests/fixtures/demo/demo_seminar.mp3
-          --suite scrub --min-precision 0.95 --min-recall 0.70
+          --suite scrub --min-precision 0.95 --min-recall 0.85
 
   frontend:
     name: Frontend (types + build)
@@ -79,10 +80,18 @@ jobs:
         run: npm ci
 
       # tsc runs separately from the build: `next build` type-checks the app
-      # graph, this catches a type error in a file nothing imports yet.
+      # graph, this catches a type error in a file nothing imports yet - and
+      # the test files, which the app graph never reaches.
       - name: Type-check
         working-directory: frontend
         run: npx tsc --noEmit
+
+      # jsdom, so no browser to install. What these cover is the logic a type
+      # error cannot reach: which rows a bulk sweep moves, and when the undo
+      # button is offered.
+      - name: Vitest
+        working-directory: frontend
+        run: npm test
 
       - name: Build
         working-directory: frontend

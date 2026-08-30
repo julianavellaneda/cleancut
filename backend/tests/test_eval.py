@@ -329,11 +329,11 @@ def test_the_recorded_run_clears_the_floors(demo_card):
     """
     Floors, not exact numbers. The point is to catch a real regression in the
     detectors or in the matching rules, not to freeze one snapshot to three
-    decimal places. The recorded run scores 1.00 / 0.75.
+    decimal places. The recorded run scores 1.00 / 0.94.
     """
     _, _, card = demo_card
     assert card.precision >= 0.95
-    assert card.recall >= 0.75
+    assert card.recall >= 0.90
 
 
 def test_the_controls_survive_the_recorded_run(demo_card):
@@ -352,33 +352,38 @@ def test_every_claim_and_every_planted_pause_was_found(demo_card):
     for category in ("income-claim", "lifestyle-claim", "health-claim"):
         found, expected = per_category[category]
         assert found == expected, f"{category}: {found}/{expected}"
-    # The three planted pauses. The fourth dead-air label is a second of real
-    # silence at a clip seam that today's 0.75s floor finds and this recording,
-    # made under the old 2.0s floor, predates.
-    assert per_category["dead-air"] == (3, 4)
+    # The three planted pauses plus `dead-air-seam-7-8`, the second of real
+    # silence at a clip seam. The 2.0s floor this run used to be recorded under
+    # could not reach it; the 0.75s floor does.
+    assert per_category["dead-air"] == (4, 4)
 
 
-def test_the_recorded_run_misses_exactly_the_known_four(demo_card):
+def test_the_recorded_run_misses_exactly_the_one_nobody_can_find(demo_card):
     """
-    Not a target - a record of what the harness found the moment it existed,
-    and all three are the scrubber's doing rather than bad luck:
+    Not a target - a record of what this recording found. It used to miss four,
+    three of them the scrubber's doing and since fixed; the snapshot was
+    re-recorded on 2026-08-29 and now misses only the one that is not a detector
+    problem at all:
 
-    - "you know" is two words. `detect_filler_words` matches word by word
-      against `FILLER_WORDS`, so a multi-word entry in that set can never fire.
-    - "hm" is in the set; Whisper transcribes the sound as "Hmm", which is not.
-    - "Er," was dropped from the transcript altogether.
+    - "Er," was dropped from the transcript altogether, which no detector
+      reading that transcript can recover. The detector run below misses it too,
+      for the same reason.
 
-    The fourth miss is not the scrubber's doing: `dead-air-seam-7-8` is 1.01s of
-    measured silence that today's 0.75s floor finds and the 2.0s floor this run
-    was recorded under could not.
+    The three that went away, kept as the record of why the re-record was worth
+    a transcription and a completion: "you know" is two words and
+    `detect_filler_words` matched word by word, so a multi-word entry in
+    `FILLER_WORDS` could never fire (fixed by `FILLER_PHRASES`); "hm" was in the
+    set but Whisper transcribes the sound as "Hmm" (fixed by listing the
+    spellings the model actually emits); and `dead-air-seam-7-8` is 1.01s of
+    measured silence the old 2.0s floor could not reach.
 
-    If someone fixes any of them, this assertion is what tells them to re-record
-    `seed_job.json` rather than leaving a stale snapshot behind.
+    This assertion is what tells you the snapshot has gone stale again: when it
+    starts differing from the detector run below, the recording is behind the
+    detectors, and re-recording is a deliberate act rather than something done
+    on every detector change.
     """
     _, _, card = demo_card
-    assert sorted(e.id for e in card.misses) == [
-        "dead-air-seam-7-8", "filler-er-1", "filler-hm-1", "filler-you-know-1",
-    ]
+    assert sorted(e.id for e in card.misses) == ["filler-er-1"]
 
 
 def test_the_silent_line_is_excluded_rather_than_counted_as_a_miss(demo_card):
@@ -443,7 +448,7 @@ def test_the_cli_emits_json_for_a_machine(capsys):
     main(["--suite", "claims-and-scrub", str(SEED_JOB), "--labels", str(LABELS), "--json"])
     payload = json.loads(capsys.readouterr().out)
     assert payload["suite"] == "claims-and-scrub"
-    assert payload["per_category"]["dead-air"] == {"found": 3, "expected": 4}
+    assert payload["per_category"]["dead-air"] == {"found": 4, "expected": 4}
     assert payload["is_partial"] is False
 
 
@@ -658,7 +663,7 @@ def test_the_scrubber_as_it_stands_today_is_scored_against_the_clip():
     assert card.false_positives == ()
     assert card.per_category["dead-air"] == (4, 4)
     assert card.precision >= 0.95
-    assert card.recall >= 0.70
+    assert card.recall >= 0.85
 
 
 @needs_media
@@ -666,7 +671,7 @@ def test_the_cli_runs_the_detectors(capsys):
     code = main([
         "--detectors", str(DEMO_MP3), "--transcript", str(DEMO_TRANSCRIPT),
         "--suite", "scrub", "--labels", str(LABELS),
-        "--min-precision", "0.95", "--min-recall", "0.70",
+        "--min-precision", "0.95", "--min-recall", "0.85",
     ])
     assert code == 0
     assert "dead-air" in capsys.readouterr().out

@@ -45,8 +45,8 @@ measured slot does and line 8 starts half a second into its own, leaving 1.01 s 
 across the seam - `ffmpeg -af silencedetect=n=-50dB:d=0.75` reports 53.879 -> 54.892. It is silence
 by every definition the tool uses, so `eval_labels.json` carries it as `dead-air-seam-7-8` rather
 than letting a correct detection score as a hallucination. It has no slot of its own, so the label
-names lines 7 and 8 together. `seed_job.json` was recorded when the dead-air floor was 2.0 s and
-does not contain it; that is the one label the recorded run is allowed to miss.
+names lines 7 and 8 together. `seed_job.json` was recorded under the old 2.0 s floor and missed it
+until the 2026-08-29 re-record; the current recording finds it.
 
 One line is a control: *"some people try this and earn nothing at all"*. It is an honest
 disclaimer sitting right next to the income claims, and it must **not** be flagged. If it ever

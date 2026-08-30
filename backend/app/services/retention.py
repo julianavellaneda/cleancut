@@ -20,11 +20,14 @@ from typing import Iterator, Mapping
 
 from ..database import SessionLocal
 from ..models import Job
+from . import exports
 
 logger = logging.getLogger(__name__)
 
 UPLOAD_DIR = Path(__file__).parent.parent.parent / "uploads"
-EXPORT_DIR = Path(__file__).parent.parent.parent / "exports"
+# The export directory belongs to `services.exports`. It is resolved per call
+# rather than bound as a default here, since a default argument would snapshot
+# the value at import and quietly ignore the owner.
 
 DEFAULT_SWEEP_MINUTES = 15.0
 
@@ -34,6 +37,27 @@ DEFAULT_SWEEP_MINUTES = 15.0
 # still be perfectly alive. Deleting the source out from under the transcriber
 # would fail the job for a reason that looks like a bug.
 TERMINAL_STATUSES = frozenset({"completed", "failed"})
+
+# A completed job can still have work in flight. `job.status` goes back to
+# `completed` the moment analysis finishes, so it says nothing about a render
+# queued or running behind it - and a render is exactly the operation that
+# reads the source media and writes into `exports/`. Sweeping one mid-flight
+# deletes the input under FFmpeg and then races the worker to the output
+# directory, which is how a job that was actively being used ends as a failed
+# export with no file and no row to explain it.
+ACTIVE_EXPORT_STATUSES = frozenset({"queued", "exporting"})
+
+
+def is_in_flight(job) -> bool:
+    """
+    Whether a job is still being worked on, and so not collectable by age.
+
+    Two questions, because a job has two pipelines: `status` for the analysis
+    side and `export_status` for the render. Either one moving is enough.
+    """
+    if job.status not in TERMINAL_STATUSES:
+        return True
+    return (job.export_status or "none") in ACTIVE_EXPORT_STATUSES
 
 
 @dataclass(frozen=True)
@@ -88,7 +112,7 @@ def sweep_interval_seconds(env: Mapping[str, str] | None = None) -> float:
 def job_files(
     job_id: str,
     upload_dir: Path = UPLOAD_DIR,
-    export_dir: Path = EXPORT_DIR,
+    export_dir: Path | None = None,
 ) -> Iterator[Path]:
     """
     Every file on disk belonging to a job: the upload and any export.
@@ -97,13 +121,13 @@ def job_files(
     the upload validator learns about later cannot silently escape deletion.
     """
     yield from sorted(upload_dir.glob(f"{job_id}.*"))
-    yield from sorted(export_dir.glob(f"{job_id}_edited.*"))
+    yield from sorted(exports.export_dir(export_dir).glob(f"{job_id}_edited.*"))
 
 
 def delete_job_files(
     job_id: str,
     upload_dir: Path = UPLOAD_DIR,
-    export_dir: Path = EXPORT_DIR,
+    export_dir: Path | None = None,
 ) -> int:
     """Remove a job's media. Returns the number of files actually unlinked."""
     removed = 0
@@ -128,10 +152,13 @@ def purge_expired(
     max_age_seconds: float,
     now: datetime | None = None,
     upload_dir: Path = UPLOAD_DIR,
-    export_dir: Path = EXPORT_DIR,
+    export_dir: Path | None = None,
 ) -> PurgeReport:
     """
     Delete finished jobs older than ``max_age_seconds``, plus orphaned media.
+
+    "Finished" is :func:`is_in_flight` - both pipelines idle, not just the
+    analysis one.
 
     ``now`` is injectable so tests can age a job without sleeping. It is naive
     UTC to match ``Job.created_at``, which is written by ``datetime.utcnow``.
@@ -154,7 +181,7 @@ def purge_expired(
     skipped = 0
 
     for job in db.query(Job).filter(Job.created_at < cutoff).all():
-        if job.status not in TERMINAL_STATUSES:
+        if is_in_flight(job):
             skipped += 1
             continue
         files_deleted += delete_job_files(job.id, upload_dir, export_dir)
@@ -164,7 +191,7 @@ def purge_expired(
     db.commit()
 
     live_ids = {row[0] for row in db.query(Job.id).all()}
-    for directory in (upload_dir, export_dir):
+    for directory in (upload_dir, exports.export_dir(export_dir)):
         if not directory.is_dir():
             continue
         for path in sorted(directory.iterdir()):

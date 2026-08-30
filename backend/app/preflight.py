@@ -1,7 +1,7 @@
 """
 Startup environment checks.
 
-Both hard dependencies - an OpenAI key and FFmpeg - are only reached deep in a
+Both hard dependencies - a model API key and FFmpeg - are only reached deep in a
 background worker thread, minutes after an upload. Without a preflight the
 failure surfaces as a job that transcribes for two minutes and then dies with
 ``The api_key client option must be set``, which reads like a bug in the app
@@ -9,12 +9,15 @@ rather than a missing line in ``.env``. Check at startup instead, and refuse to
 boot with a message that says exactly what to do.
 
 Kept free of third-party imports so it can be loaded and tested without pulling
-in FastAPI or the OpenAI client.
+in FastAPI or any vendor SDK - `providers` is a sibling module with the same
+rule, so importing it here does not break that.
 """
 
 import os
 import shutil
 from typing import Callable, Mapping
+
+from .analysis.providers import DEFAULT_MODEL_SPEC, ProviderError, parse_model_spec
 
 # Executables that must be on PATH. ffprobe ships with ffmpeg but is packaged
 # separately by some distributions, and the upload duration cap needs it.
@@ -43,11 +46,21 @@ def missing_requirements(
     env = os.environ if env is None else env
     problems = []
 
-    if not (env.get("OPENAI_API_KEY") or "").strip():
-        problems.append(
-            "OPENAI_API_KEY is not set. Analysis cannot run without it. "
-            "Copy .env.example to .env at the repo root and add your key."
-        )
+    # Which key matters depends on which model is configured: an OpenAI key is
+    # no use to a deployment pointed at Anthropic, and reporting the wrong one
+    # missing is worse than reporting nothing.
+    spec_value = (env.get("CLEANCUT_MODEL") or "").strip() or DEFAULT_MODEL_SPEC
+    try:
+        spec = parse_model_spec(spec_value)
+    except ProviderError as e:
+        problems.append(str(e))
+    else:
+        if not (env.get(spec.api_key_name) or "").strip():
+            problems.append(
+                f"{spec.api_key_name} is not set, and CLEANCUT_MODEL is '{spec}'. "
+                "Analysis cannot run without it. Copy .env.example to .env at the "
+                "repo root and add your key."
+            )
 
     for executable in REQUIRED_EXECUTABLES:
         if which(executable) is None:

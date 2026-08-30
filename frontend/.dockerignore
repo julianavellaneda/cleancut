@@ -1,0 +1,19 @@
+# What must never enter the frontend build context.
+#
+# This one is a correctness fix, not just a size one. The Dockerfile runs
+# `npm ci` and then `COPY . .`, so a host `node_modules/` in the context is
+# copied straight over the one the image just installed - handing a Linux
+# container the native binaries (sharp, unrs-resolver, fsevents) that npm built
+# for the developer's macOS. A stale host `.next/` does the same to the build
+# output.
+
+node_modules/
+.next/
+out/
+tsconfig.tsbuildinfo
+
+.env
+.env.*
+.DS_Store
+npm-debug.log*
+coverage/

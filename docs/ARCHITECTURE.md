@@ -14,8 +14,8 @@ The system follows a decoupled architecture where the **Frontend** (Next.js) han
     - If Audio: Normalize/Convert to MP3.
 3.  **Transcription:** `faster-whisper` generates a word-level timestamped transcript.
 4.  **Semantic Analysis:** 
-    - The Prompt + Transcript are sent to GPT-4o.
-    - GPT-4o identifies segments matching the prompt and returns a JSON list of timestamps.
+    - The Prompt + Transcript are sent to the configured model (`CLEANCUT_MODEL`, OpenAI or Anthropic).
+    - It identifies segments matching the prompt and returns a JSON list of timestamps.
 5.  **Deterministic Analysis (Optional):**
     - VAD (Voice Activity Detection) flags silences.
     - Regex/Pattern matching flags filler words.

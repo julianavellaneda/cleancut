@@ -4,12 +4,12 @@ import { useEffect, useState, useCallback, useRef } from "react";
 import { useParams } from "next/navigation";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
 import { Waveform, WaveformHandle } from "@/components/Waveform";
 import { ViolationList, SCRUB_LABELS } from "@/components/ViolationList";
 import { ViolationCard } from "@/components/ViolationCard";
 import { ProcessingView } from "@/components/ProcessingView";
 import { KeyboardLegend } from "@/components/KeyboardLegend";
+import { ReanalyzeBar } from "@/components/ReanalyzeBar";
 import { TranscriptPanel } from "@/components/TranscriptPanel";
 import { api, ExportStatus, Job, Transcript, Violation } from "@/lib/api";
 
@@ -20,6 +20,21 @@ function isProcessing(status: string): boolean {
 /** An export the worker has not finished with yet - keep polling. */
 function isExportPending(status: ExportStatus | undefined): boolean {
   return status === "queued" || status === "exporting";
+}
+
+/**
+ * Whether the rendered export predates the edit list on screen.
+ *
+ * Read off the job's revisions rather than remembered in component state: the
+ * server retires a superseded export the moment an accepted edit moves, and a
+ * flag living only in this component could not survive a reload, a second tab,
+ * or the poll replacing the job object. A null `export_revision` is "provenance
+ * unknown" - a job that never exported, or a row from before the columns - and
+ * is deliberately not stale.
+ */
+function isExportStale(job: Job | null): boolean {
+  if (!job || job.export_revision === null || job.export_revision === undefined) return false;
+  return job.export_revision !== job.edit_revision;
 }
 
 export default function ReviewPage() {
@@ -33,10 +48,12 @@ export default function ReviewPage() {
   const [error, setError] = useState<string | null>(null);
   const [isUpdating, setIsUpdating] = useState(false);
   const [isCleaning, setIsCleaning] = useState(false);
-  // The edit set changed since the last render, so whatever sits in exports/ is
-  // stale. Tracked separately from the server's export_status, which describes
-  // the last render rather than whether it still matches the review.
-  const [exportStale, setExportStale] = useState(false);
+  // The ids the last "Clean All" actually moved, so undo puts back that sweep
+  // rather than every scrubber edit now sitting at accepted - one the reviewer
+  // accepted by hand beforehand was never part of it. Cleared once undone.
+  const [lastSweep, setLastSweep] = useState<string[] | null>(null);
+  const [showReanalyze, setShowReanalyze] = useState(false);
+  const [isReanalyzing, setIsReanalyzing] = useState(false);
   const [showLegend, setShowLegend] = useState(false);
   // Jobs processed before transcripts were persisted return null here, so the
   // panel is opt-in twice over: only shown when the user asks, and only when
@@ -48,9 +65,26 @@ export default function ReviewPage() {
   const waveformRef = useRef<WaveformHandle>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
 
+  const jobStatus = job?.status;
   const exportStatus: ExportStatus = job?.export_status ?? "none";
+  const exportStale = isExportStale(job);
   const exportReady = exportStatus === "ready" && !exportStale;
   const acceptedCount = violations.filter(v => v.status === "accepted").length;
+
+  /**
+   * Mirror the retirement the server just performed.
+   *
+   * A violation update answers with the violation, not the job, so rather than
+   * spend a round trip re-reading the job after every keystroke the page applies
+   * the same rule the backend does: a finished export is retired, an in-flight
+   * one is left for the worker to resolve when it lands.
+   */
+  const markExportInvalidated = useCallback(() => {
+    setJob(prev => {
+      if (!prev || isExportPending(prev.export_status)) return prev;
+      return { ...prev, export_status: "none", export_error: null, export_revision: null };
+    });
+  }, []);
 
   const loadData = useCallback(async () => {
     try {
@@ -59,16 +93,22 @@ export default function ReviewPage() {
       if (jobData.status === "completed") {
         const violationsData = await api.getViolations(jobId);
         setViolations(violationsData);
-        if (violationsData.length > 0 && !selectedViolation) setSelectedViolation(violationsData[0]);
+        // Seeded through the functional form rather than by reading
+        // `selectedViolation` here: closing over it would put it in this
+        // callback's dependencies, and the effect below would then re-fetch the
+        // job and the whole violation list every time the reviewer moved the
+        // selection. The rule is the same one the poll applies - only seed when
+        // nothing is selected yet.
+        setSelectedViolation(prev => prev ?? violationsData[0] ?? null);
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to load job");
     } finally {
       setIsLoading(false);
     }
-  }, [jobId, selectedViolation]);
+  }, [jobId]);
 
-  useEffect(() => { loadData(); }, [jobId]);
+  useEffect(() => { loadData(); }, [loadData]);
 
   // Fetched separately from the job: it can be large, it never changes once the
   // job completes, and a job without one is a normal case rather than an error.
@@ -84,10 +124,14 @@ export default function ReviewPage() {
   // One poll covers both halves of the pipeline: the processing stages, and the
   // export render, which now runs on the same worker queue instead of inline in
   // the request.
+  // Reads the two statuses as extracted values rather than off `job`, so the
+  // dependency list can name exactly what it re-arms on. Depending on the whole
+  // object would restart the interval on every poll tick, since each response is
+  // a new object even when nothing about it changed.
   useEffect(() => {
-    if (!job) return;
-    const watchingProcessing = isProcessing(job.status);
-    const watchingExport = isExportPending(job.export_status);
+    if (!jobStatus) return;
+    const watchingProcessing = isProcessing(jobStatus);
+    const watchingExport = isExportPending(exportStatus);
     if (!watchingProcessing && !watchingExport) return;
 
     const interval = setInterval(async () => {
@@ -99,12 +143,17 @@ export default function ReviewPage() {
           setViolations(vData);
           // Only seed the selection when there isn't one. Without this guard
           // the poll yanked the user back to the first suggestion on every tick.
-          setSelectedViolation(prev => prev ?? vData[0] ?? null);
+          // A re-analysis deletes the suggestions it replaces, so a selection
+          // pointing at one that is gone has to fall back rather than persist
+          // as a card describing a row nobody can act on.
+          setSelectedViolation(prev =>
+            (prev && vData.some(v => v.id === prev.id) ? prev : vData[0]) ?? null
+          );
         }
       } catch {}
     }, 2000);
     return () => clearInterval(interval);
-  }, [job?.status, job?.export_status, jobId]);
+  }, [jobStatus, exportStatus, jobId]);
 
   const handleStatusUpdate = async (
     status: "accepted" | "rejected",
@@ -119,8 +168,8 @@ export default function ReviewPage() {
       // from the buttons leaves the reviewer where they clicked.
       const index = violations.findIndex(vi => vi.id === updated.id);
       setSelectedViolation(advance ? violations[index + 1] ?? updated : updated);
-      setExportStale(true);
-    } catch (err) {
+      markExportInvalidated();
+    } catch {
       setError("Update failed");
     } finally {
       setIsUpdating(false);
@@ -134,7 +183,7 @@ export default function ReviewPage() {
       const updated = await api.updateViolation(jobId, selectedViolation.id, { action });
       setViolations(v => v.map(vi => vi.id === updated.id ? updated : vi));
       setSelectedViolation(updated);
-      setExportStale(true);
+      markExportInvalidated();
     } catch {
       setError("Update failed");
     } finally {
@@ -142,22 +191,68 @@ export default function ReviewPage() {
     }
   };
 
+  /** Re-read the list after a bulk move, keeping the selection where it was. */
+  const refreshViolations = async () => {
+    const refreshed = await api.getViolations(jobId);
+    setViolations(refreshed);
+    if (selectedViolation) {
+      setSelectedViolation(
+        refreshed.find(v => v.id === selectedViolation.id) ?? selectedViolation
+      );
+    }
+    markExportInvalidated();
+  };
+
   const handleCleanAll = async () => {
     setIsCleaning(true);
     try {
+      // Captured before the call: after it, these rows are indistinguishable
+      // from any scrubber edit that was already accepted.
+      const swept = violations
+        .filter(v => v.status === "pending" && v.label && SCRUB_LABELS.includes(v.label))
+        .map(v => v.id);
+
       await api.bulkUpdateViolations(jobId, { status: "accepted" }, SCRUB_LABELS);
-      const refreshed = await api.getViolations(jobId);
-      setViolations(refreshed);
-      if (selectedViolation) {
-        setSelectedViolation(
-          refreshed.find(v => v.id === selectedViolation.id) ?? selectedViolation
-        );
-      }
-      setExportStale(true);
+      await refreshViolations();
+      setLastSweep(swept);
     } catch {
       setError("Clean All failed");
     } finally {
       setIsCleaning(false);
+    }
+  };
+
+  const handleUndoCleanAll = async () => {
+    if (!lastSweep) return;
+    setIsCleaning(true);
+    try {
+      await api.bulkUpdateViolations(
+        jobId, { status: "pending", ids: lastSweep }, undefined, ["accepted"]
+      );
+      await refreshViolations();
+      setLastSweep(null);
+    } catch {
+      setError("Undo failed");
+    } finally {
+      setIsCleaning(false);
+    }
+  };
+
+  const handleReanalyze = async (request: { prompt?: string; preset?: string }) => {
+    setIsReanalyzing(true);
+    setError(null);
+    try {
+      await api.reanalyzeJob(jobId, request);
+      setShowReanalyze(false);
+      setLastSweep(null);
+      // The job comes back `analyzing`, which re-arms the poll and swaps in the
+      // processing view; loadData would race it, so the local status is what
+      // hands over.
+      setJob(prev => (prev ? { ...prev, status: "analyzing", error_message: null } : prev));
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Re-analysis failed");
+    } finally {
+      setIsReanalyzing(false);
     }
   };
 
@@ -168,8 +263,11 @@ export default function ReviewPage() {
       // This returns as soon as the render is queued; the poll above watches
       // export_status from there.
       const queued = await api.exportAudio(jobId);
-      setExportStale(false);
-      setJob(prev => (prev ? { ...prev, export_status: queued.export_status, export_error: null } : prev));
+      // export_revision stays null until the render lands, which reads as
+      // "nothing of known provenance yet" rather than as a stale file.
+      setJob(prev => (prev
+        ? { ...prev, export_status: queued.export_status, export_error: null, export_revision: null }
+        : prev));
     } catch (err) {
       setError(err instanceof Error ? err.message : "Export failed");
     }
@@ -317,6 +415,16 @@ export default function ReviewPage() {
               Transcript
             </Button>
           )}
+          {transcript && (
+            <Button
+              size="sm"
+              variant={showReanalyze ? "secondary" : "ghost"}
+              onClick={() => setShowReanalyze(v => !v)}
+              title="Ask a different question about this recording, without re-transcribing it"
+            >
+              New Prompt
+            </Button>
+          )}
           {exportStatus === "failed" && !exportStale && (
             <span className="max-w-xs truncate text-xs text-destructive" title={job.export_error ?? undefined}>
               Export failed: {job.export_error ?? "unknown error"}
@@ -338,6 +446,16 @@ export default function ReviewPage() {
           )}
         </div>
       </header>
+
+      {showReanalyze && (
+        <ReanalyzeBar
+          currentPrompt={job.prompt}
+          currentPreset={job.preset}
+          isSubmitting={isReanalyzing}
+          onSubmit={handleReanalyze}
+          onCancel={() => setShowReanalyze(false)}
+        />
+      )}
 
       {/* Set by a failed update or a rejected export. Previously assigned and
           never rendered, so an export the server refused looked like nothing
@@ -367,7 +485,8 @@ export default function ReviewPage() {
 
       <div className="flex-1 flex overflow-hidden">
         <aside className="w-80 border-r bg-muted/20">
-          <ViolationList violations={violations} selectedViolation={selectedViolation} onSelect={setSelectedViolation} onCleanAll={handleCleanAll} isCleaning={isCleaning} />
+          <ViolationList violations={violations} selectedViolation={selectedViolation} onSelect={setSelectedViolation} onCleanAll={handleCleanAll} onUndoCleanAll={handleUndoCleanAll}
+            canUndoCleanAll={lastSweep !== null && lastSweep.length > 0} isCleaning={isCleaning} />
         </aside>
 
         <main className="flex-1 flex flex-col overflow-hidden">

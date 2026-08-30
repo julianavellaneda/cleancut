@@ -43,10 +43,43 @@ def init_db():
 
 
 def _apply_migrations():
-    """Add columns that were introduced after a DB was first created."""
+    """
+    Add columns that were introduced after a DB was first created.
+
+    Each table is asked about separately. A table that does not exist yet is
+    skipped rather than being treated as a reason to stop: `create_all` will
+    have made it with every column already, and an early return over one table
+    used to mean the next one's columns were never checked.
+    """
+    tables = set(inspect(engine).get_table_names())
+    if "jobs" in tables:
+        _migrate_jobs()
+    if "violations" in tables:
+        _migrate_violations()
+
+
+def _migrate_violations():
+    """
+    Give the two "do not apply this unreviewed" flags columns of their own.
+
+    They existed on the detectors' dataclasses long before they existed here,
+    and reached the reviewer only as a sentence bolted onto `reasoning` - which
+    could not be filtered, sorted, or told apart from the model's own words.
+    Existing rows default to false: nothing recorded the flag when they were
+    written, and inventing a true would put a warning on a suggestion no
+    detector ever doubted.
+    """
+    existing = {col["name"] for col in inspect(engine).get_columns("violations")}
+    with engine.begin() as conn:
+        for column in ("is_approximate", "is_ambiguous"):
+            if column in existing:
+                continue
+            conn.execute(text(f"ALTER TABLE violations ADD COLUMN {column} BOOLEAN DEFAULT 0"))
+            conn.execute(text(f"UPDATE violations SET {column} = 0 WHERE {column} IS NULL"))
+
+
+def _migrate_jobs():
     inspector = inspect(engine)
-    if "jobs" not in inspector.get_table_names():
-        return
     existing = {col["name"] for col in inspector.get_columns("jobs")}
     with engine.begin() as conn:
         # `bsm_mode` (a boolean) was generalized into `preset` (a nullable id).
@@ -73,6 +106,20 @@ def _apply_migrations():
         # the route answers 404 rather than pretending the recording was silent.
         if "transcript" not in existing:
             conn.execute(text("ALTER TABLE jobs ADD COLUMN transcript TEXT"))
+
+        # Export staleness. `edit_revision` starts at 0 for every existing row -
+        # the counter only has to be monotonic per job, not meaningful across
+        # them. `export_revision` stays NULL even on a row marked 'ready':
+        # nothing recorded which edit set that file came from, and inventing a
+        # match would claim an export is current on no evidence. NULL is read as
+        # "provenance unknown", which keeps those rows downloadable exactly as
+        # they are today; the first edit after this migration bumps them into
+        # the tracked world.
+        if "edit_revision" not in existing:
+            conn.execute(text("ALTER TABLE jobs ADD COLUMN edit_revision INTEGER DEFAULT 0"))
+            conn.execute(text("UPDATE jobs SET edit_revision = 0 WHERE edit_revision IS NULL"))
+        if "export_revision" not in existing:
+            conn.execute(text("ALTER TABLE jobs ADD COLUMN export_revision INTEGER"))
     if "bsm_mode" in existing:
         try:
             with engine.begin() as conn:

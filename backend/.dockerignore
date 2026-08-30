@@ -1,0 +1,35 @@
+# What must never enter the backend build context.
+#
+# The Dockerfile only COPYs requirements.txt and app/, but the context is still
+# uploaded to the daemon in full before any COPY runs. Without this file that
+# upload included .venv (hundreds of MB, and Linux-incompatible macOS wheels),
+# every uploaded recording, every rendered export and the SQLite database -
+# customer audio shipped into an image build, and a build that got slower the
+# longer the app had been used.
+
+.venv/
+venv/
+env/
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Runtime state. These are bind-mounted at run time (see docker-compose.yml);
+# baking a copy in would ship someone's media inside the image.
+uploads/
+exports/
+data/
+*.db
+*.db-journal
+*.sqlite3
+
+# Not needed to run the service.
+tests/
+requirements-dev.txt
+
+.env
+.env.*
+.DS_Store

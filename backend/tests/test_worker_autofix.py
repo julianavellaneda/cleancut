@@ -63,7 +63,7 @@ def run_job(monkeypatch, tmp_path):
              auto_scrub=False, media_type="audio"):
         RecordingEditor.last = None
         monkeypatch.setattr(exports, "MediaEditor", RecordingEditor)
-        monkeypatch.setattr(worker, "EXPORT_DIR", tmp_path)
+        monkeypatch.setattr(exports, "EXPORT_DIR", tmp_path)
 
         transcript = TranscriptResult(segments=[], language="en", duration=60.0)
 
@@ -256,3 +256,125 @@ def test_media_type_is_passed_through(run_job):
     )
 
     assert RecordingEditor.last["media_type"] == "video"
+
+
+# --- a suggestion nobody could place is never applied unattended -------------
+#
+# When the analyzer cannot find a quote in the transcript, the span it returns
+# is the model's own estimate. `auto_fix` used to apply those exactly like a
+# measured one, so a quote that matched nothing cut whatever happened to be at
+# the guessed time - the one case where an unreviewed cut is guaranteed wrong.
+
+def _approximate(start, end, label, action):
+    v = _violation(start, end, label, action)
+    v.is_approximate = True
+    return v
+
+
+def test_auto_fix_leaves_an_unplaced_suggestion_pending(run_job):
+    job_id = run_job(
+        llm_violations=[_approximate(1.0, 2.0, "Income Claims", "cut")],
+        auto_fix=True,
+    )
+
+    assert [row.status for row in _rows(job_id)] == ["pending"]
+
+
+def test_an_unplaced_suggestion_is_not_rendered_into_the_export(run_job):
+    """The review screen and the exported file have to agree about it."""
+    run_job(
+        llm_violations=[
+            _violation(1.0, 2.0, "Income Claims", "cut"),
+            _approximate(5.0, 6.0, "Income Claims", "cut"),
+        ],
+        auto_fix=True,
+    )
+
+    assert RecordingEditor.last["cuts"] == [(1.0, 2.0)]
+
+
+# The same argument one level down, for the deterministic side. The scrubber
+# matches fillers on spelling, and a few of those spellings are ordinary words -
+# an unevidenced "like" cut unattended turns "I like this" into "I this".
+
+def _ambiguous(start, end, label, action):
+    v = _violation(start, end, label, action)
+    v.is_ambiguous = True
+    return v
+
+
+def test_auto_scrub_leaves_an_ambiguous_filler_pending(run_job):
+    job_id = run_job(
+        scrubber_violations=[_ambiguous(1.0, 2.0, "Filler Word", "cut")],
+        auto_scrub=True,
+    )
+
+    assert [row.status for row in _rows(job_id)] == ["pending"]
+
+
+# --- and the reviewer is told which ones those were ---------------------------
+#
+# Holding a suggestion back is only half the promise. Both flags used to live on
+# the detector's dataclass and die there, so an `auto_fix` job arrived at the
+# review screen as a list of accepted rows with a few pending ones in it and
+# nothing on the row saying why. They are columns now.
+
+def test_the_flag_that_held_a_suggestion_back_is_recorded_on_the_row(run_job):
+    job_id = run_job(
+        llm_violations=[
+            _violation(1.0, 2.0, "Income Claims", "cut"),
+            _approximate(5.0, 6.0, "Income Claims", "cut"),
+        ],
+        scrubber_violations=[_ambiguous(9.0, 9.5, "Filler Word", "cut")],
+        auto_fix=True,
+        auto_scrub=True,
+    )
+
+    flags = {
+        (row.start_time): (bool(row.is_approximate), bool(row.is_ambiguous))
+        for row in _rows(job_id)
+    }
+    assert flags == {
+        1.0: (False, False),
+        5.0: (True, False),
+        9.0: (False, True),
+    }
+
+
+def test_a_suggestion_nobody_doubted_carries_neither_flag(run_job):
+    """The default has to be false, not null - the API returns a boolean."""
+    job_id = run_job(llm_violations=[_violation(1.0, 2.0, "Income Claims", "cut")])
+
+    row = _rows(job_id)[0]
+    assert row.is_approximate is False
+    assert row.is_ambiguous is False
+
+
+def test_an_ambiguous_filler_is_not_rendered_into_the_export(run_job):
+    run_job(
+        scrubber_violations=[
+            _violation(1.0, 2.0, "Filler Word", "cut"),
+            _ambiguous(5.0, 6.0, "Filler Word", "cut"),
+        ],
+        auto_scrub=True,
+    )
+
+    assert RecordingEditor.last["cuts"] == [(1.0, 2.0)]
+
+
+def test_an_evidenced_filler_is_still_auto_accepted(run_job):
+    job_id = run_job(
+        scrubber_violations=[_violation(1.0, 2.0, "Filler Word", "cut")],
+        auto_scrub=True,
+    )
+
+    assert [row.status for row in _rows(job_id)] == ["accepted"]
+
+
+def test_placed_suggestions_are_still_auto_accepted(run_job):
+    job_id = run_job(
+        llm_violations=[_violation(1.0, 2.0, "Income Claims", "cut")],
+        auto_fix=True,
+    )
+
+    assert [row.status for row in _rows(job_id)] == ["accepted"]

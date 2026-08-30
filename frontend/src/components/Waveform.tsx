@@ -43,6 +43,16 @@ export const Waveform = forwardRef<WaveformHandle, WaveformProps>(function Wavef
   // clip: with the clip playable from a keypress, calls overlap easily, and an
   // uncleared timer from an earlier clip would pause a later one mid-playback.
   const clipTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // The parent's time callback, read through a ref by the "timeupdate" handler
+  // below. Calling the prop directly would put it in the initialization effect's
+  // dependencies, and that effect *creates and destroys WaveSurfer* - so a
+  // parent that passed an unmemoized function would tear down the player and
+  // reload the audio on every one of its renders. Through a ref, the handler
+  // always calls the current callback and the player is built once per source.
+  const onTimeUpdateRef = useRef(onTimeUpdate);
+  useEffect(() => {
+    onTimeUpdateRef.current = onTimeUpdate;
+  }, [onTimeUpdate]);
 
   const togglePlayPause = useCallback(() => {
     wavesurferRef.current?.playPause();
@@ -132,7 +142,7 @@ export const Waveform = forwardRef<WaveformHandle, WaveformProps>(function Wavef
 
     ws.on("timeupdate", (time) => {
       setCurrentTime(time);
-      onTimeUpdate?.(time);
+      onTimeUpdateRef.current?.(time);
     });
 
     ws.on("play", () => setIsPlaying(true));

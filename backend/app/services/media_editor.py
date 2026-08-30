@@ -173,6 +173,15 @@ def decode_pcm_mono(media_path: str, sample_rate: int = DECODE_SAMPLE_RATE) -> n
     dead-air detection cannot, since "I could not decode this" and "this file is
     silent" would otherwise be the same empty result - and one of those means
     deleting audio nobody confirmed was empty.
+
+    The array is a **read-only** view over FFmpeg's stdout, not a copy. An hour
+    of audio is ~115 MB at 8 kHz f32, and copying held two of those at once at
+    the peak of every waveform request and every scrub. Every caller here reads:
+    peaks slice it, ``levels.find_quiet_regions`` reshapes and casts (both of
+    which work on a read-only array, and the cast copies anyway). A caller that
+    genuinely needs to write should ``.copy()`` the part it is writing to -
+    numpy raises on an in-place write rather than corrupting anything, so the
+    mistake is loud.
     """
     out, _ = (
         ffmpeg
@@ -180,9 +189,7 @@ def decode_pcm_mono(media_path: str, sample_rate: int = DECODE_SAMPLE_RATE) -> n
         .output('-', format='f32le', acodec='pcm_f32le', ac=1, ar=str(sample_rate))
         .run(capture_stdout=True, capture_stderr=True)
     )
-    # frombuffer gives a read-only view over the bytes; copy so callers may
-    # reshape or scale it without tripping over the immutable buffer.
-    return np.frombuffer(out, dtype=np.float32).copy()
+    return np.frombuffer(out, dtype=np.float32)
 
 
 def generate_waveform_peaks(
@@ -191,6 +198,12 @@ def generate_waveform_peaks(
 ) -> list[float]:
     """
     Generate waveform peaks using FFmpeg and numpy (no pydub).
+
+    Written to keep exactly one copy of the decoded audio in memory. The
+    normalizing maximum used to come from ``np.max(np.abs(samples))``, which
+    allocates a whole second array the size of the recording just to find one
+    number; the largest magnitude is the larger of the max and the negated min,
+    and neither of those allocates.
     """
     try:
         samples = decode_pcm_mono(audio_path)
@@ -200,10 +213,10 @@ def generate_waveform_peaks(
 
         # Calculate samples per peak
         samples_per_peak = max(1, len(samples) // num_peaks)
-        
+
         peaks = []
-        # Max amplitude for normalization
-        max_amplitude = np.max(np.abs(samples)) or 1.0
+        # Max amplitude for normalization, without materializing abs(samples).
+        max_amplitude = float(max(samples.max(), -samples.min())) or 1.0
 
         for i in range(num_peaks):
             start = i * samples_per_peak

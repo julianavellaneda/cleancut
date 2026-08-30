@@ -3,7 +3,12 @@ Pydantic schemas for request/response validation.
 """
 
 from datetime import datetime
-from pydantic import BaseModel
+from pydantic import BaseModel, field_validator
+
+#: What an edit can do to its span. The single owner of the pair - the PATCH,
+#: the bulk update and the export override all mean the same two words, and a
+#: fourth spelling of them is how one of the three drifts.
+EDIT_ACTIONS = ("cut", "mute")
 
 
 class ViolationBase(BaseModel):
@@ -25,6 +30,12 @@ class ViolationResponse(ViolationBase):
     job_id: str
     status: str
     action: str
+    # The two reasons a suggestion is never pre-accepted, as fields rather than
+    # as prose inside `reasoning`. The server stays the single owner of "may
+    # this be applied unreviewed" (`worker._is_pre_accepted`); these are here so
+    # the review UI can say *which* suggestions the system was unsure about.
+    is_approximate: bool = False
+    is_ambiguous: bool = False
 
     class Config:
         from_attributes = True
@@ -33,6 +44,14 @@ class ViolationResponse(ViolationBase):
 class ViolationUpdate(BaseModel):
     status: str | None = None  # pending, accepted, rejected
     action: str | None = None  # cut, mute
+
+
+class BulkViolationUpdate(ViolationUpdate):
+    # Exactly which rows to move. Undo needs this: a sweep is undone by putting
+    # back the rows it actually changed, not every row that now happens to look
+    # like them - an edit accepted by hand before the sweep is not the sweep's
+    # to revert. None means "every row the filters select".
+    ids: list[str] | None = None
 
 
 class JobBase(BaseModel):
@@ -62,6 +81,12 @@ class JobResponse(JobBase):
     # it polls `status` for the processing stages.
     export_status: str = "none"  # none, queued, exporting, ready, failed
     export_error: str | None = None
+    # Staleness, as data rather than as something the client has to remember: an
+    # export is current only while `export_revision` still equals
+    # `edit_revision`. NULL export_revision means "no export of known
+    # provenance", which is not the same as stale.
+    edit_revision: int = 0
+    export_revision: int | None = None
     violation_count: int = 0
     pending_count: int = 0
     accepted_count: int = 0
@@ -97,8 +122,25 @@ class PresetResponse(BaseModel):
 
 
 class ExportRequest(BaseModel):
-    # None = honor each violation's own action; set to force one action globally
-    edit_action: str | None = None  # cut or mute
+    """
+    A request to render the accepted edits.
+
+    ``edit_action`` is None to honour each violation's own action, or one of
+    ``EDIT_ACTIONS`` to force one globally. It is validated rather than passed
+    through, because `partition_edits` reads "anything that is not mute" as a
+    cut: an unrecognised value used to become a **cut** of every accepted span,
+    which is the destructive half of the pair and the opposite of what someone
+    who typed `"mutee"` was asking for.
+    """
+
+    edit_action: str | None = None
+
+    @field_validator("edit_action")
+    @classmethod
+    def _known_action(cls, value: str | None) -> str | None:
+        if value is not None and value not in EDIT_ACTIONS:
+            raise ValueError(f"edit_action must be one of {', '.join(EDIT_ACTIONS)}")
+        return value
 
 
 class ExportResponse(BaseModel):
@@ -108,6 +150,22 @@ class ExportResponse(BaseModel):
     # Export is queued, not rendered inline, so the POST answers with the state
     # the caller should start polling rather than with a finished file.
     export_status: str = "queued"
+
+
+class ReanalyzeRequest(BaseModel):
+    """A second question about a transcript that has already been made."""
+
+    prompt: str | None = None
+    preset: str | None = None
+
+
+class ReanalyzeResponse(BaseModel):
+    job_id: str
+    prompt: str | None = None
+    preset: str | None = None
+    # Queued on the same worker as everything else, so this is the state to
+    # start polling rather than a result.
+    status: str = "analyzing"
 
 
 class TranscriptSegment(BaseModel):

@@ -1,8 +1,11 @@
 services:
   backend:
     build: ./backend
+    # Published on loopback unless CLEANCUT_HOST says otherwise. The container
+    # still binds 0.0.0.0 internally - a container's network is not the host's,
+    # so what decides who can reach CleanCut is the interface published here.
     ports:
-      - "8000:8000"
+      - "${CLEANCUT_HOST:-127.0.0.1}:8000:8000"
     volumes:
       - ./data:/app/data
       - ./backend/uploads:/app/uploads
@@ -18,7 +21,7 @@ services:
       args:
         NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://localhost:8000/api}
     ports:
-      - "3000:3000"
+      - "${CLEANCUT_HOST:-127.0.0.1}:3000:3000"
     depends_on:
       - backend
     restart: unless-stopped

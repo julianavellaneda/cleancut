@@ -23,6 +23,9 @@ export a single re-encoded file.
   `Space` to play, `P` to replay the selected clip, `T` for the transcript, `?` for the full list).
 - **Searchable transcript panel** — the transcript the analysis actually ran on, kept with the job.
   Click a line to seek there, watch it follow playback, and see which lines carry a suggested edit.
+- **Ask again without re-transcribing** — a new prompt or preset re-runs the analysis against the
+  stored transcript, so changing the question costs one LLM call instead of another Whisper pass.
+  Filler-word and dead-air edits, and your decisions on them, are kept across the re-run.
 - **Per-edit cut or mute**, honored independently on export.
 - **A/V-sync-preserving export** — a single FFmpeg `trim`/`atrim` + `concat` filter graph, so video
   stays in sync with its audio across every cut.
@@ -30,6 +33,8 @@ export a single re-encoded file.
   `exporting` → `completed`), polled by the frontend. Export is queued the same way, so a long
   re-encode never holds an HTTP request open.
 - **Multi-language**, including code-switching between English and Spanish mid-sentence.
+- **Bring your own model** — `CLEANCUT_MODEL=provider:model` picks the vendor and the model
+  (`openai:gpt-4o`, `anthropic:claude-opus-5`). One line of `.env`, no code change.
 - **Measured, not asserted** — a labelled synthetic clip and an eval harness that scores the
   detectors against it: precision, recall, and per-category coverage, run on every build.
 
@@ -38,8 +43,8 @@ export a single re-encoded file.
 | Layer | Stack |
 |---|---|
 | Backend | FastAPI, SQLAlchemy (SQLite), FFmpeg, OpenAI API |
-| Frontend | Next.js 15, Tailwind CSS v4, Wavesurfer.js |
-| Analysis | `faster-whisper` transcription, chunked sliding-window LLM analysis |
+| Frontend | Next.js 16, Tailwind CSS v4, Wavesurfer.js |
+| Analysis | `faster-whisper` transcription, chunked sliding-window LLM analysis (OpenAI or Anthropic) |
 
 ```
 upload → queue → Whisper (word timestamps) → LLM analysis → review UI → FFmpeg export
@@ -48,7 +53,7 @@ upload → queue → Whisper (word timestamps) → LLM analysis → review UI �
 ## Quickstart (Docker)
 
 ```bash
-cp .env.example .env      # then add your OPENAI_API_KEY
+cp .env.example .env      # then add your model API key
 docker compose up --build
 ```
 
@@ -60,7 +65,7 @@ Requires Python 3.10+, Node 18+, and FFmpeg (`brew install ffmpeg`).
 
 ```bash
 # 1. Environment — a .env at the repo root, read by the backend
-cp .env.example .env      # then add your OPENAI_API_KEY
+cp .env.example .env      # then add your model API key
 
 # 2. Backend (port 8000)
 cd backend
@@ -77,16 +82,24 @@ npm run dev
 
 Or run both with `./start.sh`.
 
+Both quickstarts listen on **127.0.0.1** — CleanCut is reachable from this machine and nothing else.
+Everything except the admin wipes is unauthenticated, so opening the port to a network is a decision
+you type rather than a default you inherit: set `CLEANCUT_HOST=0.0.0.0` in `.env` and put a reverse
+proxy that authenticates in front of it. See [Privacy](#privacy).
+
 ## Tests
 
 ```bash
 cd backend
 pip install -r requirements-dev.txt
 pytest
+
+cd ../frontend
+npm test          # vitest + Testing Library, in jsdom - no browser needed
 ```
 
-GitHub Actions runs the same suite on every push and pull request, alongside `tsc --noEmit` and a
-production frontend build — see `.github/workflows/ci.yml`.
+GitHub Actions runs both suites on every push and pull request, alongside `tsc --noEmit`, the
+detector eval below, and a production frontend build — see `.github/workflows/ci.yml`.
 
 ## Eval
 
@@ -116,8 +129,33 @@ By category:
 ```
 
 That run is a recorded snapshot of the real pipeline, so scoring it needs no API key, no model and
-no media — which is why it runs in CI. To measure the pipeline as it stands right now, point it at
-the clip instead: `--live ../tests/fixtures/demo/demo_seminar.mp3` transcribes and calls the LLM.
+no media — which is why it runs in CI. What it grades is the scorer and the labels, not today's
+code; its filler score is the one the harness found on the day it was built.
+
+To grade the detectors **as they stand on this commit**, run them against the real audio and the
+committed word-level transcript. Still free — no model, no API key — so CI gates on this one too:
+
+```bash
+python -m app.eval.run --detectors ../tests/fixtures/demo/demo_seminar.mp3 --suite scrub
+```
+
+```
+  precision  100.0%   (11 suggestions graded)
+  recall      91.7%   (12 labels in scope)
+
+By category:
+  filler           ##########..  7/8
+  dead-air         ############  4/4
+```
+
+The one filler it misses is an "Er," that Whisper dropped from the transcript altogether — the
+scrubber reads word timestamps, so a word the model never wrote is not a word it can find. The two
+that used to be missed were the harness earning its keep: `FILLER_WORDS` held `"you know"` while
+matching walked one word at a time, so the most common filler in English could never fire, and the
+set spelled a sound `"hm"` that Whisper writes as `"Hmm"`.
+
+To measure the whole pipeline as it stands, point it at the clip with
+`--live ../tests/fixtures/demo/demo_seminar.mp3`, which transcribes and calls the LLM.
 `--json` emits the scorecard for a machine, and `--min-recall` / `--min-precision` turn a threshold
 into a non-zero exit.
 
@@ -159,15 +197,16 @@ Interactive Swagger docs at http://localhost:8000/docs.
 | GET | `/api/jobs/{id}` | Job status and metadata |
 | DELETE | `/api/jobs/{id}` | Delete a job and its files |
 | GET | `/api/jobs/{id}/transcript` | The transcript the analysis ran on |
+| POST | `/api/jobs/{id}/reanalyze` | Ask a new question about it — no re-transcription |
 | GET | `/api/jobs/{id}/violations` | List suggested edits |
 | PATCH | `/api/jobs/{id}/violations/{vid}` | Set status (accepted/rejected) or action (cut/mute) |
-| POST | `/api/jobs/{id}/violations/bulk-update` | Bulk accept/reject, optionally filtered by label |
+| POST | `/api/jobs/{id}/violations/bulk-update` | Bulk accept/reject/undo, filtered by label, id, or source status |
 | GET | `/api/jobs/{id}/audio` | Stream the original media |
 | GET | `/api/jobs/{id}/audio/waveform` | Cached waveform peaks |
 | POST | `/api/jobs/{id}/export` | Queue the edited render (202; poll `export_status`) |
 | GET | `/api/jobs/{id}/export/download` | Download the result |
 | GET | `/api/admin/stats` | System statistics |
-| POST | `/api/admin/reset-database`, `/clear-storage`, `/reset-all` | Destructive wipes; gated by `ADMIN_TOKEN` when one is set |
+| POST | `/api/admin/reset-database`, `/clear-storage`, `/reset-all` | Destructive wipes; require `ADMIN_TOKEN`, and are disabled until one is set |
 
 ## Analysis modes
 
@@ -219,7 +258,10 @@ Set in `.env` at the repo root:
 
 | Variable | Default | Purpose |
 |---|---|---|
-| `OPENAI_API_KEY` | — | Required for analysis |
+| `CLEANCUT_MODEL` | `openai:gpt-4o` | Which model analyses the transcript, as `provider:model`. `openai` or `anthropic` |
+| `OPENAI_API_KEY` | — | Required when `CLEANCUT_MODEL` names `openai` |
+| `ANTHROPIC_API_KEY` | — | Required when `CLEANCUT_MODEL` names `anthropic` |
+| `CLEANCUT_HOST` | `127.0.0.1` | Which interface CleanCut listens on. Loopback by default; `0.0.0.0` exposes it to the network, which the unauthenticated media routes are not built for |
 | `CORS_ORIGINS` | `http://localhost:3000` | Comma-separated allowed origins |
 | `DATABASE_PATH` | `backend/audio_compliance.db` | SQLite file location |
 | `NEXT_PUBLIC_API_URL` | `http://localhost:8000/api` | Backend URL baked into the frontend build |
@@ -227,13 +269,14 @@ Set in `.env` at the repo root:
 | `MAX_DURATION_MINUTES` | `120` | Media length cap, measured with `ffprobe` before queueing; media whose duration cannot be read is rejected |
 | `RETENTION_HOURS` | unset | Delete jobs and their media once they are this old. Unset keeps everything forever |
 | `RETENTION_SWEEP_MINUTES` | `15` | How often the retention sweeper runs |
-| `ADMIN_TOKEN` | unset | Shared secret for the destructive admin routes. Unset leaves them open (fine on localhost); set it and they require an `X-Admin-Token` header |
+| `ADMIN_TOKEN` | unset | Shared secret for the destructive admin routes, sent as an `X-Admin-Token` header. Unset **disables** those routes (503) rather than leaving them open |
+| `ALLOW_UNAUTHENTICATED_ADMIN` | unset | `1` leaves the destructive admin routes open with no token, the way they used to be. For a machine you control only; ignored when `ADMIN_TOKEN` is set, and ignored once `CLEANCUT_HOST` is not loopback |
 | `SKIP_PREFLIGHT` | unset | Boot despite a failed startup check (jobs will still fail) |
 
 ## Failure modes
 
-The backend runs a preflight at startup and refuses to boot if `OPENAI_API_KEY` is missing or
-`ffmpeg`/`ffprobe` are not on PATH — both are otherwise only reached minutes into a job, where a
+The backend runs a preflight at startup and refuses to boot if the configured provider's API key is
+missing or `ffmpeg`/`ffprobe` are not on PATH — both are otherwise only reached minutes into a job, where a
 missing line in `.env` looks like an application bug.
 
 Uploads are capped by size and by duration; both come back as a 413 with the limit named, and the
@@ -241,12 +284,28 @@ rejected job is not left behind in the jobs list. The duration cap fails closed 
 cannot read a duration from is rejected with a 422, since a limit that any unprobeable stream can
 skip is not a limit.
 
+Both caps are enforced **after** the multipart body has been read, so `MAX_UPLOAD_MB` bounds what
+CleanCut *keeps*, not what a client can make it receive: Starlette spools the upload to a temp file
+before the handler runs, and a 50 GB POST costs 50 GB of scratch disk on its way to a 413. That is a
+storage-hygiene control, not a DoS control, and it cannot be fixed inside the handler — the body is
+already on disk by the time any application code sees it. On loopback, which is the default trust
+model here, the client is you. Anywhere else, cap the body at the reverse proxy in front of CleanCut
+(`client_max_body_size` in nginx, `limitRequestBody` in Caddy) and set it to match `MAX_UPLOAD_MB`.
+
 When the model returns something that isn't a readable list of suggestions, that is reported rather
 than silently treated as "nothing found" — a distinction that matters when the output is a
 compliance review. A single unreadable chunk of a long transcript leaves the job completed with a
 partial-analysis warning naming the unanalyzed timespans; if every chunk fails, the job fails. The
 same applies to entries that parse but say nothing actionable — an item with no quoted text or an
 unknown action fails its chunk rather than becoming an empty edit that `auto_fix` would apply.
+
+Work queued for the worker survives a restart. The queue is a table, not just a list in memory, so
+a deploy, a crash or a closed laptop no longer throws away every job that had been accepted and not
+yet run — on the next boot the outstanding tasks are picked up in the order they were queued. A
+task that has taken the process down three times is abandoned rather than replayed a fourth, with
+the reason recorded on the job; one interrupted so late that only the job's status remembers it is
+marked failed with a message saying to try again, rather than re-run over the top of a review you
+have already done.
 
 The CLI carries the same status: the saved JSON includes `is_partial` and `failed_chunks`,
 `total_segments_analyzed` counts only segments a chunk actually answered for, and a partial run
@@ -259,8 +318,23 @@ provider — never the audio. Jobs, uploads, exports, and the stored transcript 
 (SQLite plus `backend/uploads/` and `backend/exports/`). Use the admin dashboard at `/admin` to
 wipe both.
 
-The wipe endpoints delete everything and are open by default, which is only safe on a machine you
-control. Set `ADMIN_TOKEN` before putting the API anywhere else; the dashboard has a field for it.
+The wipe endpoints delete everything, so they are off until you configure them: with no
+`ADMIN_TOKEN` set they answer 503 rather than running. Set one — the dashboard has a field for it,
+stored in that browser only — and they require it as an `X-Admin-Token` header. If you would rather
+have the old one-click reset on your own laptop, `ALLOW_UNAUTHENTICATED_ADMIN=1` restores it; that
+is a deliberate choice to leave the delete button open to anything that can reach the port, which is
+why a blank line in `.env` no longer does it for you.
+
+The rest of the API is unauthenticated: anything that can reach the port can list the jobs, stream
+the original recording, read the transcript and download the export. So the port is the access
+control, and it is **loopback by default** — `start.sh` binds `127.0.0.1` and `docker compose`
+publishes on `127.0.0.1`. CleanCut is a local-only tool, and running it that way needs no flag.
+
+`CLEANCUT_HOST=0.0.0.0` opens it to the network, in both the script and Compose. That is supported,
+and it is a decision: the backend prints a warning at startup saying what is now readable, and
+`ALLOW_UNAUTHENTICATED_ADMIN` stops being honoured, since "anything that can reach the port may wipe
+everything" is not what an operator agreed to once a network can reach it. Put a reverse proxy that
+authenticates in front before you do this.
 
 Nothing is deleted on a timer unless you ask for it. Set `RETENTION_HOURS` and a background sweeper
 deletes each job — its row, its violations, its upload, and its export — once it is that old, along

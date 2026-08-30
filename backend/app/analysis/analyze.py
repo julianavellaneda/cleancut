@@ -21,7 +21,12 @@ from pathlib import Path
 from dotenv import load_dotenv
 
 from ..config import root_env_path
-from .transcriber import Transcriber, TranscriptResult, load_transcript
+from .transcriber import (
+    Transcriber,
+    TranscriptFormatError,
+    TranscriptResult,
+    load_transcript,
+)
 from .prompt_analyzer import PromptAnalyzer, AnalysisResult, PRESETS, to_json
 
 # Load environment variables from the .env at the repo root, when there is one.
@@ -38,7 +43,13 @@ def print_header(text: str) -> None:
 
 
 def print_marker(v, index: int) -> None:
-    """Print a formatted marker."""
+    """
+    Print a formatted marker.
+
+    The two "not without a human" flags are printed as their own line rather
+    than read out of `reasoning`: they are fields on the finding, and the CLI
+    renders them the way the review screen renders its badge.
+    """
     action_colors = {
         "cut": "\033[91m",    # Red
         "mute": "\033[93m",  # Yellow
@@ -51,6 +62,14 @@ def print_marker(v, index: int) -> None:
     print(f"    Time: {v.start_time:.1f}s - {v.end_time:.1f}s")
     print(f"    Text: \"{v.text}\"")
     print(f"    Reason: {v.reasoning}")
+
+    yellow = "\033[93m"
+    if getattr(v, "is_approximate", False):
+        print(f"    {yellow}Check: this quote could not be matched to the transcript, "
+              f"so the span is an estimate.{reset}")
+    if getattr(v, "is_ambiguous", False):
+        print(f"    {yellow}Check: this is also an ordinary word, and nothing around it "
+              f"marks it as a hesitation.{reset}")
 
 
 def print_partial_warning(result: AnalysisResult) -> None:
@@ -151,7 +170,12 @@ def main():
             output_path = transcript_path.parent / f"{transcript_path.stem.replace('_transcript', '')}_analysis.json"
 
         print_header("LOADING EXISTING TRANSCRIPT")
-        transcript = load_transcript(str(transcript_path))
+        try:
+            transcript = load_transcript(str(transcript_path))
+        except TranscriptFormatError as e:
+            # A file in the wrong format must not analyze as a clean recording.
+            print(f"Error: {e}")
+            sys.exit(1)
         print(f"Loaded {len(transcript.segments)} segments from {transcript_path.name}")
     
     else:
@@ -182,11 +206,18 @@ def main():
     else:
         print_header("STEP 2: PROMPT-BASED ANALYSIS")
     overlap = 0 if args.no_overlap else args.overlap
-    analyzer = PromptAnalyzer(
-        rules_path=args.rules,
-        chunk_size=args.chunk_size,
-        overlap=overlap
-    )
+    try:
+        analyzer = PromptAnalyzer(
+            rules_path=args.rules,
+            chunk_size=args.chunk_size,
+            overlap=overlap
+        )
+    except ValueError as e:
+        # --chunk-size and --overlap come straight from the command line, so a
+        # rejected window is a typo, not a bug. Say which one and stop, rather
+        # than showing a traceback for something the user can fix in a word.
+        print(f"Error: {e}")
+        sys.exit(1)
     result = analyzer.analyze(transcript, prompt=args.prompt, preset=args.preset)
 
     print_header("RESULTS")

@@ -4,7 +4,6 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Violation } from "@/lib/api";
-import { cn } from "@/lib/utils";
 
 interface ViolationCardProps {
   violation: Violation;
@@ -51,6 +50,30 @@ export function ViolationCard({
     );
   }
 
+  /**
+   * The reasons the server left this suggestion for a human, in its own words.
+   *
+   * These used to arrive glued to the front of `reasoning`, where they read as
+   * part of the model's explanation and could not be told apart from it. They
+   * are flags now, so the card says what each one means once.
+   */
+  const cautions = [
+    violation.is_approximate && {
+      key: "approximate",
+      badge: "Approximate",
+      detail:
+        "This quote could not be matched to the transcript, so the span is the " +
+        "model's own estimate. Play the clip before accepting.",
+    },
+    violation.is_ambiguous && {
+      key: "ambiguous",
+      badge: "Check wording",
+      detail:
+        "This is also an ordinary word, and nothing around it marks this one as " +
+        "a hesitation. Cutting it may take a real word out of the sentence.",
+    },
+  ].filter((c): c is { key: string; badge: string; detail: string } => Boolean(c));
+
   function getSeverityBadge(severity: string | null) {
     if (!severity) return null;
     const level = severity.toLowerCase();
@@ -73,6 +96,15 @@ export function ViolationCard({
             {violation.label || "Suggested Edit"}
           </CardTitle>
           <div className="flex items-center gap-2 shrink-0">
+            {cautions.map((c) => (
+              <Badge
+                key={c.key}
+                variant="outline"
+                className="uppercase font-semibold border-amber-500/60 text-amber-700 dark:text-amber-400"
+              >
+                {c.badge}
+              </Badge>
+            ))}
             {getSeverityBadge(violation.severity)}
             {getActionBadge(violation.action)}
           </div>
@@ -105,6 +137,20 @@ export function ViolationCard({
             <div className="text-sm p-4 bg-primary/5 rounded-md border text-foreground/80">
               {violation.reasoning}
             </div>
+          </div>
+        )}
+
+        {/* Why this one was never applied unreviewed */}
+        {cautions.length > 0 && (
+          <div className="space-y-1">
+            <div className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+              Check before accepting
+            </div>
+            <ul className="text-sm p-4 rounded-md border border-amber-500/40 bg-amber-500/5 text-foreground/80 space-y-2">
+              {cautions.map((c) => (
+                <li key={c.key}>{c.detail}</li>
+              ))}
+            </ul>
           </div>
         )}
 

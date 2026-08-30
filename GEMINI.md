@@ -13,10 +13,16 @@ word-level timestamps, analyzes the transcript with an LLM, and renders accepted
 The system assists human reviewers rather than replacing them. The AI flags segments with reasoning
 and timestamps; the user decides whether to cut, mute, or ignore each one.
 
+Even under `auto_fix`/`auto_scrub`, two kinds of suggestion are always left pending: one whose quote
+could not be placed against the transcript (`violations.is_approximate` — the span is the model's
+estimate) and one matched on a spelling that is only sometimes a filler (`is_ambiguous` — "like",
+"you know"). `worker._is_pre_accepted` is the single owner of that rule; the columns exist so the
+review UI can show *which* rows were held back, and `reasoning` stays the detector's own words.
+
 ### Technology Stack
 - **Backend**: FastAPI (Python 3.10+), SQLAlchemy (SQLite), `faster-whisper` (transcription),
-  FFmpeg (editing), OpenAI API (analysis).
-- **Frontend**: Next.js 15 (TypeScript, App Router), Tailwind CSS v4, `wavesurfer.js`.
+  FFmpeg (editing), OpenAI or Anthropic (analysis, selected by `CLEANCUT_MODEL`).
+- **Frontend**: Next.js 16 (TypeScript, App Router), Tailwind CSS v4, `wavesurfer.js`.
 
 ---
 
@@ -30,10 +36,13 @@ and timestamps; the user decides whether to cut, mute, or ignore each one.
 │   │   │   └── presets/        # Rule preset markdown rulebooks
 │   │   ├── eval/               # spec.py, scoring.py, run.py (accuracy against the demo labels)
 │   │   ├── routes/             # jobs, violations, audio, admin
-│   │   ├── services/           # worker.py, processor.py, scrubber.py, media_editor.py,
-│   │   │                       # exports.py, levels.py, retention.py, transcripts.py
-│   │   ├── models.py           # SQLAlchemy models
+│   │   ├── services/           # worker.py, task_store.py, processor.py, scrubber.py,
+│   │   │                       # media_editor.py, exports.py, levels.py, retention.py,
+│   │   │                       # transcripts.py
+│   │   ├── models.py           # SQLAlchemy models (Job, Violation, Task)
 │   │   ├── database.py         # SQLite setup + additive migrations
+│   │   ├── auth.py             # ADMIN_TOKEN gate for the destructive admin routes
+│   │   ├── network.py          # CLEANCUT_HOST: loopback-by-default binding
 │   │   └── main.py             # Entry point & CORS
 │   ├── tests/                  # pytest suite
 │   ├── uploads/                # Uploaded media
@@ -51,8 +60,10 @@ and timestamps; the user decides whether to cut, mute, or ignore each one.
 ## Building and Running
 
 ### Prerequisites
-- Python 3.10+, Node.js 18+, FFmpeg (`brew install ffmpeg`)
-- An `OPENAI_API_KEY` in a `.env` at the **repo root**
+- Python 3.10+, Node.js 20.9+, FFmpeg (`brew install ffmpeg`)
+- A `.env` at the **repo root** holding the key for the configured provider (`OPENAI_API_KEY`, or
+  `ANTHROPIC_API_KEY` when `CLEANCUT_MODEL` names anthropic). `ADMIN_TOKEN` and `CLEANCUT_HOST`
+  live there too; see `.env.example`.
 
 ### Backend
 ```bash
@@ -98,19 +109,29 @@ The CLI is a module, not a script: `analysis/` imports are package-relative, so
   - `wavesurfer.js` regions to visualize suggested-edit intervals.
   - Strictly type all API interactions and component props.
   - Read the API base from `NEXT_PUBLIC_API_URL`; never hardcode a host.
+  - Memoize a callback only when it closes over nothing reactive (setters, refs, the API client),
+    so an effect can honestly list what it calls. Anything reading component state stays
+    un-memoized — a `useCallback(..., [])` over one froze the upload form around its first render.
+    A callback that must stay current inside a long-lived effect goes through a ref instead.
+  - `eslint` runs clean. A suppression needs a comment saying why.
 
 ### Workflow
 0. **Conversion**: AIFF/AIF is converted to MP3, and video has its audio extracted, via FFmpeg.
 1. **Transcription**: `faster-whisper` produces word-level timestamps.
 2. **Analysis**: transcripts are chunked (50 segments, 10 overlap) before going to the LLM, either
    with the user's prompt or with a preset rulebook from `analysis/presets/`.
-3. **Deduplication**: suggestions are deduplicated by label and timestamp proximity.
+3. **Deduplication**: suggestions are deduplicated *across* chunks only, on normalized text and real
+   interval overlap — two distinct findings seconds apart must both survive.
 4. **Scrubbing**: silence and filler words are detected deterministically, without the LLM.
 5. **Export**: a single FFmpeg `trim`/`atrim` + `concat` filter graph applies mutes then cuts,
    keeping video in sync with its audio.
 
 ### Testing
-- `cd backend && pytest`.
+- Backend: `cd backend && pytest`.
+- Frontend: `cd frontend && npm test` (vitest + Testing Library in jsdom) and `npx tsc --noEmit`.
+- Accuracy: `python -m app.eval.run --detectors ../tests/fixtures/demo/demo_seminar.mp3
+  --suite scrub` scores the deterministic detectors against the labelled demo clip for free. This
+  is what CI gates on.
 - Fixtures in `tests/` must be synthetic. Never commit a real customer recording or transcript.
 
 ---
@@ -119,5 +140,9 @@ The CLI is a module, not a script: `analysis/` imports are package-relative, so
 - **API Keys**: never commit `.env`. Ensure `.gitignore` covers all secret files.
 - **Media Privacy**: files in `uploads/` and `exports/` are sensitive user data. Transcription runs
   locally; only transcript text reaches the LLM provider.
-- **Admin Dashboard**: `/admin` and `/api/admin` are currently **unauthenticated** and destructive.
-  Restrict access before any deployment; adding a real auth provider is a prerequisite for hosting.
+- **Admin Dashboard**: the destructive `/api/admin` routes are gated on an `ADMIN_TOKEN` header and
+  **fail closed** — with no token configured they answer 503, not a pass. `GET /api/admin/stats`
+  stays open so the dashboard loads on an unconfigured server.
+- **Network binding**: every other route is unauthenticated, so the interface *is* the access
+  control. `CLEANCUT_HOST` defaults to `127.0.0.1`; treat exposing it as a deployment decision, and
+  add real per-owner auth before hosting this for more than one person.
