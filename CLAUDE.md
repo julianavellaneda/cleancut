@@ -499,6 +499,13 @@ System dependency: `brew install ffmpeg`.
   browser's activate-on-space would otherwise fire alongside play/pause. `WaveformHandle` exposes
   `playClip`, `togglePlayPause` and `seekTo` (which the transcript panel drives); the auto-pause timer for `playClip` is held in a ref and
   cleared per call, since a keyboard-driven clip is easy to retrigger mid-playback.
+  Both halves are pinned by tests: `app/jobs/[id]/keyboard.test.tsx` for the bindings and the three
+  guards, `components/Waveform.test.tsx` for the handle's arithmetic. The waveform test mocks
+  `wavesurfer.js` (jsdom cannot decode audio) but the *page* test mocks `Waveform` as a real
+  `forwardRef` exposing the three handle methods as spies — a plain `<div>` mock lets `Space` and
+  `P` pass by calling nothing at all. Every method guards on `duration === 0`, which is the state
+  until WaveSurfer emits `ready`: without it a clip played before the file loaded divided by zero
+  and seeked to `NaN`.
 
 ## Conventions
 
