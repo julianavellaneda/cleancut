@@ -74,6 +74,20 @@ class Violation(Base):
     reasoning = Column(Text, nullable=True)  # AI explanation
     status = Column(String, default="pending")  # pending, accepted, rejected
     action = Column(String, default="cut")  # cut, mute
+    # Why this suggestion was left pending on a job that asked for everything to
+    # be applied. `_is_pre_accepted` reads the same two flags off the detector's
+    # dataclass before the row is written; keeping them here is what lets the
+    # reviewer see the answer, rather than being handed a queue of pending rows
+    # on an `auto_fix` job with no way to tell which ones the system itself was
+    # unsure about. Not the analyzer's confidence in the *finding* - both mean
+    # "not safe to apply with nobody in the room".
+    #
+    #  - is_approximate: the quote could not be placed against the transcript,
+    #    so the span is the model's estimate rather than a measurement.
+    #  - is_ambiguous: the word is only sometimes what the detector took it for
+    #    ("like" as a comparison, "you know" as a real question).
+    is_approximate = Column(Boolean, default=False, nullable=False)
+    is_ambiguous = Column(Boolean, default=False, nullable=False)
 
     job = relationship("Job", back_populates="violations")
 

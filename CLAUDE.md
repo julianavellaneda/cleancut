@@ -195,7 +195,9 @@ CREATE TABLE violations (
     severity TEXT,                     -- high, medium, low
     reasoning TEXT,
     status TEXT DEFAULT 'pending',     -- pending, accepted, rejected
-    action TEXT DEFAULT 'cut'          -- cut, mute
+    action TEXT DEFAULT 'cut',         -- cut, mute
+    is_approximate BOOLEAN DEFAULT 0,  -- span is the model's estimate, not a measurement
+    is_ambiguous BOOLEAN DEFAULT 0     -- the word is only sometimes a filler
 );
 
 CREATE TABLE tasks (                   -- the durable half of the worker queue
@@ -212,10 +214,13 @@ CREATE TABLE tasks (                   -- the durable half of the worker queue
 );
 ```
 
-Schema changes to `jobs` go in `database._apply_migrations()` — a hand-rolled additive migration run
-on every startup. Add a column there and cover it in `backend/tests/test_migrations.py`. A whole
-new *table* needs no entry there: `init_db`'s `create_all` picks it up on an existing database
-(`tasks` is the worked example, pinned in the same test module).
+Schema changes go in `database._apply_migrations()` — a hand-rolled additive migration run on every
+startup, which dispatches to one helper per table (`_migrate_jobs`, `_migrate_violations`). Each
+table is asked about separately and a missing one is skipped, not a reason to stop: a single early
+return over `jobs` used to mean no other table's columns were ever checked. Add a column there and
+cover it in `backend/tests/test_migrations.py`. A whole new *table* needs no entry there: `init_db`'s
+`create_all` picks it up on an existing database (`tasks` is the worked example, pinned in the same
+test module).
 
 ## Environment
 
@@ -293,6 +298,18 @@ System dependency: `brew install ffmpeg`.
   them unreviewed; VAD makes the same mistake, since it answers the same question. If the level pass
   cannot run, silence detection is **skipped** and the job carries a warning - never downgraded back
   to gaps.
+- **Review flags** (`violations.is_approximate` / `is_ambiguous`): the two reasons a suggestion is
+  never applied unreviewed, as columns rather than as prose. `worker._is_pre_accepted` stays the
+  single owner of "may this be applied unreviewed" and reads both flags identically; the columns
+  exist so the reviewer can see *which* rows the system doubted, which is the half that was missing
+  — an `auto_fix` job arrived as a list of accepted rows with a few pending ones in it and nothing
+  saying why. The worker copies them off the detector's dataclass onto the row, and every surface
+  renders them for itself: a header badge plus one sentence in `ViolationCard`, a `⚠` in
+  `ViolationList`, a `Check:` line in the analysis CLI. They are deliberately **not** on
+  `ViolationUpdate` — a client that could clear a flag could talk the next `Clean All` into a cut
+  the detector never stood behind. `reasoning` is now only ever the detector's own words; the
+  warning used to be prepended to it, where no reader could tell the two apart.
+
 - **decode_pcm_mono** (`services/media_editor.py`): one shared FFmpeg decode to 8 kHz mono f32le,
   used by both the waveform peaks and the level pass. Do not add a second decode. It returns a
   **read-only** `np.frombuffer` view over FFmpeg's stdout rather than a copy — an hour of audio is

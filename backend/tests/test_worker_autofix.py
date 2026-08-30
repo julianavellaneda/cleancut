@@ -312,6 +312,44 @@ def test_auto_scrub_leaves_an_ambiguous_filler_pending(run_job):
     assert [row.status for row in _rows(job_id)] == ["pending"]
 
 
+# --- and the reviewer is told which ones those were ---------------------------
+#
+# Holding a suggestion back is only half the promise. Both flags used to live on
+# the detector's dataclass and die there, so an `auto_fix` job arrived at the
+# review screen as a list of accepted rows with a few pending ones in it and
+# nothing on the row saying why. They are columns now.
+
+def test_the_flag_that_held_a_suggestion_back_is_recorded_on_the_row(run_job):
+    job_id = run_job(
+        llm_violations=[
+            _violation(1.0, 2.0, "Income Claims", "cut"),
+            _approximate(5.0, 6.0, "Income Claims", "cut"),
+        ],
+        scrubber_violations=[_ambiguous(9.0, 9.5, "Filler Word", "cut")],
+        auto_fix=True,
+        auto_scrub=True,
+    )
+
+    flags = {
+        (row.start_time): (bool(row.is_approximate), bool(row.is_ambiguous))
+        for row in _rows(job_id)
+    }
+    assert flags == {
+        1.0: (False, False),
+        5.0: (True, False),
+        9.0: (False, True),
+    }
+
+
+def test_a_suggestion_nobody_doubted_carries_neither_flag(run_job):
+    """The default has to be false, not null - the API returns a boolean."""
+    job_id = run_job(llm_violations=[_violation(1.0, 2.0, "Income Claims", "cut")])
+
+    row = _rows(job_id)[0]
+    assert row.is_approximate is False
+    assert row.is_ambiguous is False
+
+
 def test_an_ambiguous_filler_is_not_rendered_into_the_export(run_job):
     run_job(
         scrubber_violations=[

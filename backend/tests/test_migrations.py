@@ -13,6 +13,9 @@ Two generations of schema drift are covered here:
    left NULL because it cannot be reconstructed without re-transcribing.
 5. A database from before exports were revision-tracked must gain
    `edit_revision` (0) and `export_revision` (NULL, "provenance unknown").
+6. A database from before the review flags were columns must gain
+   `is_approximate` and `is_ambiguous` on **violations** - the first migration
+   that touches a second table.
 """
 
 import sqlite3
@@ -41,6 +44,22 @@ CREATE TABLE jobs (
 )
 """
 
+LEGACY_VIOLATIONS_TABLE = """
+CREATE TABLE violations (
+    id TEXT PRIMARY KEY,
+    job_id TEXT REFERENCES jobs(id),
+    text TEXT NOT NULL,
+    start_time REAL NOT NULL,
+    end_time REAL NOT NULL,
+    label TEXT,
+    rule_violated TEXT,
+    severity TEXT,
+    reasoning TEXT,
+    status TEXT DEFAULT 'pending',
+    action TEXT DEFAULT 'cut'
+)
+"""
+
 BSM_JOBS_TABLE = LEGACY_JOBS_TABLE.replace(
     "    waveform_data TEXT\n",
     "    waveform_data TEXT,\n    bsm_mode BOOLEAN DEFAULT 0\n",
@@ -50,7 +69,8 @@ BSM_JOBS_TABLE = LEGACY_JOBS_TABLE.replace(
 def _build_db(tmp_path, monkeypatch, name, create_sql, rows):
     db_path = tmp_path / name
     conn = sqlite3.connect(db_path)
-    conn.execute(create_sql)
+    for statement in ([create_sql] if isinstance(create_sql, str) else create_sql):
+        conn.execute(statement)
     for sql in rows:
         conn.execute(sql)
     conn.commit()
@@ -86,8 +106,28 @@ def bsm_db(tmp_path, monkeypatch):
     engine.dispose()
 
 
+@pytest.fixture
+def legacy_violations_db(tmp_path, monkeypatch):
+    """A database from before the review flags were columns on `violations`."""
+    engine = _build_db(
+        tmp_path, monkeypatch, "violations.db",
+        [LEGACY_JOBS_TABLE, LEGACY_VIOLATIONS_TABLE],
+        [
+            "INSERT INTO jobs (id, filename, status) VALUES ('j', 'a.mp3', 'completed')",
+            "INSERT INTO violations (id, job_id, text, start_time, end_time, status) "
+            "VALUES ('v', 'j', 'like', 1.0, 1.2, 'accepted')",
+        ],
+    )
+    yield engine
+    engine.dispose()
+
+
 def _columns(engine):
     return {c["name"] for c in inspect(engine).get_columns("jobs")}
+
+
+def _violation_columns(engine):
+    return {c["name"] for c in inspect(engine).get_columns("violations")}
 
 
 def test_legacy_db_is_missing_the_column(legacy_db):
@@ -211,6 +251,52 @@ def test_revision_column_migration_is_idempotent(legacy_db):
     database._apply_migrations()
     database._apply_migrations()
     assert {"edit_revision", "export_revision"} <= _columns(legacy_db)
+
+
+def test_legacy_db_is_missing_the_review_flag_columns(legacy_violations_db):
+    """Precondition for the review-flag migration below."""
+    assert "is_approximate" not in _violation_columns(legacy_violations_db)
+    assert "is_ambiguous" not in _violation_columns(legacy_violations_db)
+
+
+def test_migration_adds_the_review_flag_columns(legacy_violations_db):
+    database._apply_migrations()
+    assert {"is_approximate", "is_ambiguous"} <= _violation_columns(legacy_violations_db)
+
+
+def test_existing_suggestions_carry_no_review_flags(legacy_violations_db):
+    """
+    Nothing recorded the flag when these rows were written, so false is the
+    only honest answer: a true would put "check this one" on a suggestion no
+    detector ever doubted, and on an accepted row it would be a warning about
+    a decision already made.
+    """
+    database._apply_migrations()
+    with legacy_violations_db.begin() as conn:
+        row = conn.execute(
+            text("SELECT is_approximate, is_ambiguous FROM violations WHERE id = 'v'")
+        ).fetchone()
+    assert not row[0]
+    assert not row[1]
+
+
+def test_review_flag_migration_is_idempotent(legacy_violations_db):
+    database._apply_migrations()
+    database._apply_migrations()
+    assert {"is_approximate", "is_ambiguous"} <= _violation_columns(legacy_violations_db)
+
+
+def test_a_database_with_no_violations_table_still_migrates_jobs(legacy_db):
+    """
+    The two tables are asked about separately. Before this, one early return
+    covered the whole function, so a table missing from a database was a reason
+    to stop rather than a reason to skip.
+    """
+    assert "violations" not in inspect(legacy_db).get_table_names()
+
+    database._apply_migrations()
+
+    assert "preset" in _columns(legacy_db)
 
 
 def test_bsm_mode_rows_are_backfilled_to_a_preset(bsm_db):

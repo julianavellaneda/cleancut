@@ -60,6 +60,29 @@ export function ViolationList({
     );
   }
 
+  /**
+   * A mark on the rows the server itself was unsure about.
+   *
+   * This is the "at a glance" half of the two flags: on an auto_fix job the
+   * sidebar is otherwise a list of accepted rows with a few pending ones in it
+   * and no visible reason why those few were held back.
+   */
+  function getCautionPill(v: Violation) {
+    if (!v.is_approximate && !v.is_ambiguous) return null;
+    const reason = v.is_approximate
+      ? "Approximate span - the quote could not be matched to the transcript"
+      : "Also an ordinary word - check before cutting";
+    return (
+      <span
+        title={reason}
+        aria-label={reason}
+        className="text-[10px] leading-none text-amber-600 dark:text-amber-400"
+      >
+        ⚠
+      </span>
+    );
+  }
+
   function getSeverityPill(severity: string | null) {
     if (!severity) return null;
     const level = severity.toLowerCase();
@@ -144,6 +167,7 @@ export function ViolationList({
                         {v.status === "accepted" ? "✓" : "✗"}
                       </span>
                     )}
+                    {getCautionPill(v)}
                     {getSeverityPill(v.severity)}
                     {getActionBadge(v.action)}
                   </div>

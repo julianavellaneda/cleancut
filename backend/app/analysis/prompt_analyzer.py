@@ -115,12 +115,6 @@ _MIN_FUZZY_MATCH_RATIO = 0.6
 # label and already overlap in time.
 _DUPLICATE_TEXT_RATIO = 0.75
 
-# What a reviewer is told about a suggestion whose quote could not be placed.
-_APPROXIMATE_NOTE = (
-    "[Approximate placement: this quote could not be matched to the transcript, "
-    "so the span is the model's own estimate. Check it before accepting.]"
-)
-
 # Words in an editing instruction that mean "leave it in place and silence it"
 # rather than "take it out".
 _REDACTION_HINTS = (
@@ -862,20 +856,17 @@ IMPORTANT:
                 action = v.get("action") or prompt_default_action
             action = action.strip().lower()
 
-            reasoning = v.get("reasoning", "")
-            if not aligned:
-                # Said in the one field the reviewer already reads. Without a
-                # column of its own, this is how an unplaced marker admits on
-                # screen that it is a guess.
-                reasoning = f"{_APPROXIMATE_NOTE} {reasoning}".strip()
-
             violations.append(Violation(
                 text=text,
                 start_time=start_time,
                 end_time=end_time,
                 label=label,
                 action=action,
-                reasoning=reasoning,
+                # The model's own words only. That an unplaced quote is a guess
+                # is carried by `is_approximate`, which every surface renders
+                # for itself; prepending it here made the warning impossible to
+                # tell apart from the reasoning it was glued to.
+                reasoning=v.get("reasoning", ""),
                 rule_violated=rule_violated,
                 severity=severity,
                 is_approximate=not aligned,

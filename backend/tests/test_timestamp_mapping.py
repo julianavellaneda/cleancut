@@ -294,7 +294,7 @@ def test_a_usable_model_timestamp_is_still_honoured(analyzer):
 
 # --- an unplaced quote says so ----------------------------------------------
 
-def test_an_unplaced_quote_is_marked_approximate_and_says_why(analyzer):
+def test_an_unplaced_quote_is_marked_approximate(analyzer):
     transcript = TranscriptResult(
         segments=[_segment("you could quit your job by Christmas", 11.0, 14.0)],
         language="en",
@@ -310,9 +310,10 @@ def test_an_unplaced_quote_is_marked_approximate_and_says_why(analyzer):
     )
 
     assert mapped[0].is_approximate is True
-    assert "Approximate placement" in mapped[0].reasoning
-    # The model's own reasoning is kept, not replaced.
-    assert "Promises a specific outcome." in mapped[0].reasoning
+    # The flag carries the warning; `reasoning` stays the model's own words.
+    # It used to be prefixed with a sentence about placement, which no reader
+    # could tell apart from the explanation it was glued to.
+    assert mapped[0].reasoning == "Promises a specific outcome."
 
 
 def test_a_placed_quote_is_not_marked_approximate(analyzer):

@@ -497,6 +497,8 @@ def _process_reanalysis(job_id: str, prompt: str | None = None, preset: str | No
                 severity=getattr(v, "severity", None),
                 action=v.action,
                 reasoning=v.reasoning,
+                is_approximate=bool(getattr(v, "is_approximate", False)),
+                is_ambiguous=bool(getattr(v, "is_ambiguous", False)),
                 # Never pre-accepted. `auto_fix` is a choice made about the
                 # upload; a re-analysis is a choice made in the review screen,
                 # where the whole point is to look at what came back.
@@ -699,6 +701,11 @@ def _process_job_sequentially(job_id: str, file_path: str):
                 severity=getattr(v, "severity", None),
                 action=v.action,
                 reasoning=v.reasoning,
+                # The same two flags `_is_pre_accepted` just consulted, kept on
+                # the row so the reviewer can see why this one is still pending
+                # on a job that asked for everything to be applied.
+                is_approximate=bool(getattr(v, "is_approximate", False)),
+                is_ambiguous=bool(getattr(v, "is_ambiguous", False)),
                 status=status
             )
             db.add(violation)

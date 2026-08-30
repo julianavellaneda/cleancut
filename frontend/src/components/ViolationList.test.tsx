@@ -31,6 +31,8 @@ function violation(overrides: Partial<Violation> = {}): Violation {
     reasoning: null,
     status: "pending",
     action: "cut",
+    is_approximate: false,
+    is_ambiguous: false,
     ...overrides,
   };
 }
@@ -121,6 +123,22 @@ describe("the list itself", () => {
     await userEvent.click(screen.getByText(/uh/));
 
     expect(onSelect).toHaveBeenCalledWith(rows[1]);
+  });
+
+  it("marks the rows the detector was unsure about", () => {
+    // The glance half of the two flags. Without it an auto_fix job's sidebar
+    // is a list of accepted rows with a few pending ones in it and no visible
+    // reason why those few were held back.
+    renderList({
+      violations: [
+        violation({ text: "um" }),
+        violation({ text: "like", is_ambiguous: true }),
+        violation({ text: "quit your job", is_approximate: true }),
+      ],
+    });
+
+    expect(screen.getByLabelText(/ordinary word/i)).toBeInTheDocument();
+    expect(screen.getByLabelText(/could not be matched/i)).toBeInTheDocument();
   });
 
   it("says so when the analysis came back with nothing", () => {

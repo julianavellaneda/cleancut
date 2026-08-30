@@ -51,7 +51,9 @@ def list_violations(job_id: str, db: Session = Depends(get_db)):
             severity=v.severity,
             reasoning=v.reasoning,
             status=v.status,
-            action=v.action
+            action=v.action,
+            is_approximate=bool(v.is_approximate),
+            is_ambiguous=bool(v.is_ambiguous),
         )
         for v in violations
     ]

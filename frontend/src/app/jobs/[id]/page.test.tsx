@@ -39,6 +39,8 @@ const violation: Violation = {
   reasoning: "an earnings claim",
   status: "accepted",
   action: "cut",
+  is_approximate: false,
+  is_ambiguous: false,
 };
 
 function job(overrides: Partial<Job> = {}): Job {

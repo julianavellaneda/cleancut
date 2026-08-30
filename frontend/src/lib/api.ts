@@ -60,6 +60,17 @@ export interface Violation {
   reasoning: string | null;
   status: "pending" | "accepted" | "rejected";
   action: "cut" | "mute";
+  /**
+   * Why the server refused to apply this one unreviewed. Both are display
+   * only: whether a suggestion may be pre-accepted is decided server-side, and
+   * a second copy of that rule here is how the two would drift apart.
+   *
+   * `is_approximate` - the quote could not be matched to the transcript, so
+   * the span is the model's estimate. `is_ambiguous` - the word is only
+   * sometimes a filler ("like", "you know").
+   */
+  is_approximate: boolean;
+  is_ambiguous: boolean;
 }
 
 /** One line of the stored transcript, with the timing the panel seeks to. */

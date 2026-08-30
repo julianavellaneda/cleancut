@@ -30,6 +30,12 @@ class ViolationResponse(ViolationBase):
     job_id: str
     status: str
     action: str
+    # The two reasons a suggestion is never pre-accepted, as fields rather than
+    # as prose inside `reasoning`. The server stays the single owner of "may
+    # this be applied unreviewed" (`worker._is_pre_accepted`); these are here so
+    # the review UI can say *which* suggestions the system was unsure about.
+    is_approximate: bool = False
+    is_ambiguous: bool = False
 
     class Config:
         from_attributes = True

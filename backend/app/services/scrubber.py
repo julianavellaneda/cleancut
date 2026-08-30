@@ -273,12 +273,9 @@ class Scrubber:
                 if ambiguous and Scrubber._has_disfluency_cue(words, i, i + match_len):
                     ambiguous = False
 
+                # What was found, and nothing about how sure of it we are:
+                # that is `is_ambiguous`, which each surface renders itself.
                 reasoning = f"Detected common filler word '{matched}'."
-                if ambiguous:
-                    reasoning += (
-                        f" '{matched}' is also an ordinary word, and nothing around it "
-                        "marks this one as a hesitation - check before cutting."
-                    )
 
                 run = words[i:i + match_len]
                 fillers.append(Violation(
@@ -309,10 +306,6 @@ class Scrubber:
                 # "like" would otherwise carry the "like" into an auto-cut.
                 current.is_ambiguous = current.is_ambiguous or next_v.is_ambiguous
                 current.reasoning = "Detected multiple consecutive filler words."
-                if current.is_ambiguous:
-                    current.reasoning += (
-                        " One of them is also an ordinary word - check before cutting."
-                    )
             else:
                 merged.append(current)
                 current = next_v

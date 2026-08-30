@@ -102,7 +102,6 @@ def test_an_unevidenced_like_is_suggested_but_not_trusted():
 
     assert [v.text for v in found] == ["like"]
     assert found[0].is_ambiguous is True
-    assert "ordinary word" in found[0].reasoning
 
 
 def test_a_comma_wrapped_like_is_evidenced():
@@ -153,7 +152,6 @@ def test_a_merged_span_is_only_as_safe_as_its_least_certain_member():
 
     assert len(found) == 1
     assert found[0].is_ambiguous is True
-    assert "check before cutting" in found[0].reasoning
 
 
 @pytest.mark.parametrize("spelling", ["Um,", "uh", "Hmm", "ah", "er"])

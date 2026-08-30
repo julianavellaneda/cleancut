@@ -13,6 +13,12 @@ word-level timestamps, analyzes the transcript with an LLM, and renders accepted
 The system assists human reviewers rather than replacing them. The AI flags segments with reasoning
 and timestamps; the user decides whether to cut, mute, or ignore each one.
 
+Even under `auto_fix`/`auto_scrub`, two kinds of suggestion are always left pending: one whose quote
+could not be placed against the transcript (`violations.is_approximate` — the span is the model's
+estimate) and one matched on a spelling that is only sometimes a filler (`is_ambiguous` — "like",
+"you know"). `worker._is_pre_accepted` is the single owner of that rule; the columns exist so the
+review UI can show *which* rows were held back, and `reasoning` stays the detector's own words.
+
 ### Technology Stack
 - **Backend**: FastAPI (Python 3.10+), SQLAlchemy (SQLite), `faster-whisper` (transcription),
   FFmpeg (editing), OpenAI or Anthropic (analysis, selected by `CLEANCUT_MODEL`).

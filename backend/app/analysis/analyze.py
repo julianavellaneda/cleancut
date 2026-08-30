@@ -43,7 +43,13 @@ def print_header(text: str) -> None:
 
 
 def print_marker(v, index: int) -> None:
-    """Print a formatted marker."""
+    """
+    Print a formatted marker.
+
+    The two "not without a human" flags are printed as their own line rather
+    than read out of `reasoning`: they are fields on the finding, and the CLI
+    renders them the way the review screen renders its badge.
+    """
     action_colors = {
         "cut": "\033[91m",    # Red
         "mute": "\033[93m",  # Yellow
@@ -56,6 +62,14 @@ def print_marker(v, index: int) -> None:
     print(f"    Time: {v.start_time:.1f}s - {v.end_time:.1f}s")
     print(f"    Text: \"{v.text}\"")
     print(f"    Reason: {v.reasoning}")
+
+    yellow = "\033[93m"
+    if getattr(v, "is_approximate", False):
+        print(f"    {yellow}Check: this quote could not be matched to the transcript, "
+              f"so the span is an estimate.{reset}")
+    if getattr(v, "is_ambiguous", False):
+        print(f"    {yellow}Check: this is also an ordinary word, and nothing around it "
+              f"marks it as a hesitation.{reset}")
 
 
 def print_partial_warning(result: AnalysisResult) -> None:
