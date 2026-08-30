@@ -63,7 +63,7 @@ def run_job(monkeypatch, tmp_path):
              auto_scrub=False, media_type="audio"):
         RecordingEditor.last = None
         monkeypatch.setattr(exports, "MediaEditor", RecordingEditor)
-        monkeypatch.setattr(worker, "EXPORT_DIR", tmp_path)
+        monkeypatch.setattr(exports, "EXPORT_DIR", tmp_path)
 
         transcript = TranscriptResult(segments=[], language="en", duration=60.0)
 

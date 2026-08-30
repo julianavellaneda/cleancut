@@ -14,12 +14,13 @@ from ..auth import require_admin
 from ..database import get_db
 from ..models import Job, Task, Violation
 from ..schemas import AdminStats
+from ..services import exports
 
 router = APIRouter()
 
-# Directories
+# Directories. `services.exports` owns the export directory; it is read through
+# that module at call time so a test only has to patch one name.
 UPLOAD_DIR = Path(__file__).parent.parent.parent / "uploads"
-EXPORT_DIR = Path(__file__).parent.parent.parent / "exports"
 
 
 def _get_dir_size_mb(directory: Path) -> float:
@@ -52,8 +53,8 @@ def get_admin_stats(db: Session = Depends(get_db)):
     
     # Storage stats
     uploads_size = _get_dir_size_mb(UPLOAD_DIR)
-    exports_size = _get_dir_size_mb(EXPORT_DIR)
-    files_count = _get_file_count(UPLOAD_DIR) + _get_file_count(EXPORT_DIR)
+    exports_size = _get_dir_size_mb(exports.EXPORT_DIR)
+    files_count = _get_file_count(UPLOAD_DIR) + _get_file_count(exports.EXPORT_DIR)
     
     return AdminStats(
         total_jobs=total_jobs,
@@ -89,7 +90,7 @@ def clear_storage():
     """Delete all files from uploads and exports directories."""
     deleted_count = 0
     try:
-        for directory in [UPLOAD_DIR, EXPORT_DIR]:
+        for directory in [UPLOAD_DIR, exports.EXPORT_DIR]:
             if not directory.exists():
                 continue
             for f in directory.glob("**/*"):

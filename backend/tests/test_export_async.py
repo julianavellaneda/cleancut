@@ -62,8 +62,7 @@ def enqueued(monkeypatch):
 @pytest.fixture
 def client(monkeypatch, tmp_path, enqueued):
     monkeypatch.setattr(exports, "MediaEditor", RecordingEditor)
-    monkeypatch.setattr(audio_routes, "EXPORT_DIR", tmp_path)
-    monkeypatch.setattr(worker, "EXPORT_DIR", tmp_path)
+    monkeypatch.setattr(exports, "EXPORT_DIR", tmp_path)
     monkeypatch.setattr(worker, "UPLOAD_DIR", tmp_path)
     RecordingEditor.last = None
     return TestClient(app)

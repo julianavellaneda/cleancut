@@ -52,8 +52,7 @@ def client(monkeypatch, tmp_path):
     # The editor is swapped on `exports`, the single module that now owns
     # rendering for both the queued export and the worker's auto-fix branch.
     monkeypatch.setattr(exports, "MediaEditor", RecordingEditor)
-    monkeypatch.setattr(audio_routes, "EXPORT_DIR", tmp_path)
-    monkeypatch.setattr(worker, "EXPORT_DIR", tmp_path)
+    monkeypatch.setattr(exports, "EXPORT_DIR", tmp_path)
     monkeypatch.setattr(worker, "UPLOAD_DIR", tmp_path)
     # Keep the live worker thread out of it; the tests drive the export directly.
     monkeypatch.setattr(audio_routes, "enqueue_export", lambda *a, **k: None)

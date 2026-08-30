@@ -37,11 +37,10 @@ from ..services.worker import enqueue_job, enqueue_reanalysis
 
 router = APIRouter()
 
-# Directories
+# Directories. The export directory is `services.exports`'s to own and to
+# create; this route only ever asks it to delete.
 UPLOAD_DIR = Path(__file__).parent.parent.parent / "uploads"
 UPLOAD_DIR.mkdir(exist_ok=True)
-EXPORT_DIR = Path(__file__).parent.parent.parent / "exports"
-EXPORT_DIR.mkdir(exist_ok=True)
 
 
 def _discard_job(db: Session, job: Job, file_path: Path) -> None:
@@ -317,7 +316,7 @@ def delete_job(job_id: str, db: Session = Depends(get_db)):
     if not job:
         raise HTTPException(status_code=404, detail="Job not found")
 
-    delete_job_files(job_id, UPLOAD_DIR, EXPORT_DIR)
+    delete_job_files(job_id, UPLOAD_DIR)
 
     # Delete job (cascades to violations)
     db.delete(job)

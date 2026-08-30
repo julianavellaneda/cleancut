@@ -15,6 +15,7 @@ from fastapi.testclient import TestClient
 from pydantic import ValidationError
 
 import app.routes.audio as audio_routes
+import app.services.exports as exports
 from app.analysis.prompt_analyzer import PromptAnalyzer, _validated_chunk_size
 from app.analysis.transcriber import TranscriptFormatError, load_transcript
 from app.database import SessionLocal, init_db
@@ -33,7 +34,7 @@ def db_ready():
 def client(monkeypatch, tmp_path):
     """The API with the render queue stubbed out - nothing here should render."""
     monkeypatch.setattr(audio_routes, "enqueue_export", lambda job_id, edit_action=None: None)
-    monkeypatch.setattr(audio_routes, "EXPORT_DIR", tmp_path)
+    monkeypatch.setattr(exports, "EXPORT_DIR", tmp_path)
     return TestClient(app)
 
 

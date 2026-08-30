@@ -54,11 +54,13 @@ class RecordingEditor:
 
 @pytest.fixture
 def export_dir(monkeypatch, tmp_path):
-    """Point every module that knows where exports live at one tmp directory."""
+    """Point the app at one tmp export directory.
+
+    One setattr, because `services.exports` is the only module that knows where
+    exports live - the routes and the worker read it through that module.
+    """
     monkeypatch.setattr(exports, "MediaEditor", RecordingEditor)
     monkeypatch.setattr(exports, "EXPORT_DIR", tmp_path)
-    monkeypatch.setattr(audio_routes, "EXPORT_DIR", tmp_path)
-    monkeypatch.setattr(worker, "EXPORT_DIR", tmp_path)
     monkeypatch.setattr(worker, "UPLOAD_DIR", tmp_path)
     RecordingEditor.last = None
     return tmp_path

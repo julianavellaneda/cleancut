@@ -341,9 +341,17 @@ System dependency: `brew install ffmpeg`.
   `routes/violations.ACTIONS` is that same tuple, and `ExportRequest.edit_action` validates against
   it. `partition_edits` reads anything that is not `"mute"` as a cut, so an unvalidated override
   turned a typo into a **cut** of every accepted span — the destructive half of the pair.
-- **exports.py**: the single owner of the `{job_id}_edited{ext}` naming rule, the cut/mute
-  partition, and the render call. Both the queued export and the worker's auto-fix branch go
-  through it; do not re-derive an export path anywhere else. Tests swap `exports.MediaEditor`.
+- **exports.py**: the single owner of `EXPORT_DIR`, the `{job_id}_edited{ext}` naming rule, the
+  cut/mute partition, and the render call. Both the queued export and the worker's auto-fix branch
+  go through it; do not re-derive an export path anywhere else. `EXPORT_DIR` used to be six
+  copies of `Path(__file__).parent.parent.parent / "exports"` — routes, worker, retention — so
+  where exports lived depended on how deep the file deriving it happened to sit, and a test had to
+  patch five modules to move it. Every consumer now reads it **through this module at call time**
+  (`exports.EXPORT_DIR`, or `export_dir(explicit)` for the functions that still take an override,
+  and `ensure_export_dir()` before a render). Never `from .exports import EXPORT_DIR`, and never
+  bind it as a default argument: both snapshot the value at import and put the one patch back out
+  of reach — which is what `retention.job_files` did. `tests/test_export_dir_owner.py` pins both
+  rules with an AST pass. Tests swap `exports.MediaEditor` and `exports.EXPORT_DIR`.
 - **Export staleness** (`exports.invalidate_export`, `exports.export_is_stale`): an export is only
   current for the edit list it was rendered from, so the job carries two counters -
   `edit_revision`, bumped whenever the *accepted* set moves, and `export_revision`, the revision the

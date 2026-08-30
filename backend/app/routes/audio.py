@@ -21,10 +21,9 @@ from ..services.worker import enqueue_export
 
 router = APIRouter()
 
-# Directories
+# Directories. The export directory lives in `services.exports`, which is also
+# what creates it before a render; nothing here writes into it.
 UPLOAD_DIR = Path(__file__).parent.parent.parent / "uploads"
-EXPORT_DIR = Path(__file__).parent.parent.parent / "exports"
-EXPORT_DIR.mkdir(exist_ok=True)
 
 
 MEDIA_TYPES = {
@@ -72,7 +71,8 @@ def _get_export_path(job_id: str, job: Job) -> Path | None:
     """Find the exported file for a job, or None if no export has been generated."""
     audio_path = _get_audio_path(job_id)
     export_ext = exports.export_suffix(job, audio_path) if audio_path else ".mp3"
-    for candidate in (EXPORT_DIR / f"{job_id}_edited{export_ext}", EXPORT_DIR / f"{job_id}_edited.mp3"):
+    export_dir = exports.EXPORT_DIR
+    for candidate in (export_dir / f"{job_id}_edited{export_ext}", export_dir / f"{job_id}_edited.mp3"):
         if candidate.exists():
             return candidate
     return None

@@ -18,6 +18,7 @@ from fastapi import HTTPException
 from fastapi.testclient import TestClient
 
 import app.routes.admin as admin_routes
+import app.services.exports as export_service
 from app.auth import (
     ADMIN_TOKEN_HEADER,
     ALLOW_UNAUTHENTICATED_ADMIN_VAR,
@@ -46,7 +47,7 @@ def client(monkeypatch, tmp_path):
     uploads.mkdir()
     exports.mkdir()
     monkeypatch.setattr(admin_routes, "UPLOAD_DIR", uploads)
-    monkeypatch.setattr(admin_routes, "EXPORT_DIR", exports)
+    monkeypatch.setattr(export_service, "EXPORT_DIR", exports)
     return TestClient(app)
 
 

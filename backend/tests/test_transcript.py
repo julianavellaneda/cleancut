@@ -203,7 +203,7 @@ def run_job(monkeypatch, tmp_path):
                 )
 
         monkeypatch.setattr(worker, "get_processor", lambda: StubProcessor())
-        monkeypatch.setattr(worker, "EXPORT_DIR", tmp_path)
+        monkeypatch.setattr(exports, "EXPORT_DIR", tmp_path)
         monkeypatch.setattr(
             worker, "decode_pcm_mono", lambda path, sr=8000: np.zeros(sr, dtype=np.float32)
         )

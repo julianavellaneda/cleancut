@@ -20,11 +20,14 @@ from typing import Iterator, Mapping
 
 from ..database import SessionLocal
 from ..models import Job
+from . import exports
 
 logger = logging.getLogger(__name__)
 
 UPLOAD_DIR = Path(__file__).parent.parent.parent / "uploads"
-EXPORT_DIR = Path(__file__).parent.parent.parent / "exports"
+# The export directory belongs to `services.exports`. It is resolved per call
+# rather than bound as a default here, since a default argument would snapshot
+# the value at import and quietly ignore the owner.
 
 DEFAULT_SWEEP_MINUTES = 15.0
 
@@ -109,7 +112,7 @@ def sweep_interval_seconds(env: Mapping[str, str] | None = None) -> float:
 def job_files(
     job_id: str,
     upload_dir: Path = UPLOAD_DIR,
-    export_dir: Path = EXPORT_DIR,
+    export_dir: Path | None = None,
 ) -> Iterator[Path]:
     """
     Every file on disk belonging to a job: the upload and any export.
@@ -118,13 +121,13 @@ def job_files(
     the upload validator learns about later cannot silently escape deletion.
     """
     yield from sorted(upload_dir.glob(f"{job_id}.*"))
-    yield from sorted(export_dir.glob(f"{job_id}_edited.*"))
+    yield from sorted(exports.export_dir(export_dir).glob(f"{job_id}_edited.*"))
 
 
 def delete_job_files(
     job_id: str,
     upload_dir: Path = UPLOAD_DIR,
-    export_dir: Path = EXPORT_DIR,
+    export_dir: Path | None = None,
 ) -> int:
     """Remove a job's media. Returns the number of files actually unlinked."""
     removed = 0
@@ -149,7 +152,7 @@ def purge_expired(
     max_age_seconds: float,
     now: datetime | None = None,
     upload_dir: Path = UPLOAD_DIR,
-    export_dir: Path = EXPORT_DIR,
+    export_dir: Path | None = None,
 ) -> PurgeReport:
     """
     Delete finished jobs older than ``max_age_seconds``, plus orphaned media.
@@ -188,7 +191,7 @@ def purge_expired(
     db.commit()
 
     live_ids = {row[0] for row in db.query(Job.id).all()}
-    for directory in (upload_dir, export_dir):
+    for directory in (upload_dir, exports.export_dir(export_dir)):
         if not directory.is_dir():
             continue
         for path in sorted(directory.iterdir()):

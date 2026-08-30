@@ -1,10 +1,19 @@
 """
-The one place that knows how an export is named and how edits are partitioned.
+The one place that knows where exports live, how one is named, and how edits
+are partitioned.
 
 Before this module the ``{job_id}_edited{ext}`` convention and the cut/mute
 partition lived in three copies - the sync export route, the worker's auto-fix
 branch, and the "does an export exist" probe - which is exactly the kind of
 duplication that lets two of them drift while the third keeps working.
+
+``EXPORT_DIR`` joined them here for the same reason: six modules each derived
+``Path(__file__).parent.parent.parent / "exports"`` for themselves, so the
+directory's location depended on how deep the file deriving it happened to sit.
+Every caller now reads ``exports.EXPORT_DIR`` **at call time** rather than
+importing the value - that is what lets a test point the whole app at a
+``tmp_path`` by patching one name instead of remembering which five modules
+kept a copy.
 """
 
 import logging
@@ -18,9 +27,30 @@ from .media_editor import MediaEditor
 
 logger = logging.getLogger(__name__)
 
+# The single owner. Read it through this module (``exports.EXPORT_DIR``), never
+# by importing the name or binding it as a default argument - both snapshot the
+# value at import time and put the patch back out of reach.
 EXPORT_DIR = Path(__file__).parent.parent.parent / "exports"
 
 Segment = tuple[float, float]
+
+
+def export_dir(explicit: Path | None = None) -> Path:
+    """
+    The export directory a caller should use: its own, or the configured one.
+
+    Callers that take an ``export_dir`` argument resolve it through here so the
+    override stays available to tests while the default is looked up now rather
+    than at import.
+    """
+    return EXPORT_DIR if explicit is None else explicit
+
+
+def ensure_export_dir(explicit: Path | None = None) -> Path:
+    """:func:`export_dir`, created if it is not there yet."""
+    path = export_dir(explicit)
+    path.mkdir(parents=True, exist_ok=True)
+    return path
 
 # An export the worker has not finished with. The file on disk is mid-write, so
 # invalidation must not delete it - the render itself checks the revision when
@@ -37,9 +67,9 @@ def export_suffix(job: Job, source_path: str | Path) -> str:
     return Path(source_path).suffix if job.media_type == "video" else ".mp3"
 
 
-def export_path_for(job: Job, source_path: str | Path, export_dir: Path) -> Path:
+def export_path_for(job: Job, source_path: str | Path, directory: Path | None = None) -> Path:
     """Where the edited file for ``job`` is written."""
-    return export_dir / f"{job.id}_edited{export_suffix(job, source_path)}"
+    return export_dir(directory) / f"{job.id}_edited{export_suffix(job, source_path)}"
 
 
 def export_filename_for(job: Job, suffix: str) -> str:
@@ -74,7 +104,7 @@ def affects_export(violation, new_status: str | None, new_action: str | None) ->
     )
 
 
-def delete_export_files(job_id: str, export_dir: Path | None = None) -> int:
+def delete_export_files(job_id: str, directory: Path | None = None) -> int:
     """
     Remove whatever export a job has on disk. Returns the count unlinked.
 
@@ -85,10 +115,10 @@ def delete_export_files(job_id: str, export_dir: Path | None = None) -> int:
     test pointing this module at a tmp_path is honoured.
     """
     removed = 0
-    export_dir = EXPORT_DIR if export_dir is None else export_dir
-    if not export_dir.is_dir():
+    directory = export_dir(directory)
+    if not directory.is_dir():
         return removed
-    for path in sorted(export_dir.glob(f"{job_id}_edited.*")):
+    for path in sorted(directory.glob(f"{job_id}_edited.*")):
         try:
             path.unlink()
             removed += 1
@@ -112,7 +142,7 @@ def export_is_stale(job: Job) -> bool:
     return job.export_revision != (job.edit_revision or 0)
 
 
-def invalidate_export(db, job: Job, export_dir: Path | None = None) -> None:
+def invalidate_export(db, job: Job, directory: Path | None = None) -> None:
     """
     Record that the accepted edit set changed, and retire the export it replaced.
 
@@ -128,7 +158,7 @@ def invalidate_export(db, job: Job, export_dir: Path | None = None) -> None:
     """
     job.edit_revision = (job.edit_revision or 0) + 1
     if (job.export_status or "none") not in IN_FLIGHT_EXPORT_STATUSES:
-        delete_export_files(job.id, export_dir)
+        delete_export_files(job.id, directory)
         job.export_status = "none"
         job.export_error = None
         job.export_revision = None

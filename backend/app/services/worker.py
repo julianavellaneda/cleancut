@@ -31,9 +31,9 @@ logger = logging.getLogger(__name__)
 # Job Queue
 job_queue = queue.Queue()
 
-# Directories
+# Directories. The export directory is not one of these: `services.exports`
+# owns it, and is read through at call time so one patch reaches every caller.
 UPLOAD_DIR = Path(__file__).parent.parent.parent / "uploads"
-EXPORT_DIR = Path(__file__).parent.parent.parent / "exports"
 
 
 def _enqueue(task: QueuedTask) -> QueuedTask:
@@ -398,8 +398,8 @@ def _process_export(job_id: str, edit_action: str | None = None):
             .all()
         )
         cuts, mutes = exports.partition_edits(violations, edit_action)
-        export_path = exports.export_path_for(job, source_path, EXPORT_DIR)
-        EXPORT_DIR.mkdir(parents=True, exist_ok=True)
+        exports.ensure_export_dir()
+        export_path = exports.export_path_for(job, source_path)
 
         exports.render_export(str(source_path), export_path, cuts, mutes, job.media_type)
 
@@ -408,7 +408,7 @@ def _process_export(job_id: str, edit_action: str | None = None):
             # The edit list moved under the render. Publishing it would put a
             # download button next to a file that no longer matches the review,
             # which is the exact failure this phase exists to close.
-            exports.delete_export_files(job_id, EXPORT_DIR)
+            exports.delete_export_files(job_id)
             job.export_status = "none"
             job.export_error = None
             job.export_revision = None
@@ -523,7 +523,7 @@ def _process_reanalysis(job_id: str, prompt: str | None = None, preset: str | No
         # Every LLM suggestion the old export was rendered from has just been
         # deleted, decisions included, so whatever sits in exports/ describes an
         # edit list that no longer exists.
-        exports.invalidate_export(db, job, EXPORT_DIR)
+        exports.invalidate_export(db, job)
 
         logger.info(f"Job {job_id} re-analyzed: {len(analysis.violations)} suggestion(s).")
 
@@ -716,7 +716,8 @@ def _process_job_sequentially(job_id: str, file_path: str):
             job.export_status = "exporting"
             db.commit()
 
-            export_path = exports.export_path_for(job, file_path_to_use, EXPORT_DIR)
+            exports.ensure_export_dir()
+            export_path = exports.export_path_for(job, file_path_to_use)
 
             # What gets rendered is exactly what was written as `accepted`
             # above - one predicate, asked twice, so the file on disk cannot
