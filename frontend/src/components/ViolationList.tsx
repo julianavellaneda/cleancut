@@ -131,7 +131,7 @@ export function ViolationList({
         )}
       </div>
 
-      <ScrollArea className="flex-1">
+      <ScrollArea className="min-h-0 flex-1">
         <div className="p-2 space-y-1" role="listbox" aria-label="Suggested edits">
           {violations.length === 0 ? (
             <div className="p-4 text-center text-muted-foreground text-sm">

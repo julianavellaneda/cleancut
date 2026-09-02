@@ -13,12 +13,22 @@ function ScrollArea({
   return (
     <ScrollAreaPrimitive.Root
       data-slot="scroll-area"
-      className={cn("relative", className)}
+      /*
+       * `overflow-hidden` is not decoration - without it the root grows to its
+       * content and nothing ever scrolls - and the flex column is what sizes
+       * the viewport. It used to be sized `size-full`, a *percentage*, which
+       * only resolves against a parent with a specified height; the review
+       * columns are bounded by `max-height`, so 100% fell back to auto, the
+       * viewport grew to its content, and a long list was silently clipped
+       * with no way to reach the rest of it. Flex distributes the root's
+       * *used* height, which is the one that actually exists here.
+       */
+      className={cn("relative flex flex-col overflow-hidden", className)}
       {...props}
     >
       <ScrollAreaPrimitive.Viewport
         data-slot="scroll-area-viewport"
-        className="focus-visible:ring-ring/50 size-full rounded-[inherit] transition-[color,box-shadow] outline-none focus-visible:ring-[3px] focus-visible:outline-1"
+        className="focus-visible:ring-ring/50 w-full min-h-0 flex-1 rounded-[inherit] transition-[color,box-shadow] outline-none focus-visible:ring-[3px] focus-visible:outline-1"
       >
         {children}
       </ScrollAreaPrimitive.Viewport>

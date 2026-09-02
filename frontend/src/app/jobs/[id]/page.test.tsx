@@ -4,7 +4,7 @@
  * Regression: staleness lived in a `exportStale` boolean inside this component.
  * It was set on every edit, which covered the common path, but it was also the
  * *only* record of it - so a reload, a second tab, or the poll replacing the
- * job object put "Download Master" back next to a file rendered from an edit
+ * job object put "Download edited file" back next to a file rendered from an edit
  * list the reviewer had since changed. The server now tracks it as a pair of
  * revisions and the page reads them.
  *
@@ -75,10 +75,18 @@ beforeEach(() => {
   vi.spyOn(api, "getViolations").mockResolvedValue([violation]);
   vi.spyOn(api, "getTranscript").mockResolvedValue(null);
   vi.spyOn(api, "getAudioUrl").mockReturnValue("http://example.test/audio");
+  vi.spyOn(api, "getExportDownloadUrl").mockReturnValue("http://example.test/export");
+  // The header turns the job's preset id into a name with this, so the page
+  // asks for it on every load.
+  vi.spyOn(api, "listPresets").mockResolvedValue([
+    { id: "pii-redaction", name: "PII Redaction", description: "" },
+  ]);
 });
 
-const downloadButton = () => screen.queryByRole("button", { name: "Download Master" });
-const exportButton = () => screen.queryByRole("button", { name: "Export Edited" });
+// A real link once the file exists, so the browser can save it - and the query
+// changing role is the assertion that it stayed one.
+const downloadLink = () => screen.queryByRole("link", { name: "Download edited file" });
+const exportButton = () => screen.queryByRole("button", { name: /^Export \d+ edit/ });
 
 describe("an export whose revision matches the edit set", () => {
   it("offers the download", async () => {
@@ -86,7 +94,7 @@ describe("an export whose revision matches the edit set", () => {
 
     render(<ReviewPage />);
 
-    await waitFor(() => expect(downloadButton()).toBeInTheDocument());
+    await waitFor(() => expect(downloadLink()).toBeInTheDocument());
   });
 });
 
@@ -101,7 +109,7 @@ describe("an export the server has already superseded", () => {
     render(<ReviewPage />);
 
     await waitFor(() => expect(exportButton()).toBeInTheDocument());
-    expect(downloadButton()).not.toBeInTheDocument();
+    expect(downloadLink()).not.toBeInTheDocument();
   });
 });
 
@@ -115,7 +123,7 @@ describe("an export of unknown provenance", () => {
 
     render(<ReviewPage />);
 
-    await waitFor(() => expect(downloadButton()).toBeInTheDocument());
+    await waitFor(() => expect(downloadLink()).toBeInTheDocument());
   });
 });
 
@@ -125,11 +133,11 @@ describe("deciding on an edit after an export finished", () => {
     vi.spyOn(api, "updateViolation").mockResolvedValue({ ...violation, status: "rejected" });
 
     render(<ReviewPage />);
-    await waitFor(() => expect(downloadButton()).toBeInTheDocument());
+    await waitFor(() => expect(downloadLink()).toBeInTheDocument());
 
     await userEvent.click(screen.getByRole("button", { name: "Undo Status" }));
 
-    await waitFor(() => expect(downloadButton()).not.toBeInTheDocument());
+    await waitFor(() => expect(downloadLink()).not.toBeInTheDocument());
   });
 });
 
@@ -181,5 +189,76 @@ describe("an edit made while a render is in flight", () => {
 
     await waitFor(() => expect(api.updateViolation).toHaveBeenCalled());
     expect(screen.getByRole("button", { name: "Exporting…" })).toBeInTheDocument();
+  });
+});
+
+describe("a render that failed", () => {
+  it("puts the reason and the retry in one banner, and nothing in the header", async () => {
+    vi.spyOn(api, "getJob").mockResolvedValue(
+      job({ export_status: "failed", export_error: "ffmpeg exited 1", export_revision: null })
+    );
+    const exportAudio = vi.spyOn(api, "exportAudio").mockResolvedValue({
+      job_id: "job-1", export_filename: "job-1_edited.mp3",
+      message: "queued", export_status: "queued",
+    });
+
+    render(<ReviewPage />);
+
+    await waitFor(() => expect(screen.getByText("ffmpeg exited 1")).toBeInTheDocument());
+    // The retry lives with the explanation rather than being a second export
+    // button in the header saying nothing about why the first one failed.
+    expect(exportButton()).not.toBeInTheDocument();
+
+    await userEvent.click(screen.getByRole("button", { name: "Retry export" }));
+
+    expect(exportAudio).toHaveBeenCalledWith("job-1");
+  });
+});
+
+describe("a completed job carrying a warning", () => {
+  it("renders it without claiming the job failed", async () => {
+    vi.spyOn(api, "getJob").mockResolvedValue(
+      job({ error_message: "Partial analysis: 1 of 4 chunks failed" })
+    );
+
+    render(<ReviewPage />);
+
+    await waitFor(() =>
+      expect(screen.getByText("Partial analysis: 1 of 4 chunks failed")).toBeInTheDocument()
+    );
+    expect(screen.getByText("Heads up")).toBeInTheDocument();
+    // Still the review screen, not the failure screen.
+    expect(downloadLink()).toBeInTheDocument();
+  });
+});
+
+describe("the transcript column", () => {
+  /**
+   * The grid is the layout mechanism, so opening the transcript has to be a
+   * change to the grid rather than a fourth `<aside>` squeezing the middle.
+   * `data-transcript` is what the stylesheet keys the second column set off, so
+   * that attribute is the honest thing to assert on.
+   */
+  it("re-shapes the grid rather than being appended to it", async () => {
+    vi.spyOn(api, "getJob").mockResolvedValue(job());
+    vi.spyOn(api, "getTranscript").mockResolvedValue({
+      job_id: "job-1",
+      language: "en",
+      duration: 60,
+      segments: [{ start: 0, end: 2, text: "hello there" }],
+    });
+
+    const { container } = render(<ReviewPage />);
+    await waitFor(() =>
+      expect(screen.getByRole("button", { name: "Transcript" })).toBeInTheDocument()
+    );
+
+    const grid = container.querySelector(".review-grid");
+    expect(grid).toHaveAttribute("data-transcript", "closed");
+
+    await userEvent.click(screen.getByRole("button", { name: "Transcript" }));
+
+    expect(grid).toHaveAttribute("data-transcript", "open");
+    expect(screen.getByText("hello there")).toBeInTheDocument();
   });
 });

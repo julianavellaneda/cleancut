@@ -74,3 +74,13 @@ export function ArrowLeftGlyph(props: GlyphProps) {
     </Glyph>
   );
 }
+
+export function DownloadGlyph(props: GlyphProps) {
+  return (
+    <Glyph {...props}>
+      <path d="M12 3v12" />
+      <path d="m17 10-5 5-5-5" />
+      <path d="M5 21h14" />
+    </Glyph>
+  );
+}

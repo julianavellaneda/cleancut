@@ -329,3 +329,97 @@
     animation: none;
   }
 }
+
+/*
+ * ─── Review layout ─────────────────────────────────────────────────────────
+ *
+ * The review screen is a grid with named areas rather than a row of
+ * fixed-width `<aside>`s. The difference is what happens when the transcript
+ * opens: a flex row squeezed the middle column, so the waveform and the detail
+ * panel narrowed to make room. With named areas the whole page reflows and the
+ * transcript takes a column of its own.
+ *
+ * Expressed as areas rather than as three explicit column spans because the
+ * mockup's other two arrangements (waveform on top, detail first) are the same
+ * two rules with a different `grid-template-areas` string. Only `list-left` is
+ * built; the other two are an additive change here, not a rewrite of the page.
+ *
+ * Below 1100px there is no room for two columns, let alone three. The mockup
+ * does not say what happens on a narrow viewport, so this is our decision:
+ * media first (it is what the page is about), then the list, then the detail,
+ * and the transcript stops being a column at all - it becomes an overlay, so
+ * opening it does not push the waveform off the top of the screen.
+ */
+.review-grid {
+  display: grid;
+  gap: 16px;
+  align-items: start;
+  grid-template-columns: 360px minmax(0, 1fr);
+  grid-template-areas:
+    "list media"
+    "list detail";
+}
+
+.review-grid[data-transcript="open"] {
+  grid-template-columns: 340px minmax(0, 1fr) 320px;
+  grid-template-areas:
+    "list media transcript"
+    "list detail transcript";
+}
+
+.review-list { grid-area: list; }
+.review-media { grid-area: media; }
+.review-detail { grid-area: detail; }
+.review-transcript { grid-area: transcript; }
+
+/*
+ * The two internally-scrolling columns. Both hold a panel that scrolls its own
+ * body under a fixed header, and a panel can only do that against a bounded
+ * height - so the column is a flex container with a cap, and its single child
+ * is stretched into it with `min-height: 0`. Without that the child sizes to
+ * its content, the scroll container inside it believes it has all the room it
+ * asked for, and a long list is simply clipped by the `overflow: hidden` here.
+ */
+.review-list,
+.review-transcript {
+  display: flex;
+  flex-direction: column;
+  max-height: calc(100vh - 150px);
+  overflow: hidden;
+}
+
+.review-list > *,
+.review-transcript > * {
+  flex: 1;
+  min-height: 0;
+}
+
+@media (max-width: 1100px) {
+  .review-grid,
+  .review-grid[data-transcript="open"] {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-areas:
+      "media"
+      "list"
+      "detail";
+  }
+
+  .review-list {
+    max-height: none;
+  }
+
+  /*
+   * Out of the grid entirely: a fourth row would put the transcript below the
+   * fold with no indication it had opened. As a sheet it covers the page the
+   * way the keyboard legend does, and `T` closes it again.
+   */
+  .review-transcript {
+    position: fixed;
+    inset: auto 0 0 0;
+    z-index: 40;
+    max-height: min(70vh, calc(100vh - 80px));
+    border-bottom-left-radius: 0;
+    border-bottom-right-radius: 0;
+    box-shadow: var(--shadow-lg-token);
+  }
+}

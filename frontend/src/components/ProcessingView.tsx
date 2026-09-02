@@ -4,6 +4,7 @@ import Link from "next/link";
 
 import { ArrowLeftGlyph } from "@/components/icons";
 import { Job } from "@/lib/api";
+import { formatDuration } from "@/lib/format";
 import { cn } from "@/lib/utils";
 
 /**
@@ -71,12 +72,6 @@ function stageStates(job: Job): StageState[] {
     if (i === current) return "active";
     return "pending";
   });
-}
-
-function formatDuration(seconds: number): string {
-  const mins = Math.floor(seconds / 60);
-  const secs = Math.round(seconds % 60);
-  return `${mins}:${secs.toString().padStart(2, "0")}`;
 }
 
 /**
