@@ -1,7 +1,11 @@
-# Environment variables
+# Environment variables. The wildcard is the rule that matters: `.env.local` and
+# `.env.*.local` alone left `.env.bak`, `.env.old` and `.env.save` - the names an
+# editor or a careless `cp` actually produces - untracked but stageable, so a
+# `git add -A` would have committed a live API key. `.env.example` is the one
+# file here that carries no secrets and must stay tracked.
 .env
-.env.local
-.env.*.local
+.env.*
+!.env.example
 
 # Python
 __pycache__/
