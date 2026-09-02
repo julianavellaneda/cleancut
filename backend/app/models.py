@@ -4,7 +4,17 @@ SQLAlchemy models for Job and Violation.
 
 import uuid
 from datetime import datetime
-from sqlalchemy import Column, String, Float, Integer, Text, ForeignKey, DateTime, Boolean
+from sqlalchemy import (
+    Boolean,
+    Column,
+    DateTime,
+    Float,
+    ForeignKey,
+    Integer,
+    String,
+    Text,
+    UniqueConstraint,
+)
 from sqlalchemy.orm import relationship
 
 from .database import Base
@@ -111,6 +121,19 @@ class Task(Base):
     """
 
     __tablename__ = "tasks"
+
+    # One outstanding task of each kind per job. A row is deleted the moment its
+    # task retires, so this constrains *work in flight*, not history: one
+    # analysis, one export and one re-analysis at a time.
+    #
+    # It exists because the routes' own `has_outstanding()` check is a read
+    # followed by a write, with no lock between them. Two export requests
+    # arriving together both read "nothing outstanding", both insert, and both
+    # render - two FFmpeg passes over the length of the media, writing the same
+    # output path. The check stays, because it gives the common case a specific
+    # 409 without touching the constraint; this is what makes the answer correct
+    # when the two overlap.
+    __table_args__ = (UniqueConstraint("job_id", "kind", name="uq_tasks_job_kind"),)
 
     id = Column(String, primary_key=True, default=generate_uuid)
     kind = Column(String, nullable=False)  # process, export, reanalyze

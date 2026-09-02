@@ -54,8 +54,16 @@ class ExplodingEditor:
 def enqueued(monkeypatch):
     """Record what the route hands to the queue, without running the worker."""
     calls = []
-    monkeypatch.setattr(audio_routes, "enqueue_export",
-                        lambda job_id, edit_action=None: calls.append((job_id, edit_action)))
+
+    def record(job_id, edit_action=None, db=None):
+        calls.append((job_id, edit_action))
+        return "task"
+
+    # Both halves of admission are stubbed: the route records the task inside
+    # its own transaction and publishes only after committing, so a stub that
+    # covered one and not the other would leave the route publishing None.
+    monkeypatch.setattr(audio_routes, "enqueue_export", record)
+    monkeypatch.setattr(audio_routes, "publish", lambda task: task)
     return calls
 
 
@@ -327,3 +335,102 @@ def test_a_row_predating_the_column_reads_as_no_export(client, make_job):
     _set_export_state(job_id, None)
 
     assert _polled(client, job_id)["export_status"] == "none"
+
+
+# --- deleting a job that is still being worked on ---------------------------
+#
+# Deletion used to run with no coordination with the worker at all. The two
+# halves - `delete_job_files` scanning the directories, and FFmpeg writing the
+# export - could interleave, so a render that landed after the scan left media
+# on disk with no job row to explain it. `retention` collects that orphan, but
+# retention is off unless RETENTION_HOURS is set, so on a default install the
+# file stayed forever after a delete the user was told had succeeded.
+
+
+def test_deleting_a_job_mid_export_is_refused(client, make_job, tmp_path):
+    job_id = make_job()
+    _set_export_status(job_id, "exporting")
+
+    response = client.delete(f"/api/jobs/{job_id}")
+
+    assert response.status_code == 409
+    assert "exporting" in response.json()["detail"]
+    # Still there, which is the point: the render has somewhere to land.
+    assert _job(job_id) is not None
+
+
+def test_deleting_a_job_with_a_queued_export_is_refused(client, make_job):
+    """
+    `status` is back to `completed` the moment analysis finishes and says
+    nothing about a render queued behind it - which is why the guard asks
+    `retention.is_in_flight`, covering both pipelines, rather than `status`.
+    """
+    job_id = make_job()
+    _set_export_status(job_id, "queued")
+
+    assert client.delete(f"/api/jobs/{job_id}").status_code == 409
+
+
+def test_deleting_a_job_still_transcribing_is_refused(client, make_job):
+    job_id = make_job(status="transcribing")
+
+    response = client.delete(f"/api/jobs/{job_id}")
+
+    assert response.status_code == 409
+    assert "transcribing" in response.json()["detail"]
+
+
+def test_deleting_an_idle_job_still_works(client, make_job, tmp_path):
+    """The guard must not make ordinary deletion conditional on anything."""
+    job_id = make_job()
+    (tmp_path / f"{job_id}_edited.mp3").write_bytes(b"rendered")
+
+    assert client.delete(f"/api/jobs/{job_id}").status_code == 200
+    assert _job(job_id) is None
+    # The export goes with it. The *upload* lives under the route's own
+    # UPLOAD_DIR, which this module does not repoint - removing both is
+    # `delete_job_files`' job and is covered in test_retention.py.
+    assert not (tmp_path / f"{job_id}_edited.mp3").exists()
+
+
+def test_a_render_whose_job_vanished_publishes_nothing(client, make_job, tmp_path, monkeypatch):
+    """
+    The narrower race the 409 cannot close: a job that becomes idle between the
+    guard and the delete, with a render already in flight behind it.
+
+    The worker re-queries the row on the way back rather than refreshing it -
+    `db.refresh` on a deleted row raises instead of answering - and removes the
+    file it just wrote rather than leaving an orphan for a sweeper that may
+    never run.
+    """
+    job_id = make_job()
+
+    original = exports.render_export
+
+    def render_then_delete(*args, **kwargs):
+        original(*args, **kwargs)
+        # The delete lands while FFmpeg is between writing and publishing.
+        db = SessionLocal()
+        try:
+            db.query(Violation).filter(Violation.job_id == job_id).delete()
+            db.query(Job).filter(Job.id == job_id).delete()
+            db.commit()
+        finally:
+            db.close()
+
+    monkeypatch.setattr(exports, "render_export", render_then_delete)
+
+    worker._process_export(job_id)
+
+    assert _job(job_id) is None
+    assert list(tmp_path.glob(f"{job_id}_edited.*")) == []
+
+
+def _set_export_status(job_id, status):
+    db = SessionLocal()
+    try:
+        job = db.query(Job).filter(Job.id == job_id).first()
+        job.export_status = status
+        db.commit()
+    finally:
+        db.close()

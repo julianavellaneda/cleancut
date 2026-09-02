@@ -1,33 +1,22 @@
 import type { NextConfig } from "next";
 
 /**
- * Where the backend is, from the Next server's point of view.
+ * Deliberately empty of routing.
  *
- * Deliberately *not* a NEXT_PUBLIC_ variable: a public one is inlined into the
- * bundle at build time, which is exactly the problem this rewrite exists to
- * solve. `rewrites()` is evaluated by the running server, so one built image
- * can be pointed at any backend by an environment variable at start time -
- * `docker run -e BACKEND_ORIGIN=...` rather than a rebuild.
+ * The backend proxy used to live here as a `rewrites()` entry reading
+ * `BACKEND_ORIGIN`, on the assumption that `rewrites()` is evaluated by the
+ * running server. It is not: Next resolves it during `next build` and writes
+ * the destination into `.next/routes-manifest.json`, which is what `next start`
+ * routes from (`next/dist/server/lib/router-utils/filesystem.js` builds its
+ * route table from `routesManifest.rewrites`). A container built without
+ * BACKEND_ORIGIN in its *build* environment therefore baked in
+ * `http://localhost:8000` and proxied every API call to itself, which is what
+ * broke `docker compose up`.
  *
- * `||` rather than `??`: `start.sh` sources the root .env with `set -a`, so a
- * blank line there arrives as an empty string, not as absent.
+ * The proxy is now `src/app/api/[...path]/route.ts`, a route handler, which is
+ * evaluated per request and so actually reads the running container's
+ * environment. Nothing about the backend's address is decided at build time.
  */
-const BACKEND_ORIGIN = process.env.BACKEND_ORIGIN || "http://localhost:8000";
-
-const nextConfig: NextConfig = {
-  // The browser calls a relative `/api`, so every request is same-origin and
-  // the backend's CORS list never comes into it. The cost is one extra hop for
-  // audio streaming and export downloads; on a loopback tool that is nothing,
-  // and anyone who wants the direct call can still set NEXT_PUBLIC_API_URL to
-  // the backend and bypass this entirely.
-  async rewrites() {
-    return [
-      {
-        source: "/api/:path*",
-        destination: `${BACKEND_ORIGIN}/api/:path*`,
-      },
-    ];
-  },
-};
+const nextConfig: NextConfig = {};
 
 export default nextConfig;

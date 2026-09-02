@@ -18,7 +18,7 @@ import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import UploadPage from "./page";
-import { api } from "@/lib/api";
+import { api, JobListItem } from "@/lib/api";
 
 vi.mock("next/navigation", () => ({
   useRouter: () => ({ push: vi.fn() }),
@@ -38,6 +38,7 @@ beforeEach(() => {
   // assertion here is a call count or a last call.
   vi.clearAllMocks();
   vi.spyOn(api, "listJobs").mockResolvedValue([]);
+  vi.spyOn(api, "listActiveJobs").mockResolvedValue([]);
   vi.spyOn(api, "listPresets").mockResolvedValue([
     { id: "income-claims", name: "Income Claims", description: "Earnings talk." },
   ]);
@@ -153,4 +154,98 @@ it("still rejects a file the backend would not accept", async () => {
 
   expect(await screen.findByText("Invalid file format.")).toBeInTheDocument();
   expect(api.uploadAudio).not.toHaveBeenCalled();
+});
+
+// --- polling ---------------------------------------------------------------
+//
+// The timer used to call `listJobs`, re-fetching every job in the entire
+// history every three seconds to notice one card changing stage. With retention
+// off by default that request only grows. These pin the smaller shape: ask what
+// is active, merge it into what is already rendered, and stop when nothing is.
+
+function jobRow(overrides: Partial<JobListItem> = {}): JobListItem {
+  return {
+    id: "job-1",
+    filename: "job-1.mp3",
+    original_filename: "seminar.mp3",
+    media_type: "audio",
+    prompt: "flag income claims",
+    status: "transcribing",
+    auto_fix: false,
+    auto_scrub: false,
+    preset: null,
+    duration_seconds: 120,
+    created_at: new Date().toISOString(),
+    violation_count: 0,
+    ...overrides,
+  };
+}
+
+it("polls the active endpoint rather than the whole job list", async () => {
+  vi.useFakeTimers();
+  vi.mocked(api.listJobs).mockResolvedValue([jobRow()]);
+  vi.mocked(api.listActiveJobs).mockResolvedValue([
+    { id: "job-1", status: "analyzing", export_status: "none", violation_count: 3 },
+  ]);
+
+  render(<UploadPage />);
+  await vi.waitFor(() => expect(api.listJobs).toHaveBeenCalled());
+  const initialFullReads = vi.mocked(api.listJobs).mock.calls.length;
+
+  await vi.advanceTimersByTimeAsync(3000);
+
+  expect(api.listActiveJobs).toHaveBeenCalled();
+  // The expensive call did not repeat: the tick is answered by the small one.
+  expect(vi.mocked(api.listJobs).mock.calls.length).toBe(initialFullReads);
+
+  vi.useRealTimers();
+});
+
+it("merges the poll's statuses into the cards already on screen", async () => {
+  vi.useFakeTimers();
+  vi.mocked(api.listJobs).mockResolvedValue([jobRow()]);
+  vi.mocked(api.listActiveJobs).mockResolvedValue([
+    { id: "job-1", status: "analyzing", export_status: "none", violation_count: 7 },
+  ]);
+
+  render(<UploadPage />);
+  // The status is rendered twice per row (the meta line and the pulsing
+  // badge), so these count matches rather than expecting exactly one.
+  await vi.waitFor(() => expect(screen.getAllByText(/transcribing/i).length).toBeGreaterThan(0));
+
+  await vi.advanceTimersByTimeAsync(3000);
+
+  // The status the poll carried replaced the one the full read set.
+  await vi.waitFor(() => {
+    expect(screen.getAllByText(/analyzing/i).length).toBeGreaterThan(0);
+  });
+  expect(screen.queryAllByText(/transcribing/i)).toHaveLength(0);
+
+  // And the row keeps the fields the poll does not carry: the filename came
+  // from the full read, and the small response has no opinion about it.
+  expect(screen.getByText("seminar.mp3")).toBeInTheDocument();
+
+  vi.useRealTimers();
+});
+
+it("stops polling and takes one final full read when nothing is active", async () => {
+  vi.useFakeTimers();
+  vi.mocked(api.listJobs).mockResolvedValue([jobRow({ status: "completed" })]);
+  vi.mocked(api.listActiveJobs).mockResolvedValue([]);
+
+  render(<UploadPage />);
+  await vi.waitFor(() => expect(api.listJobs).toHaveBeenCalled());
+
+  await vi.advanceTimersByTimeAsync(3000);
+  const afterStop = vi.mocked(api.listActiveJobs).mock.calls.length;
+
+  // The final read is what stops a job that finished between two ticks sitting
+  // on screen mid-stage until the page is reloaded.
+  expect(vi.mocked(api.listJobs).mock.calls.length).toBeGreaterThan(1);
+
+  // And the timer really is off: further time passes with no further polls.
+  await vi.advanceTimersByTimeAsync(9000);
+  expect(vi.mocked(api.listActiveJobs).mock.calls.length).toBe(afterStop);
+
+  vi.useRealTimers();
 });

@@ -126,6 +126,15 @@ The CLI is a module, not a script: `analysis/` imports are package-relative, so
 5. **Export**: a single FFmpeg `trim`/`atrim` + `concat` filter graph applies mutes then cuts,
    keeping video in sync with its audio.
 
+### Transactions
+Queue admission and edit decisions are each **one** transaction. A route records its task row in
+its own session (`task_store.record_in`), commits job state and task together, and only then
+publishes to the in-memory queue — committing the state first and the row second left jobs active
+forever with nothing on the books to move them. A `UNIQUE (job_id, kind)` constraint on `tasks`
+backs the `has_outstanding()` check, which cannot close the race on its own. Likewise a violation
+update and the export invalidation it causes commit together (`exports.mark_export_invalidated`),
+with the superseded file unlinked *after* the commit.
+
 ### Testing
 - Backend: `cd backend && pytest`.
 - Frontend: `cd frontend && npm test` (vitest + Testing Library in jsdom) and `npx tsc --noEmit`.
@@ -146,8 +155,23 @@ The CLI is a module, not a script: `analysis/` imports are package-relative, so
 - **Network binding**: every other route is unauthenticated, so the interface *is* the access
   control. `CLEANCUT_HOST` defaults to `127.0.0.1`; treat exposing it as a deployment decision, and
   add real per-owner auth before hosting this for more than one person.
-- **API routing**: the browser calls a relative `/api` and the Next server rewrites it to
-  `BACKEND_ORIGIN` (`frontend/next.config.ts`), evaluated at run time. `NEXT_PUBLIC_API_URL` is
-  baked in at build time, so it is left unset by default — a published frontend image must not be
-  pinned to the origin that built it. Setting it restores the direct cross-origin call, which needs
-  `CORS_ORIGINS` to name the frontend.
+- **API routing**: the browser calls a relative `/api` and the Next server proxies it to
+  `BACKEND_ORIGIN`. That proxy is a **route handler**
+  (`frontend/src/app/api/[...path]/route.ts`), not a `rewrites()` entry, and the distinction is
+  load-bearing: Next resolves `rewrites()` during `next build` and writes the destination into
+  `.next/routes-manifest.json`, which is what `next start` routes from — so the rewrite this
+  replaced baked in the `http://localhost:8000` default and, inside the Compose frontend container,
+  proxied every API call to the frontend itself. A route handler is evaluated per request, so it
+  reads the running container's environment. Do not move this back into `next.config.ts`;
+  `backend/tests/test_docker_layout.py` fails if you do. `NEXT_PUBLIC_API_URL` is baked in at build
+  time, so it is left unset by default — a published frontend image must not be pinned to the origin
+  that built it. Setting it restores the direct cross-origin call, which needs `CORS_ORIGINS` to
+  name the frontend.
+- **Prompt injection**: the transcript is untrusted input. It is fenced in `<transcript>` tags and
+  both system prompts carry a rule saying that anything inside them is transcribed speech to be
+  audited, never instructions to follow — a recording that talks the model into returning
+  `{"violations": []}` would otherwise be indistinguishable from a clean one. The deterministic
+  detectors have no model in the loop and are unaffected.
+- **Deleting a job** is refused with 409 while it is still being worked on, and the worker checks
+  the job row still exists before publishing a render. Without both, an export could land after
+  deletion had already swept the directory, leaving media with no job to explain it.

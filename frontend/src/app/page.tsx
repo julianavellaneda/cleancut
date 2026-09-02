@@ -38,14 +38,37 @@ export default function UploadPage() {
     }
   }, []);
 
+  // The timer asks only about jobs still being worked on, and merges what comes
+  // back into the cards already on screen. It used to re-fetch the whole job
+  // list every three seconds - filename, prompt, preset and timestamps for
+  // every job in the entire history - to notice that one of them had changed
+  // stage. None of those fields move while a job runs, and with retention off
+  // by default the history only grows.
+  //
+  // `setJobs` takes the functional form, so this callback still closes over
+  // nothing reactive and the `[stopPolling]` dependency list stays honest.
   const startPolling = useCallback(() => {
     if (pollInterval.current) return;
     pollInterval.current = setInterval(async () => {
       try {
-        const jobList = await api.listJobs();
-        setJobs(jobList);
-        const hasActiveJobs = jobList.some(j => !["completed", "failed"].includes(j.status));
-        if (!hasActiveJobs) stopPolling();
+        const active = await api.listActiveJobs();
+        if (active.length === 0) {
+          stopPolling();
+          // One last full read, so a job that finished between two ticks
+          // arrives with its final status and count rather than sitting on
+          // screen as "analyzing" until the page is reloaded.
+          setJobs(await api.listJobs());
+          return;
+        }
+        const byId = new Map(active.map(job => [job.id, job]));
+        setJobs(previous =>
+          previous.map(job => {
+            const update = byId.get(job.id);
+            return update
+              ? { ...job, status: update.status, violation_count: update.violation_count }
+              : job;
+          }),
+        );
       } catch (err) {
         console.error("Polling error:", err);
       }

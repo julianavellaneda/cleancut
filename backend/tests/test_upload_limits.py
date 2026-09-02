@@ -157,7 +157,8 @@ def client(monkeypatch):
 
     from app.main import app
 
-    monkeypatch.setattr("app.routes.jobs.enqueue_job", lambda job_id, path: None)
+    monkeypatch.setattr("app.routes.jobs.enqueue_job", lambda job_id, path, db=None: "task")
+    monkeypatch.setattr("app.routes.jobs.publish", lambda task: task)
     return TestClient(app)
 
 

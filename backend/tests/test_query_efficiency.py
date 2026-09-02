@@ -281,3 +281,130 @@ def test_waveform_serves_the_cache_on_the_second_request(client, waveform_job, m
     finally:
         db.close()
     assert json.loads(stored) == [0.25] * 800
+
+
+# --- the list is bounded, and the poll is small -----------------------------
+#
+# The other half of the same problem. The N+1 was fixed, but the remaining two
+# queries were still unbounded: `SELECT *` over every job ever created, plus a
+# GROUP BY over the whole violations table - fetched every three seconds by the
+# home page's timer, for the life of the install. Retention is off unless
+# RETENTION_HOURS is set, so nothing was ever going to make that table smaller.
+
+
+def test_the_job_list_is_bounded_by_default(client):
+    _seed(job_count=8, violations_each=1)
+
+    body = client.get("/api/jobs").json()
+
+    assert len(body) <= 50
+
+
+def test_the_page_size_can_be_asked_for_and_is_capped(client):
+    _seed(job_count=5, violations_each=1)
+
+    assert len(client.get("/api/jobs?limit=2").json()) == 2
+    # Above the cap is refused rather than quietly served in full: a client
+    # must not get to choose the size of a query this endpoint answers on a
+    # timer.
+    assert client.get("/api/jobs?limit=5000").status_code == 422
+    assert client.get("/api/jobs?limit=0").status_code == 422
+    assert client.get("/api/jobs?offset=-1").status_code == 422
+
+
+def test_paging_walks_the_list_without_repeating_or_skipping(client):
+    _seed(job_count=6, violations_each=1)
+
+    first = client.get("/api/jobs?limit=3&offset=0").json()
+    second = client.get("/api/jobs?limit=3&offset=3").json()
+
+    assert len(first) == 3 and len(second) == 3
+    assert {j["id"] for j in first}.isdisjoint({j["id"] for j in second})
+
+
+def test_the_count_aggregate_is_scoped_to_the_page(client):
+    """
+    The grouped COUNT has to be filtered by the ids on this page, not run over
+    the whole table. Otherwise the query the cap was added to bound is still
+    proportional to the history behind it.
+    """
+    _seed(job_count=6, violations_each=3)
+
+    with StatementCounter("violations") as counter:
+        response = client.get("/api/jobs?limit=2")
+
+    assert response.status_code == 200
+    assert counter.count == 1
+    statement = counter.statements[0].lower()
+    assert " in (" in statement, (
+        "the aggregate is not scoped to the page's job ids:\n" + counter.statements[0]
+    )
+
+
+def test_the_active_endpoint_returns_only_unfinished_jobs(client):
+    done = _seed(job_count=2, violations_each=1)
+    busy = str(uuid.uuid4())
+    db = SessionLocal()
+    try:
+        db.add(Job(id=busy, filename=f"{busy}.mp3", status="transcribing"))
+        db.commit()
+    finally:
+        db.close()
+
+    body = client.get("/api/jobs/active").json()
+
+    ids = {job["id"] for job in body}
+    assert busy in ids
+    assert ids.isdisjoint(set(done))
+
+
+def test_the_active_endpoint_includes_a_job_whose_export_is_running(client):
+    """
+    `status` returns to `completed` the moment analysis finishes and says
+    nothing about a render queued behind it. Polling on `status` alone would
+    stop the timer while FFmpeg was still going.
+    """
+    job_id = str(uuid.uuid4())
+    db = SessionLocal()
+    try:
+        db.add(Job(id=job_id, filename=f"{job_id}.mp3", status="completed",
+                   export_status="exporting"))
+        db.commit()
+    finally:
+        db.close()
+
+    body = client.get("/api/jobs/active").json()
+
+    row = next(job for job in body if job["id"] == job_id)
+    assert row["export_status"] == "exporting"
+
+
+def test_the_active_endpoint_is_not_shadowed_by_the_job_route(client):
+    """
+    Same trap `/presets` sits above: declared after `/{job_id}`, this path is
+    read as a job id and answers 404.
+    """
+    response = client.get("/api/jobs/active")
+
+    assert response.status_code == 200
+    assert isinstance(response.json(), list)
+
+
+def test_the_active_endpoint_carries_no_row_bodies(client):
+    """
+    It exists to be small. The fields that do not change while a job runs -
+    filename, prompt, preset, timestamps - have no business on a response
+    fetched every three seconds.
+    """
+    job_id = str(uuid.uuid4())
+    db = SessionLocal()
+    try:
+        db.add(Job(id=job_id, filename=f"{job_id}.mp3", status="analyzing",
+                   prompt="flag income claims", original_filename="seminar.mp3"))
+        db.commit()
+    finally:
+        db.close()
+
+    row = next(j for j in client.get("/api/jobs/active").json() if j["id"] == job_id)
+
+    assert set(row) == {"id", "status", "export_status", "violation_count"}

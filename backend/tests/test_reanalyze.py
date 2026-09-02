@@ -38,7 +38,8 @@ def db_ready():
 @pytest.fixture
 def client(monkeypatch):
     """A client whose re-analysis requests queue rather than run."""
-    monkeypatch.setattr("app.routes.jobs.enqueue_reanalysis", lambda job_id, **kwargs: None)
+    monkeypatch.setattr("app.routes.jobs.enqueue_reanalysis", lambda job_id, **kwargs: "task")
+    monkeypatch.setattr("app.routes.jobs.publish", lambda task: task)
     return TestClient(app)
 
 
@@ -371,8 +372,15 @@ def test_a_re_run_with_no_stored_transcript_does_not_move_the_prompt(
 
 def test_the_route_hands_the_question_to_the_queue(client, make_job, monkeypatch):
     queued = []
-    monkeypatch.setattr("app.routes.jobs.enqueue_reanalysis",
-                        lambda job_id, **kwargs: queued.append((job_id, kwargs)))
+    def record(job_id, db=None, **kwargs):
+        # `db` is admission plumbing, not part of the question being asked, so
+        # it is taken off before the call is recorded: this test is about the
+        # prompt and preset reaching the queue.
+        queued.append((job_id, kwargs))
+        return "task"
+
+    monkeypatch.setattr("app.routes.jobs.enqueue_reanalysis", record)
+    monkeypatch.setattr("app.routes.jobs.publish", lambda task: task)
     job_id = make_job()
 
     client.post(f"/api/jobs/{job_id}/reanalyze", json={"prompt": "find every filler"})

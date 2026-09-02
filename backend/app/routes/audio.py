@@ -17,7 +17,7 @@ from ..schemas import ExportRequest, ExportResponse
 from ..services import exports
 from ..services.media_editor import generate_waveform_peaks
 from ..services import task_store
-from ..services.worker import enqueue_export
+from ..services.worker import enqueue_export, publish
 
 router = APIRouter()
 
@@ -195,11 +195,26 @@ def export_media(
             detail="No accepted edits to remove. Accept some suggested edits first."
         )
 
+    # `export_status` and the task row commit as one, and the task is published
+    # only after. Committing "queued" separately left a job advertising a render
+    # that had not been recorded - the UI showed "Exporting..." forever, and a
+    # restart found no task to replay because none was ever written.
     job.export_status = "queued"
     job.export_error = None
+    try:
+        task = enqueue_export(job_id, request.edit_action, db=db)
+    except task_store.DuplicateTask:
+        # The `has_outstanding` check above is a read followed by a write, so
+        # two requests can pass it together. The constraint catches that pair;
+        # this turns it into the same 409 the check already gives, rather than
+        # a 500 and two FFmpeg passes over the same output path.
+        db.rollback()
+        raise HTTPException(
+            status_code=409,
+            detail="An export is already in progress for this job. Wait for it to finish.",
+        )
     db.commit()
-
-    enqueue_export(job_id, request.edit_action)
+    publish(task)
 
     export_filename = exports.export_filename_for(job, exports.export_suffix(job, audio_path))
     return ExportResponse(

@@ -16,6 +16,10 @@ Two generations of schema drift are covered here:
 6. A database from before the review flags were columns must gain
    `is_approximate` and `is_ambiguous` on **violations** - the first migration
    that touches a second table.
+7. A database whose `tasks` table predates the one-outstanding-task-per-kind
+   constraint must gain the index - and, unlike every case above, this one is
+   not additive: the index cannot be created over data that already violates
+   it, so the duplicates have to go first.
 """
 
 import sqlite3
@@ -341,6 +345,97 @@ def test_init_db_adds_the_task_table_to_an_existing_database(legacy_db):
     assert {"id", "kind", "job_id", "state", "attempts"} <= {
         c["name"] for c in inspect(legacy_db).get_columns("tasks")
     }
+
+
+# A `tasks` table from before the uniqueness constraint. Same columns, no index.
+UNCONSTRAINED_TASKS_TABLE = """
+CREATE TABLE tasks (
+    id TEXT PRIMARY KEY,
+    kind TEXT NOT NULL,
+    job_id TEXT REFERENCES jobs(id),
+    file_path TEXT,
+    edit_action TEXT,
+    prompt TEXT,
+    preset TEXT,
+    state TEXT NOT NULL DEFAULT 'pending',
+    attempts INTEGER NOT NULL DEFAULT 0,
+    created_at TIMESTAMP
+)
+"""
+
+
+def _task_indexes(engine):
+    return {idx["name"] for idx in inspect(engine).get_indexes("tasks")}
+
+
+@pytest.fixture
+def duplicate_tasks_db(tmp_path, monkeypatch):
+    """
+    A `tasks` table carrying exactly what the missing constraint allowed: two
+    export tasks for one job, written by two requests that raced.
+    """
+    engine = _build_db(
+        tmp_path, monkeypatch, "dupes.db",
+        [LEGACY_JOBS_TABLE, UNCONSTRAINED_TASKS_TABLE],
+        [
+            "INSERT INTO jobs (id, filename, status) VALUES ('j1', 'a.mp3', 'completed')",
+            "INSERT INTO tasks (id, kind, job_id, created_at) "
+            "VALUES ('t-first', 'export', 'j1', '2024-01-01 10:00:00')",
+            "INSERT INTO tasks (id, kind, job_id, created_at) "
+            "VALUES ('t-second', 'export', 'j1', '2024-01-01 10:00:01')",
+            "INSERT INTO tasks (id, kind, job_id, created_at) "
+            "VALUES ('t-other', 'reanalyze', 'j1', '2024-01-01 10:00:02')",
+        ],
+    )
+    yield engine
+    engine.dispose()
+
+
+def test_the_task_uniqueness_index_is_added_to_an_existing_table(duplicate_tasks_db):
+    assert "uq_tasks_job_kind" not in _task_indexes(duplicate_tasks_db)
+
+    database._apply_migrations()
+
+    indexes = inspect(duplicate_tasks_db).get_indexes("tasks")
+    index = next(i for i in indexes if i["name"] == "uq_tasks_job_kind")
+    assert index["unique"]
+    assert index["column_names"] == ["job_id", "kind"]
+
+
+def test_duplicate_tasks_are_resolved_before_the_index_is_created(duplicate_tasks_db):
+    """
+    Oldest kept, and only within a kind.
+
+    The oldest row is the one the caller was actually told about; a duplicate is
+    the loser of a race, and running it would mean a second FFmpeg pass writing
+    the same output path. Creating the index without this pass raises, and a
+    failed migration is a server that will not boot.
+    """
+    database._apply_migrations()
+
+    with duplicate_tasks_db.begin() as conn:
+        rows = conn.execute(text("SELECT id, kind FROM tasks ORDER BY id")).fetchall()
+
+    assert sorted(rows) == [("t-first", "export"), ("t-other", "reanalyze")]
+
+
+def test_the_task_migration_is_idempotent(duplicate_tasks_db):
+    """Every boot runs this. The second one must be a no-op, not an error."""
+    database._apply_migrations()
+    database._apply_migrations()
+
+    assert "uq_tasks_job_kind" in _task_indexes(duplicate_tasks_db)
+
+
+def test_the_task_migration_is_skipped_when_the_table_is_absent(legacy_db):
+    """
+    Per the per-table rule: a database with no `tasks` table is not an error,
+    and must not stop the columns on other tables being checked.
+    """
+    database._apply_migrations()  # must not raise
+
+    assert "tasks" not in inspect(legacy_db).get_table_names()
+    assert "preset" in _columns(legacy_db)
 
 
 def test_migration_noop_on_empty_database(tmp_path, monkeypatch):

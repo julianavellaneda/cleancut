@@ -56,6 +56,54 @@ def _apply_migrations():
         _migrate_jobs()
     if "violations" in tables:
         _migrate_violations()
+    if "tasks" in tables:
+        _migrate_tasks()
+
+
+def _migrate_tasks():
+    """
+    Constrain the queue to one outstanding task of each kind per job.
+
+    A new *table* needs nothing here - `create_all` makes it complete. An index
+    added to a table that already exists does, and this one is not additive the
+    way a column is: `CREATE UNIQUE INDEX` fails outright if the data already
+    violates it, and a failed migration must not be what stops the server
+    booting.
+
+    So duplicates are resolved first, oldest kept. The oldest is the one the
+    caller was actually told about - a duplicate is the loser of a race between
+    two requests, and the worker would have run it as a second render over the
+    same output path.
+    """
+    inspector = inspect(engine)
+    if any(idx["name"] == "uq_tasks_job_kind" for idx in inspector.get_indexes("tasks")):
+        return
+
+    with engine.begin() as conn:
+        conn.execute(
+            text(
+                """
+                DELETE FROM tasks
+                WHERE id NOT IN (
+                    SELECT id FROM (
+                        SELECT id,
+                               ROW_NUMBER() OVER (
+                                   PARTITION BY job_id, kind
+                                   ORDER BY created_at, id
+                               ) AS rn
+                        FROM tasks
+                    )
+                    WHERE rn = 1
+                )
+                """
+            )
+        )
+        conn.execute(
+            text(
+                "CREATE UNIQUE INDEX IF NOT EXISTS uq_tasks_job_kind "
+                "ON tasks (job_id, kind)"
+            )
+        )
 
 
 def _migrate_violations():

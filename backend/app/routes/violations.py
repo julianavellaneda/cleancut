@@ -97,12 +97,24 @@ def update_violation(
     if update.action is not None:
         violation.action = update.action
 
-    db.commit()
-
+    # One transaction for the decision and everything that follows from it. This
+    # used to be two commits - the violation, then the invalidation - and a
+    # failure in between was unrecoverable by retrying: the second attempt found
+    # the status already written, so `affects_export` answered "nothing changed"
+    # and the stale export kept advertising itself as ready forever.
+    superseded = []
     if changed_export:
         job = db.query(Job).filter(Job.id == job_id).first()
         if job:
-            exports.invalidate_export(db, job)
+            superseded = exports.mark_export_invalidated(job)
+
+    db.commit()
+
+    # After the commit, never before: the revision counters already refuse a
+    # stale file on both download routes, so a failed unlink costs disk rather
+    # than correctness - while deleting first and then rolling back would have
+    # destroyed a file the job still considered current.
+    exports.unlink_all(superseded)
 
     db.refresh(violation)
 
@@ -176,10 +188,13 @@ def bulk_update_violations(
             v.action = update.action
         updated_count += 1
 
+    # As on the PATCH above: the sweep and its consequence commit together, and
+    # the superseded file is unlinked only once that has landed.
+    superseded = exports.mark_export_invalidated(job) if changed_export else []
+
     db.commit()
 
-    if changed_export:
-        exports.invalidate_export(db, job)
+    exports.unlink_all(superseded)
 
     return {"message": f"Updated {updated_count} violations", "updated": updated_count}
 

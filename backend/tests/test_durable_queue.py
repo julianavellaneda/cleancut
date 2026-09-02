@@ -513,3 +513,148 @@ def test_a_task_with_no_row_is_still_runnable(monkeypatch):
     worker._run_task(QueuedTask(kind="process", job_id="nobody", file_path="/tmp/x"))
 
     assert len(ran) == 1
+
+
+# --- Admission is one transaction -------------------------------------------
+#
+# The ordering these pin is the fix for a half-admitted job. A route used to
+# commit its state change (`pending`, or `queued`) and *then* open a second
+# session for the task row. A failure in between answered the caller 500 while
+# leaving a job that was active forever: no worker would pick it up, because
+# nothing was on the queue, and no restart would recover it, because nothing was
+# on the books. The row now joins the caller's transaction, so the two states
+# cannot disagree - and nothing reaches the in-memory queue until that
+# transaction has committed.
+
+
+def test_recording_into_a_session_does_not_commit_it():
+    """
+    `record_in` flushes, so the caller still owns the outcome.
+
+    The flush is what assigns the id and surfaces the constraint; the commit is
+    deliberately left to the route, which has its own change to make in the same
+    transaction.
+    """
+    job_id = _make_job(status="pending")
+    db = SessionLocal()
+    try:
+        task = worker.enqueue_job(job_id, "/tmp/clip.mp3", db=db)
+        assert task.task_id is not None
+        # Visible in this transaction, committed by nobody yet.
+        assert db.query(Task).filter(Task.job_id == job_id).count() == 1
+        db.rollback()
+    finally:
+        db.close()
+
+    assert _tasks(job_id) == []
+    # And nothing was published: publishing is the caller's second step, taken
+    # only once the commit returns.
+    assert _drain() == []
+
+
+def test_a_rolled_back_request_leaves_no_half_admitted_job():
+    """
+    The job's state and its task row live or die together.
+
+    This is the whole point. With two sessions, the job below would be committed
+    `queued` with no task - the state that used to strand a render forever.
+    """
+    job_id = _make_job(status="completed", export_status="none")
+    db = SessionLocal()
+    try:
+        job = db.query(Job).filter(Job.id == job_id).first()
+        job.export_status = "queued"
+        worker.enqueue_export(job_id, None, db=db)
+        db.rollback()
+    finally:
+        db.close()
+
+    assert _tasks(job_id) == []
+    assert _job(job_id).export_status == "none"
+
+
+def test_a_committed_request_leaves_both():
+    job_id = _make_job(status="completed", export_status="none")
+    db = SessionLocal()
+    try:
+        job = db.query(Job).filter(Job.id == job_id).first()
+        job.export_status = "queued"
+        task = worker.enqueue_export(job_id, "mute", db=db)
+        db.commit()
+        worker.publish(task)
+    finally:
+        db.close()
+
+    rows = _tasks(job_id)
+    assert [r.kind for r in rows] == ["export"]
+    assert rows[0].edit_action == "mute"
+    assert _job(job_id).export_status == "queued"
+    assert [t.task_id for t in _drain()] == [rows[0].id]
+
+
+def test_a_second_outstanding_task_of_the_same_kind_is_refused():
+    """
+    The race `has_outstanding` cannot close on its own.
+
+    That check is a read followed by a write with nothing between them, so two
+    export requests arriving together both read "nothing outstanding" and both
+    insert. Two FFmpeg passes then render the length of the media to the same
+    output path. The constraint is what makes the second one fail instead.
+    """
+    job_id = _make_job(status="completed")
+    first = SessionLocal()
+    second = SessionLocal()
+    try:
+        worker.enqueue_export(job_id, None, db=first)
+        first.commit()
+
+        # `second` passed `has_outstanding` before `first` committed - the
+        # interleaving the check cannot see.
+        with pytest.raises(task_store.DuplicateTask):
+            worker.enqueue_export(job_id, None, db=second)
+    finally:
+        first.close()
+        second.close()
+
+    assert len(_tasks(job_id)) == 1
+
+
+def test_different_kinds_are_not_in_each_other_s_way():
+    """The constraint is per kind: a job can have an export and a re-analysis."""
+    job_id = _make_job(status="completed")
+    db = SessionLocal()
+    try:
+        worker.enqueue_export(job_id, None, db=db)
+        worker.enqueue_reanalysis(job_id, prompt="find fillers", db=db)
+        db.commit()
+    finally:
+        db.close()
+
+    assert sorted(r.kind for r in _tasks(job_id)) == ["export", "reanalyze"]
+
+
+def test_the_constraint_frees_up_once_the_task_retires():
+    """
+    It constrains work in flight, not history.
+
+    A job exported yesterday must be exportable again today; the row is deleted
+    when the task finishes, which is what makes the next insert legal.
+    """
+    job_id = _make_job(status="completed")
+    db = SessionLocal()
+    try:
+        task = worker.enqueue_export(job_id, None, db=db)
+        db.commit()
+    finally:
+        db.close()
+
+    task_store.finish(task)
+
+    db = SessionLocal()
+    try:
+        worker.enqueue_export(job_id, "mute", db=db)
+        db.commit()
+    finally:
+        db.close()
+
+    assert len(_tasks(job_id)) == 1
