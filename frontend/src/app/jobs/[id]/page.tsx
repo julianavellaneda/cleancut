@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Waveform, WaveformHandle } from "@/components/Waveform";
 import { ViolationList, SCRUB_LABELS } from "@/components/ViolationList";
 import { ViolationCard } from "@/components/ViolationCard";
+import { FailedView } from "@/components/FailedView";
 import { ProcessingView } from "@/components/ProcessingView";
 import { KeyboardLegend } from "@/components/KeyboardLegend";
 import { ReanalyzeBar } from "@/components/ReanalyzeBar";
@@ -379,22 +380,7 @@ export default function ReviewPage() {
   // A failed job has no violations and no waveform worth showing. Render the
   // reason instead of an empty review UI, which otherwise looks like a clean
   // recording rather than a job that never ran.
-  if (job.status === "failed") {
-    return (
-      <div className="h-screen flex flex-col items-center justify-center gap-4 px-8 text-center">
-        <h1 className="text-lg font-bold tracking-tight">Processing failed</h1>
-        <p className="text-sm text-muted-foreground max-w-xl">
-          {job.original_filename || job.filename} could not be processed.
-        </p>
-        {job.error_message && (
-          <pre className="max-w-2xl w-full overflow-auto rounded-lg border bg-surface2/40 p-4 text-left text-xs whitespace-pre-wrap">
-            {job.error_message}
-          </pre>
-        )}
-        <Link href="/"><Button size="sm">Back to Projects</Button></Link>
-      </div>
-    );
-  }
+  if (job.status === "failed") return <FailedView job={job} />;
 
   return (
     <div className="h-screen flex flex-col bg-background">
