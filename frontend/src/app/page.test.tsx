@@ -4,8 +4,8 @@
  * Regression: `handleDrop` and `handleFileInput` were `useCallback(..., [])`.
  * They call `handleFiles`, which closes over prompt, preset, autoFix and
  * autoScrub - so both handlers were frozen around the first render and every
- * upload sent the initial values. The prompt box, the preset select and both
- * checkboxes were silently inert; a user asking for one thing got a default
+ * upload sent the initial values. The prompt box, the preset picker and both
+ * toggles were silently inert; a user asking for one thing got a default
  * analysis of another.
  *
  * These assert on the arguments `api.uploadAudio` is called with, because that
@@ -69,9 +69,9 @@ describe("choosing a file through the browse input", () => {
 
   it("uploads the preset chosen after the page first rendered", async () => {
     render(<UploadPage />);
-    await waitFor(() => expect(screen.getByRole("option", { name: "Income Claims" })).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByRole("radio", { name: "Income Claims" })).toBeInTheDocument());
 
-    await userEvent.selectOptions(screen.getByLabelText("Rule preset"), "income-claims");
+    await userEvent.click(screen.getByRole("radio", { name: "Income Claims" }));
     await userEvent.upload(document.getElementById("file-input") as HTMLInputElement, media());
 
     await waitFor(() => expect(api.uploadAudio).toHaveBeenCalled());
@@ -248,4 +248,84 @@ it("stops polling and takes one final full read when nothing is active", async (
   expect(vi.mocked(api.listActiveJobs).mock.calls.length).toBe(afterStop);
 
   vi.useRealTimers();
+});
+
+// --- the rebuilt controls --------------------------------------------------
+//
+// The preset `<select>` is now a radiogroup of pills and the two checkboxes are
+// switches. Both were queried through their accessible names by the tests
+// above, so these pin the roles that keep those names attached: a styled
+// `<div>` would render identically and take the whole upload form's coverage
+// down with it silently.
+
+describe("the rule preset radiogroup", () => {
+  it("is a named group of radios, with prompt mode among them", async () => {
+    render(<UploadPage />);
+
+    const group = await screen.findByLabelText("Rule preset");
+    expect(group).toHaveAttribute("role", "radiogroup");
+
+    // Prompt mode is an option, not the absence of one. The mockup omits it
+    // because its demo always has a preset; without it, picking a preset would
+    // be a one-way door.
+    const none = screen.getByRole("radio", { name: "None — use my instructions" });
+    expect(none).toHaveAttribute("aria-checked", "true");
+    expect(screen.getByRole("radio", { name: "Income Claims" })).toHaveAttribute(
+      "aria-checked",
+      "false",
+    );
+  });
+
+  it("moves and selects with the arrow keys, on one tab stop", async () => {
+    render(<UploadPage />);
+    const none = await screen.findByRole("radio", { name: "None — use my instructions" });
+
+    // Only the checked option is tabbable: that is what makes Tab step past
+    // the group rather than through every option in it.
+    expect(none).toHaveAttribute("tabindex", "0");
+    expect(screen.getByRole("radio", { name: "Income Claims" })).toHaveAttribute(
+      "tabindex",
+      "-1",
+    );
+
+    none.focus();
+    await userEvent.keyboard("{ArrowDown}");
+
+    const preset = screen.getByRole("radio", { name: "Income Claims" });
+    expect(preset).toHaveAttribute("aria-checked", "true");
+    expect(preset).toHaveFocus();
+
+    // And it wraps, which is the radiogroup contract rather than a listbox's.
+    await userEvent.keyboard("{ArrowDown}");
+    expect(none).toHaveAttribute("aria-checked", "true");
+  });
+
+  it("says why the instructions box is unavailable, rather than only dimming it", async () => {
+    render(<UploadPage />);
+    await userEvent.click(await screen.findByRole("radio", { name: "Income Claims" }));
+
+    expect(screen.getByLabelText(/Instructions/)).toBeDisabled();
+    // The reason is readable, which is the point of the overlay: a 50% dim says
+    // the control is unavailable and never says how to get it back.
+    expect(
+      screen.getByText(/rulebook is driving this analysis/i),
+    ).toBeInTheDocument();
+  });
+});
+
+describe("the two toggles", () => {
+  it("are switches that report their own state", async () => {
+    render(<UploadPage />);
+
+    const autoFix = screen.getByLabelText("Auto-apply markers");
+    expect(autoFix).toHaveAttribute("role", "switch");
+    expect(autoFix).toHaveAttribute("aria-checked", "false");
+
+    await userEvent.click(autoFix);
+    expect(autoFix).toHaveAttribute("aria-checked", "true");
+
+    // The accessible name is the title alone. The description sits in
+    // `aria-describedby`, so it does not swallow the name the queries use.
+    expect(autoFix).toHaveAccessibleDescription(/Uncertain ones stay pending/);
+  });
 });
