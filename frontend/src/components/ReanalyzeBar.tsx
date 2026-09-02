@@ -55,7 +55,7 @@ export function ReanalyzeBar({
   return (
     <form
       onSubmit={submit}
-      className="border-b bg-muted/30 px-8 py-4"
+      className="border-b bg-surface2/30 px-8 py-4"
       aria-label="Re-analyze this recording"
     >
       <div className="mx-auto flex max-w-4xl flex-col gap-3">

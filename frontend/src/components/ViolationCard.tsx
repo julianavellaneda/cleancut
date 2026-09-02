@@ -125,7 +125,7 @@ export function ViolationCard({
           <div className="text-xs text-muted-foreground font-mono">
             {formatTime(violation.start_time)} — {formatTime(violation.end_time)}
           </div>
-          <div className="text-sm italic leading-relaxed text-muted-foreground p-4 bg-muted/50 rounded-md">
+          <div className="text-sm italic leading-relaxed text-muted-foreground p-4 bg-surface2/50 rounded-md">
             &ldquo;{violation.text}&rdquo;
           </div>
         </div>

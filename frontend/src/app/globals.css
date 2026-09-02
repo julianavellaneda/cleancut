@@ -1,85 +1,292 @@
 @import "tailwindcss";
 @import "tw-animate-css";
 
-@custom-variant dark (&:is(.dark *));
+/*
+ * The `dark:` variant keys off the same two signals the token blocks below do:
+ * an explicit `data-theme` on <html>, or the OS preference when nothing has
+ * been chosen. The old `&:is(.dark *)` keyed off a `.dark` class nothing ever
+ * set, so every `dark:` utility in the app was dead.
+ */
+@custom-variant dark {
+  &:where([data-theme="dark"], [data-theme="dark"] *) {
+    @slot;
+  }
+  @media (prefers-color-scheme: dark) {
+    &:where(
+      :root:not([data-theme="light"]),
+      :root:not([data-theme="light"]) *
+    ) {
+      @slot;
+    }
+  }
+}
 
+/*
+ * ─── Tailwind bridge ───────────────────────────────────────────────────────
+ *
+ * The token sheet below owns colour. This block is the only place the two
+ * naming systems meet: the shadcn semantic names the untouched screens still
+ * use (`bg-card`, `text-muted-foreground`) resolve to design tokens, so a
+ * screen recolours without its markup being edited, and the design tokens get
+ * utilities of their own (`bg-surface`, `text-muted`, `bg-acc`) for the screens
+ * later phases convert.
+ *
+ * Two aliases are worth reading twice, because the same word means different
+ * things on each side:
+ *   - shadcn `muted` is a *background*; the mockup's `--muted` is *text*. The
+ *     mockup wins, so `text-muted` and `text-muted-foreground` are the same
+ *     colour and both are text. The dozen `bg-muted/NN` call sites were
+ *     rewritten to `bg-surface2/NN` rather than aliased: leaving `bg-muted`
+ *     meaning a background while `text-muted` meant text is a trap every later
+ *     phase would have had to remember.
+ *   - shadcn `accent` is the subtle hover fill, not the brand violet. The
+ *     violet is `--acc` (utilities `bg-acc`, `text-acc-700`, …).
+ */
 @theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
   --font-sans: var(--font-body);
   --font-mono: var(--font-mono);
-  
-  --color-card: var(--card);
-  --color-card-foreground: var(--card-foreground);
-  --color-popover: var(--popover);
-  --color-popover-foreground: var(--popover-foreground);
-  --color-primary: var(--primary);
-  --color-primary-foreground: var(--primary-foreground);
-  --color-secondary: var(--secondary);
-  --color-secondary-foreground: var(--secondary-foreground);
+
+  /* Design tokens, as utilities. */
+  --color-bg: var(--bg);
+  --color-surface: var(--surface);
+  --color-surface2: var(--surface2);
+  --color-text: var(--text);
+  --color-faint: var(--faint);
+  --color-divider: var(--divider);
+  --color-acc: var(--acc);
+  --color-acc-h: var(--acc-h);
+  --color-acc-100: var(--acc-100);
+  --color-acc-200: var(--acc-200);
+  --color-acc-300: var(--acc-300);
+  --color-acc-700: var(--acc-700);
+  --color-acc2: var(--acc2);
+  --color-acc2-h: var(--acc2-h);
+  --color-acc2-100: var(--acc2-100);
+  --color-acc2-200: var(--acc2-200);
+  --color-acc2-300: var(--acc2-300);
+  --color-acc2-700: var(--acc2-700);
+  --color-danger: var(--danger);
+  --color-danger-100: var(--danger-100);
+  --color-danger-700: var(--danger-700);
+  --color-onacc: var(--onacc);
+
+  /* shadcn semantic names, aliased onto the same tokens. */
+  --color-background: var(--bg);
+  --color-foreground: var(--text);
+  --color-card: var(--surface);
+  --color-card-foreground: var(--text);
+  --color-popover: var(--surface);
+  --color-popover-foreground: var(--text);
+  --color-primary: var(--acc);
+  --color-primary-foreground: var(--onacc);
+  --color-secondary: var(--surface2);
+  --color-secondary-foreground: var(--text);
   --color-muted: var(--muted);
-  --color-muted-foreground: var(--muted-foreground);
-  --color-accent: var(--accent);
-  --color-accent-foreground: var(--accent-foreground);
-  --color-destructive: var(--destructive);
-  --color-destructive-foreground: var(--destructive-foreground);
-  --color-border: var(--border);
-  --color-input: var(--input);
-  --color-ring: var(--ring);
+  --color-muted-foreground: var(--muted);
+  --color-accent: var(--surface2);
+  --color-accent-foreground: var(--text);
+  --color-destructive: var(--danger);
+  --color-destructive-foreground: var(--onacc);
+  --color-border: var(--divider);
+  --color-input: var(--divider);
+  --color-ring: var(--acc);
+
+  /*
+   * The mockup over-rounds and uses several radii rather than one scale step,
+   * so they are named rather than derived from a single `--radius`.
+   */
+  --radius-sm: 14px;
+  --radius: 18px;
+  --radius-md: 18px;
+  --radius-lg: 24px;
+  --radius-xl: 28px;
+  --radius-2xl: 32px;
+
+  --shadow-sm: var(--shadow-sm-token);
+  --shadow-md: var(--shadow-md-token);
+  --shadow-lg: var(--shadow-lg-token);
 }
 
+/*
+ * ─── Token sheet ───────────────────────────────────────────────────────────
+ *
+ * Three blocks, not two. The media query alone cannot be overridden by an
+ * explicit toggle in *both* directions: it would win over a user who asked for
+ * light on a dark-preferring OS. So the explicit attribute gets its own block
+ * and the media query excludes `[data-theme="light"]`.
+ *
+ * Values are the mockup's (`CleanCut.dc.html`), not `_ds/styles.css`: the
+ * parent system is cream/terracotta, and this app was composed against the
+ * lavender re-tokenisation — the waveform region colours in particular were
+ * picked to read on `--bg`.
+ */
 :root {
-  --background: oklch(1 0 0);
-  --foreground: oklch(0.145 0 0);
-  --card: oklch(1 0 0);
-  --card-foreground: oklch(0.145 0 0);
-  --popover: oklch(1 0 0);
-  --popover-foreground: oklch(0.145 0 0);
-  --primary: oklch(0.205 0 0);
-  --primary-foreground: oklch(0.985 0 0);
-  --secondary: oklch(0.97 0 0);
-  --secondary-foreground: oklch(0.205 0 0);
-  --muted: oklch(0.97 0 0);
-  --muted-foreground: oklch(0.556 0 0);
-  --accent: oklch(0.97 0 0);
-  --accent-foreground: oklch(0.205 0 0);
-  --destructive: oklch(0.577 0.245 27.325);
-  --destructive-foreground: oklch(0.985 0 0);
-  --border: oklch(0.922 0 0);
-  --input: oklch(0.922 0 0);
-  --ring: oklch(0.708 0 0);
-  --radius: 0.5rem;
+  color-scheme: light;
+
+  --bg: #efecf8;
+  --surface: #e4e0f2;
+  --surface2: #d8d3ec;
+  --text: #1e1c2b;
+  /*
+   * The mockup's .58 alpha measures 3.9:1 on --bg and 3.8:1 on --surface, so it
+   * fails 4.5:1 for the 12-13px meta text it is used for. .66 clears it on all
+   * three light grounds (4.8 / 4.6 / 4.6). Fixed here rather than per site.
+   */
+  --muted: rgba(30, 28, 43, 0.66);
+  --faint: rgba(30, 28, 43, 0.36);
+  --divider: rgba(30, 28, 43, 0.14);
+
+  --acc: #6a57c9;
+  --acc-h: #5a48b5;
+  --acc-100: #f1eefc;
+  --acc-200: #e2dcf9;
+  --acc-300: #c9bff3;
+  --acc-700: #4a3b92;
+
+  --acc2: #4a7bc4;
+  --acc2-h: #3f6aae;
+  --acc2-100: #ecf2fc;
+  --acc2-200: #d9e5f8;
+  --acc2-300: #b9cff1;
+  --acc2-700: #3a568c;
+
+  --danger: #c15c66;
+  --danger-100: #fbeaec;
+  --danger-700: #7d3039;
+
+  --onacc: #f7f5fd;
+
+  --shadow-sm-token: 0 1px 2px rgba(38, 35, 51, 0.14);
+  --shadow-md-token: 0 3px 10px rgba(38, 35, 51, 0.16);
+  --shadow-lg-token: 0 12px 32px rgba(38, 35, 51, 0.22);
+
+  --selection: rgba(106, 87, 201, 0.3);
 }
 
-.dark {
-  --background: oklch(0.145 0 0);
-  --foreground: oklch(0.985 0 0);
-  --card: oklch(0.145 0 0);
-  --card-foreground: oklch(0.985 0 0);
-  --popover: oklch(0.145 0 0);
-  --popover-foreground: oklch(0.985 0 0);
-  --primary: oklch(0.985 0 0);
-  --primary-foreground: oklch(0.205 0 0);
-  --secondary: oklch(0.269 0 0);
-  --secondary-foreground: oklch(0.985 0 0);
-  --muted: oklch(0.269 0 0);
-  --muted-foreground: oklch(0.708 0 0);
-  --accent: oklch(0.269 0 0);
-  --accent-foreground: oklch(0.985 0 0);
-  --destructive: oklch(0.396 0.141 25.723);
-  --destructive-foreground: oklch(0.985 0 0);
-  --border: oklch(0.269 0 0);
-  --input: oklch(0.269 0 0);
-  --ring: oklch(0.439 0 0);
+:root[data-theme="dark"] {
+  color-scheme: dark;
+
+  --bg: #15132a;
+  --surface: #1f1c36;
+  --surface2: #2a2646;
+  --text: #ece9f6;
+  --muted: rgba(236, 233, 246, 0.6);
+  --faint: rgba(236, 233, 246, 0.38);
+  --divider: rgba(236, 233, 246, 0.14);
+
+  --acc: #a693e6;
+  --acc-h: #b8a8ee;
+  --acc-100: #2a2450;
+  --acc-200: #352d66;
+  --acc-300: #4a3b92;
+  --acc-700: #d6ccf7;
+
+  --acc2: #8fb0e3;
+  --acc2-h: #a4c0ea;
+  --acc2-100: #1f2c48;
+  --acc2-200: #2a3e66;
+  --acc2-300: #3a568c;
+  --acc2-700: #c4d6f2;
+
+  --danger: #e08a92;
+  --danger-100: #4a262c;
+  --danger-700: #f3c3c8;
+
+  --onacc: #15132a;
+
+  --shadow-sm-token: 0 1px 2px rgba(0, 0, 0, 0.4);
+  --shadow-md-token: 0 3px 10px rgba(0, 0, 0, 0.4);
+  --shadow-lg-token: 0 12px 32px rgba(0, 0, 0, 0.5);
+
+  --selection: rgba(166, 147, 230, 0.32);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    color-scheme: dark;
+
+    --bg: #15132a;
+    --surface: #1f1c36;
+    --surface2: #2a2646;
+    --text: #ece9f6;
+    --muted: rgba(236, 233, 246, 0.6);
+    --faint: rgba(236, 233, 246, 0.38);
+    --divider: rgba(236, 233, 246, 0.14);
+
+    --acc: #a693e6;
+    --acc-h: #b8a8ee;
+    --acc-100: #2a2450;
+    --acc-200: #352d66;
+    --acc-300: #4a3b92;
+    --acc-700: #d6ccf7;
+
+    --acc2: #8fb0e3;
+    --acc2-h: #a4c0ea;
+    --acc2-100: #1f2c48;
+    --acc2-200: #2a3e66;
+    --acc2-300: #3a568c;
+    --acc2-700: #c4d6f2;
+
+    --danger: #e08a92;
+    --danger-100: #4a262c;
+    --danger-700: #f3c3c8;
+
+    --onacc: #15132a;
+
+    --shadow-sm-token: 0 1px 2px rgba(0, 0, 0, 0.4);
+    --shadow-md-token: 0 3px 10px rgba(0, 0, 0, 0.4);
+    --shadow-lg-token: 0 12px 32px rgba(0, 0, 0, 0.5);
+
+    --selection: rgba(166, 147, 230, 0.32);
+  }
 }
 
 @layer base {
   * {
-    @apply border-border outline-ring/50;
+    border-color: var(--divider);
   }
+
   body {
-    @apply bg-background text-foreground font-sans antialiased;
+    background: var(--bg);
+    color: var(--text);
+    font-family: var(--font-body), system-ui, sans-serif;
+    font-size: 15px;
+    line-height: 1.5;
+    -webkit-font-smoothing: antialiased;
   }
+
+  a {
+    color: var(--acc);
+    text-underline-offset: 3px;
+  }
+
+  a:hover {
+    color: var(--acc-h);
+  }
+
+  input::placeholder,
+  textarea::placeholder {
+    color: var(--faint);
+  }
+
+  ::selection {
+    background: var(--selection);
+  }
+
+  :focus {
+    outline: none;
+  }
+
+  :focus-visible {
+    outline: 2px solid var(--acc);
+    outline-offset: 2px;
+  }
+}
+
+/* The display face. Headings opt in with `font-heading`. */
+.font-heading {
+  font-family: var(--font-display), Georgia, serif;
+  font-weight: 400;
 }
 
 /*
@@ -92,13 +299,51 @@
   100% { transform: translateX(510%); }
 }
 
+/* The mockup's three: a status pill that breathes, a spinner, a focus halo. */
+@keyframes cc-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.35; }
+}
+
+@keyframes cc-spin {
+  to { transform: rotate(360deg); }
+}
+
+@keyframes cc-breathe {
+  0%, 100% { box-shadow: 0 0 0 4px var(--acc-200); }
+  50% { box-shadow: 0 0 0 9px var(--acc-200); }
+}
+
 .animate-stage-sweep {
   animation: stage-sweep 2.6s cubic-bezier(0.45, 0, 0.55, 1) infinite;
 }
 
+.animate-cc-pulse {
+  animation: cc-pulse 1.6s ease-in-out infinite;
+}
+
+.animate-cc-spin {
+  animation: cc-spin 0.9s linear infinite;
+}
+
+.animate-cc-breathe {
+  animation: cc-breathe 2.4s ease-in-out infinite;
+}
+
+/*
+ * All four animations are decorative - every one of them has a static frame
+ * that reads the same. `stage-sweep` parks mid-track rather than at its start,
+ * so the stopped state still looks like a bar under the running stage.
+ */
 @media (prefers-reduced-motion: reduce) {
   .animate-stage-sweep {
     animation: none;
     transform: translateX(180%);
+  }
+
+  .animate-cc-pulse,
+  .animate-cc-spin,
+  .animate-cc-breathe {
+    animation: none;
   }
 }

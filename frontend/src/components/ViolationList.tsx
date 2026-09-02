@@ -150,7 +150,7 @@ export function ViolationList({
                   "focus-visible:ring-2 focus-visible:ring-ring",
                   selectedViolation?.id === v.id
                     ? "bg-accent border-accent-foreground/20"
-                    : "border-transparent hover:bg-muted"
+                    : "border-transparent hover:bg-surface2"
                 )}
                 onClick={() => onSelect(v)}
                 onKeyDown={(e) => {

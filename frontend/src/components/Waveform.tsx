@@ -221,7 +221,7 @@ export const Waveform = forwardRef<WaveformHandle, WaveformProps>(function Wavef
       {/* Waveform container */}
       <div
         ref={containerRef}
-        className="w-full bg-muted/20 border rounded-md overflow-hidden"
+        className="w-full bg-surface2/20 border rounded-md overflow-hidden"
         style={{ minHeight: 100 }}
       />
 

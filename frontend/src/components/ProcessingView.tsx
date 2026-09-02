@@ -86,7 +86,7 @@ function StageDot({ state }: { state: StageState }) {
     );
   }
   if (state === "skipped") {
-    return <div className="size-3 rounded-full border border-border bg-muted" />;
+    return <div className="size-3 rounded-full border border-border bg-surface2" />;
   }
   return <div className="size-3 rounded-full border border-border" />;
 }

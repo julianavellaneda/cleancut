@@ -95,8 +95,8 @@ export function TranscriptPanel({
                   title={mark ? `${mark.label ?? "Suggested edit"} — ${mark.action}` : undefined}
                   className={cn(
                     "w-full rounded-md border-l-2 px-3 py-2 text-left transition-colors",
-                    "hover:bg-muted/60",
-                    isActive ? "bg-muted" : "bg-transparent",
+                    "hover:bg-surface2/60",
+                    isActive ? "bg-surface2" : "bg-transparent",
                     !mark && "border-l-transparent",
                     mark?.action === "cut" && "border-l-destructive",
                     mark?.action === "mute" && "border-l-amber-500"

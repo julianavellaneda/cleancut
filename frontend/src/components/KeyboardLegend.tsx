@@ -47,7 +47,7 @@ export function KeyboardLegend({
   }
 
   return (
-    <div className="border-t bg-muted/20 px-8 py-3">
+    <div className="border-t bg-surface2/20 px-8 py-3">
       <div className="flex flex-wrap items-center gap-x-6 gap-y-2">
         {BINDINGS.map(([key, label]) => (
           <div key={key} className="flex items-center gap-2 text-[11px] text-muted-foreground">

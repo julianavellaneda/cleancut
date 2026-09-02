@@ -149,8 +149,11 @@ def test_backend_dockerignore_excludes_media_and_venv():
 def test_frontend_build_fetches_no_fonts_over_the_network():
     """
     `next/font/google` downloads the face during `next build`, so a container
-    build needed working DNS and reachable fonts.googleapis.com. Both faces are
+    build needed working DNS and reachable fonts.googleapis.com. Every face is
     committed under `src/app/fonts/` and loaded with `next/font/local`.
+
+    The face list moves with the design; the `next/font/google` prohibition is
+    the assertion this test exists for and does not.
     """
     layout = (REPO_ROOT / "frontend" / "src" / "app" / "layout.tsx").read_text()
     imports = [line for line in layout.splitlines() if line.startswith("import ")]
@@ -158,8 +161,15 @@ def test_frontend_build_fetches_no_fonts_over_the_network():
     assert any("next/font/local" in line for line in imports)
 
     fonts = REPO_ROOT / "frontend" / "src" / "app" / "fonts"
-    assert (fonts / "Geist-Variable.woff2").exists()
-    assert (fonts / "GeistMono-Variable.woff2").exists()
+    # Figtree body, Caprasimo display, GeistMono for timestamps. Each ships
+    # beside its SIL OFL text, which is a condition of redistributing them.
+    for face, licence in (
+        ("Figtree-Variable.woff2", "FIGTREE-LICENSE.txt"),
+        ("Caprasimo-Regular.woff2", "CAPRASIMO-LICENSE.txt"),
+        ("GeistMono-Variable.woff2", "GEIST-LICENSE.txt"),
+    ):
+        assert (fonts / face).exists(), f"{face} missing from src/app/fonts/"
+        assert (fonts / licence).exists(), f"{licence} missing from src/app/fonts/"
 
 
 def test_backend_origin_is_not_resolved_at_build_time():

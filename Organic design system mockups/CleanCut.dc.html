@@ -1,0 +1,688 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Caprasimo&family=Figtree:wght@400;600;700&display=swap" rel="stylesheet">
+<style>
+body{margin:0;--bg:#efecf8;--surface:#e4e0f2;--surface2:#d8d3ec;--text:#1e1c2b;--muted:rgba(30,28,43,.58);--faint:rgba(30,28,43,.36);--divider:rgba(30,28,43,.14);--acc:#6a57c9;--acc-h:#5a48b5;--acc-100:#f1eefc;--acc-200:#e2dcf9;--acc-300:#c9bff3;--acc-700:#4a3b92;--acc2:#4a7bc4;--acc2-h:#3f6aae;--acc2-100:#ecf2fc;--acc2-200:#d9e5f8;--acc2-300:#b9cff1;--acc2-700:#3a568c;--danger:#c15c66;--danger-100:#fbeaec;--danger-700:#7d3039;--onacc:#f7f5fd;--shadow-sm:0 1px 2px rgba(38,35,51,.14);--shadow-md:0 3px 10px rgba(38,35,51,.16);--shadow-lg:0 12px 32px rgba(38,35,51,.22)}
+body[data-theme="dark"]{--bg:#15132a;--surface:#1f1c36;--surface2:#2a2646;--text:#ece9f6;--muted:rgba(236,233,246,.6);--faint:rgba(236,233,246,.38);--divider:rgba(236,233,246,.14);--acc:#a693e6;--acc-h:#b8a8ee;--acc-100:#2a2450;--acc-200:#352d66;--acc-300:#4a3b92;--acc-700:#d6ccf7;--acc2:#8fb0e3;--acc2-h:#a4c0ea;--acc2-100:#1f2c48;--acc2-200:#2a3e66;--acc2-300:#3a568c;--acc2-700:#c4d6f2;--danger:#e08a92;--danger-100:#4a262c;--danger-700:#f3c3c8;--onacc:#15132a;--shadow-sm:0 1px 2px rgba(0,0,0,.4);--shadow-md:0 3px 10px rgba(0,0,0,.4);--shadow-lg:0 12px 32px rgba(0,0,0,.5)}
+body{background:var(--bg);color:var(--text);font-family:"Figtree",system-ui,sans-serif;font-size:15px;line-height:1.5}
+a{color:var(--acc);text-underline-offset:3px}a:hover{color:var(--acc-h)}
+*{box-sizing:border-box}
+button{font-family:inherit}
+:focus{outline:none}:focus-visible{outline:2px solid var(--acc);outline-offset:2px}
+::selection{background:rgba(106,87,201,.3)}
+input::placeholder,textarea::placeholder{color:var(--faint)}
+@keyframes cc-pulse{0%,100%{opacity:1}50%{opacity:.35}}
+@keyframes cc-spin{to{transform:rotate(360deg)}}
+@keyframes cc-breathe{0%,100%{box-shadow:0 0 0 4px var(--acc-200)}50%{box-shadow:0 0 0 9px var(--acc-200)}}
+</style>
+</helmet>
+<div style="min-height:100vh;display:flex;flex-direction:column;background:var(--bg);color:var(--text)">
+
+<!-- ═══ HOME ═══ -->
+<sc-if value="{{ isHome }}" hint-placeholder-val="{{ true }}">
+<div data-screen-label="Home" style="max-width:920px;width:100%;margin:0 auto;padding:56px 32px 80px;display:flex;flex-direction:column;gap:44px">
+  <header style="display:flex;align-items:flex-end;justify-content:space-between;gap:24px">
+    <div>
+      <div style="display:flex;align-items:center;gap:12px;margin-bottom:10px">
+        <div style="width:34px;height:34px;border-radius:50%;background:var(--acc);position:relative;overflow:hidden"><div style="position:absolute;left:12px;top:0;bottom:0;width:6px;background:var(--bg);border-radius:3px;transform:rotate(18deg)"></div></div>
+        <h1 style="font-family:Caprasimo,serif;font-weight:400;font-size:38px;line-height:1.1;letter-spacing:-.015em;margin:0">CleanCut</h1>
+      </div>
+      <p style="margin:0;color:var(--muted);font-size:16px;max-width:52ch;text-wrap:pretty">Describe what to find in plain English. Review every proposed edit on the waveform. Nothing is removed until you say so.</p>
+    </div>
+    <button onClick="{{ goAdmin }}" style="border:none;background:transparent;color:var(--muted);font-size:13px;cursor:pointer;padding:6px 10px;border-radius:999px" style-hover="background:var(--surface)">Maintenance</button>
+  </header>
+
+  <section style="background:var(--surface);border-radius:32px;padding:28px 28px 24px;display:flex;flex-direction:column;gap:22px">
+    <h2 style="font-family:Caprasimo,serif;font-weight:400;font-size:24px;margin:0;line-height:1.15">New edit</h2>
+    <div style="display:grid;grid-template-columns:1.4fr 1fr;gap:20px;align-items:start">
+      <div style="display:flex;flex-direction:column;gap:6px">
+        <label style="font-size:12px;color:var(--muted);display:flex;justify-content:space-between"><span>Instructions</span><sc-if value="{{ presetActive }}" hint-placeholder-val="{{ false }}"><span style="color:var(--acc2-700)">preset is driving the analysis</span></sc-if></label>
+        <div style="position:relative">
+          <textarea value="{{ prompt }}" onChange="{{ setPrompt }}" disabled="{{ presetActive }}" placeholder="e.g. Remove filler words and long silences, and flag every income claim" style="width:100%;min-height:120px;resize:vertical;font:inherit;font-size:14px;line-height:1.5;padding:12px 16px;color:var(--text);background:var(--bg);border:1px solid var(--divider);border-radius:20px;caret-color:var(--acc)" style-focus="border-color:var(--acc)"></textarea>
+          <sc-if value="{{ presetActive }}" hint-placeholder-val="{{ false }}">
+            <div style="position:absolute;inset:0;border-radius:20px;background:var(--bg);opacity:.92;display:flex;align-items:center;justify-content:center;padding:16px;text-align:center;font-size:13px;color:var(--muted);text-wrap:pretty">The <strong style="color:var(--acc2-700);font-weight:600">{{ presetName }}</strong> rulebook is driving this analysis. Your instructions are ignored while it's selected.</div>
+          </sc-if>
+        </div>
+      </div>
+      <div style="display:flex;flex-direction:column;gap:14px">
+        <div style="display:flex;flex-direction:column;gap:6px">
+          <label style="font-size:12px;color:var(--muted)">Rule preset</label>
+          <div style="display:flex;flex-direction:column;gap:6px">
+            <sc-for list="{{ presetOptions }}" as="p" hint-placeholder-count="3">
+              <button onClick="{{ p.pick }}" style="display:flex;align-items:center;gap:10px;text-align:left;border:1px solid var(--divider);background:{{ p.bg }};color:var(--text);padding:8px 12px;border-radius:999px;cursor:pointer;font:inherit;font-size:13px" style-hover="border-color:var(--acc)">
+                <span style="width:14px;height:14px;border-radius:50%;flex:none;border:1.5px solid {{ p.dotBorder }};background:{{ p.dotBg }};box-shadow:{{ p.dotShadow }}"></span>
+                <span style="flex:1">{{ p.name }}</span>
+              </button>
+            </sc-for>
+          </div>
+          <sc-if value="{{ presetActive }}" hint-placeholder-val="{{ false }}"><p style="margin:2px 0 0 6px;font-size:12px;color:var(--muted);text-wrap:pretty">{{ presetDescription }}</p></sc-if>
+        </div>
+      </div>
+    </div>
+
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+      <button onClick="{{ toggleAutoFix }}" style="display:flex;gap:12px;align-items:flex-start;text-align:left;padding:12px 14px;border-radius:22px;border:1px solid var(--divider);background:{{ autoFixBg }};cursor:pointer;color:var(--text);font:inherit" style-hover="border-color:var(--acc)">
+        <span style="margin-top:2px;width:34px;height:20px;border-radius:999px;flex:none;background:{{ autoFixTrack }};position:relative;transition:background .15s"><span style="position:absolute;top:3px;left:{{ autoFixKnob }};width:14px;height:14px;border-radius:50%;background:var(--bg);transition:left .15s"></span></span>
+        <span><span style="display:block;font-weight:600;font-size:14px">Auto-apply markers</span><span style="display:block;font-size:12px;color:var(--muted);text-wrap:pretty">Pre-accept the model's suggestions and render the export right after analysis. Uncertain ones stay pending.</span></span>
+      </button>
+      <button onClick="{{ toggleAutoScrub }}" style="display:flex;gap:12px;align-items:flex-start;text-align:left;padding:12px 14px;border-radius:22px;border:1px solid var(--divider);background:{{ autoScrubBg }};cursor:pointer;color:var(--text);font:inherit" style-hover="border-color:var(--acc)">
+        <span style="margin-top:2px;width:34px;height:20px;border-radius:999px;flex:none;background:{{ autoScrubTrack }};position:relative;transition:background .15s"><span style="position:absolute;top:3px;left:{{ autoScrubKnob }};width:14px;height:14px;border-radius:50%;background:var(--bg);transition:left .15s"></span></span>
+        <span><span style="display:block;font-weight:600;font-size:14px">Scrubber mode</span><span style="display:block;font-size:12px;color:var(--muted);text-wrap:pretty">Pre-accept detected filler words and dead air. Uncertain ones stay pending.</span></span>
+      </button>
+    </div>
+
+    <div onClick="{{ pickFiles }}" onDragOver="{{ dragOver }}" onDragLeave="{{ dragLeave }}" onDrop="{{ drop }}" style="border:2px dashed {{ dropBorder }};background:{{ dropBg }};border-radius:26px;padding:34px 24px;text-align:center;cursor:pointer;transition:all .15s;display:flex;flex-direction:column;align-items:center;gap:6px">
+      <div style="width:44px;height:44px;border-radius:50%;background:var(--acc-200);display:grid;place-items:center;color:var(--acc-700);margin-bottom:4px"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.75" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12"/><path d="m7 8 5-5 5 5"/><path d="M5 21h14"/></svg></div>
+      <div style="font-weight:600;font-size:15px">Drop recordings here, or click to browse</div>
+      <div style="font-size:12px;color:var(--muted)">mp3 · wav · m4a · flac · ogg · webm · aif · aiff · mp4 · mov — several at once is fine</div>
+    </div>
+    <sc-if value="{{ hasUploads }}" hint-placeholder-val="{{ false }}">
+      <ul style="list-style:none;margin:-8px 0 0;padding:0 8px;display:flex;flex-direction:column;gap:6px;font-size:13px">
+        <sc-for list="{{ uploads }}" as="u" hint-placeholder-count="2">
+          <li style="display:flex;justify-content:space-between;gap:16px;align-items:center"><span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--muted)">{{ u.name }}</span><span style="flex:none;font-size:11px;letter-spacing:.08em;text-transform:uppercase;padding:2px 10px;border-radius:999px;background:{{ u.bg }};color:{{ u.fg }}">{{ u.state }}</span></li>
+        </sc-for>
+      </ul>
+    </sc-if>
+    <sc-if value="{{ homeError }}" hint-placeholder-val="{{ false }}">
+      <div style="display:flex;gap:10px;align-items:flex-start;background:var(--danger-100);color:var(--danger-700);padding:10px 16px;border-radius:18px;font-size:13px;text-wrap:pretty"><span style="flex:none;font-weight:700">!</span><span style="flex:1">{{ homeError }}</span><button onClick="{{ clearHomeError }}" style="border:none;background:transparent;color:inherit;cursor:pointer;font-size:14px;padding:0 4px">×</button></div>
+    </sc-if>
+  </section>
+
+  <sc-if value="{{ hasJobs }}" hint-placeholder-val="{{ true }}">
+  <section style="display:flex;flex-direction:column;gap:14px">
+    <div style="display:flex;align-items:baseline;gap:16px">
+      <h2 style="font-family:Caprasimo,serif;font-weight:400;font-size:24px;margin:0;line-height:1.15">Recordings</h2>
+      <sc-if value="{{ polling }}" hint-placeholder-val="{{ false }}"><span style="font-size:12px;color:var(--muted);display:inline-flex;align-items:center;gap:6px"><span style="width:7px;height:7px;border-radius:50%;background:var(--acc);animation:cc-pulse 1.6s infinite"></span>updating every 3s</span></sc-if>
+      <button onClick="{{ refreshJobs }}" disabled="{{ refreshing }}" style="margin-left:auto;border:1px solid var(--divider);background:transparent;color:var(--text);font:inherit;font-size:13px;padding:6px 14px;border-radius:999px;cursor:pointer;display:inline-flex;gap:6px;align-items:center;opacity:{{ refreshOpacity }}" style-hover="background:var(--surface)"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.75" stroke-linecap="round" stroke-linejoin="round" style="animation:{{ refreshSpin }}"><path d="M21 12a9 9 0 1 1-3-6.7"/><path d="M21 3v6h-6"/></svg>{{ refreshLabel }}</button>
+    </div>
+    <div style="display:flex;flex-direction:column;gap:8px">
+      <sc-for list="{{ jobRows }}" as="j" hint-placeholder-count="4">
+        <div style="display:grid;grid-template-columns:44px 1fr auto auto;gap:16px;align-items:center;padding:12px 16px 12px 12px;border-radius:24px;background:var(--surface);opacity:{{ j.opacity }}">
+          <div style="width:44px;height:44px;border-radius:50%;background:{{ j.iconBg }};color:{{ j.iconFg }};display:grid;place-items:center">
+            <sc-if value="{{ j.isVideo }}" hint-placeholder-val="{{ false }}"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.75" stroke-linecap="round" stroke-linejoin="round"><path d="m16 13 5.2 3.1a.5.5 0 0 0 .8-.4V8.3a.5.5 0 0 0-.8-.4L16 11"/><rect x="2" y="6" width="14" height="12" rx="3"/></svg></sc-if>
+            <sc-if value="{{ j.isAudio }}" hint-placeholder-val="{{ true }}"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.75" stroke-linecap="round" stroke-linejoin="round"><path d="M2 13a2 2 0 0 0 2-2V7a2 2 0 0 1 4 0v13a2 2 0 0 0 4 0V4a2 2 0 0 1 4 0v13a2 2 0 0 0 4 0v-4a2 2 0 0 1 2-2"/></svg></sc-if>
+          </div>
+          <div style="min-width:0">
+            <div style="font-weight:600;font-size:15px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{ j.name }}</div>
+            <div style="font-size:12px;color:var(--muted);display:flex;gap:8px;align-items:center"><span>{{ j.duration }}</span><span style="opacity:.5">·</span><span>{{ j.mode }}</span><sc-if value="{{ j.showCount }}" hint-placeholder-val="{{ false }}"><span style="opacity:.5">·</span><span>{{ j.count }} suggestions</span></sc-if></div>
+          </div>
+          <span style="font-size:11px;letter-spacing:.08em;text-transform:uppercase;padding:4px 12px;border-radius:999px;background:{{ j.statusBg }};color:{{ j.statusFg }};animation:{{ j.statusAnim }}">{{ j.status }}</span>
+          <sc-if value="{{ j.completed }}" hint-placeholder-val="{{ true }}"><button onClick="{{ j.open }}" style="border:none;background:var(--acc);color:var(--onacc);font-family:Caprasimo,serif;font-size:14px;padding:9px 18px;border-radius:999px;cursor:pointer" style-hover="background:var(--acc-h)">Review</button></sc-if>
+          <sc-if value="{{ j.failed }}" hint-placeholder-val="{{ false }}"><button onClick="{{ j.open }}" style="border:1px solid var(--divider);background:transparent;color:var(--text);font:inherit;font-size:13px;padding:8px 16px;border-radius:999px;cursor:pointer" style-hover="background:var(--surface2)">Details</button></sc-if>
+          <sc-if value="{{ j.busy }}" hint-placeholder-val="{{ false }}"><span style="width:76px"></span></sc-if>
+        </div>
+      </sc-for>
+    </div>
+    <div style="font-size:12px;color:var(--faint);padding:4px 8px">Showing {{ jobCount }} of {{ jobCount }} · newest first</div>
+  </section>
+  </sc-if>
+</div>
+</sc-if>
+
+<!-- ═══ PROCESSING ═══ -->
+<sc-if value="{{ isProcessing }}" hint-placeholder-val="{{ false }}">
+<div data-screen-label="Processing" style="flex:1;display:flex;align-items:center;justify-content:center;padding:64px 32px">
+  <div style="width:100%;max-width:640px;display:flex;flex-direction:column;gap:36px">
+    <div>
+      <button onClick="{{ goHome }}" style="border:none;background:transparent;color:var(--muted);font:inherit;font-size:13px;cursor:pointer;padding:0;margin-bottom:18px;display:inline-flex;gap:6px;align-items:center" style-hover="color:var(--acc)">← All recordings</button>
+      <h1 style="font-family:Caprasimo,serif;font-weight:400;font-size:30px;line-height:1.15;margin:0 0 8px;overflow-wrap:anywhere">{{ jobName }}</h1>
+      <p style="margin:0;color:var(--muted);font-size:14px">{{ jobMeta }}</p>
+    </div>
+    <sc-if value="{{ isQueued }}" hint-placeholder-val="{{ false }}">
+      <div style="background:var(--surface);border-radius:24px;padding:14px 20px;font-size:14px;display:flex;gap:12px;align-items:center"><span style="width:10px;height:10px;border-radius:50%;background:var(--acc);animation:cc-pulse 1.6s infinite"></span>Queued — waiting for the worker to pick this up. No stage has started yet.</div>
+    </sc-if>
+    <ol style="list-style:none;margin:0;padding:0;display:flex;flex-direction:column">
+      <sc-for list="{{ stages }}" as="s" hint-placeholder-count="5">
+        <li style="display:grid;grid-template-columns:28px 1fr auto;gap:18px;align-items:start;padding:14px 0;opacity:{{ s.opacity }}">
+          <div style="display:flex;flex-direction:column;align-items:center;gap:6px;height:100%">
+            <span style="width:14px;height:14px;border-radius:50%;flex:none;background:{{ s.dotBg }};border:2px solid {{ s.dotBorder }};animation:{{ s.dotAnim }}"></span>
+            <sc-if value="{{ s.hasLine }}" hint-placeholder-val="{{ true }}"><span style="width:2px;flex:1;min-height:22px;border-radius:2px;background:var(--divider)"></span></sc-if>
+          </div>
+          <div>
+            <div style="font-family:Caprasimo,serif;font-size:19px;line-height:1.2;color:{{ s.titleColor }}">{{ s.label }}</div>
+            <div style="font-size:13px;color:var(--muted);text-wrap:pretty">{{ s.caption }}</div>
+          </div>
+          <span style="font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:{{ s.stateColor }};padding-top:4px">{{ s.stateLabel }}</span>
+        </li>
+      </sc-for>
+    </ol>
+    <p style="margin:0;font-size:12px;color:var(--faint);display:flex;gap:8px;align-items:center"><span style="width:6px;height:6px;border-radius:50%;background:var(--acc);animation:cc-pulse 2s infinite"></span>This page checks for progress every 2 seconds. You can leave it open and walk away.</p>
+  </div>
+</div>
+</sc-if>
+
+<!-- ═══ FAILED ═══ -->
+<sc-if value="{{ isFailed }}" hint-placeholder-val="{{ false }}">
+<div data-screen-label="Failed" style="flex:1;display:flex;align-items:center;justify-content:center;padding:64px 32px">
+  <div style="width:100%;max-width:640px;display:flex;flex-direction:column;gap:24px">
+    <button onClick="{{ goHome }}" style="align-self:flex-start;border:none;background:transparent;color:var(--muted);font:inherit;font-size:13px;cursor:pointer;padding:0" style-hover="color:var(--acc)">← All recordings</button>
+    <div style="display:flex;gap:18px;align-items:flex-start">
+      <div style="width:52px;height:52px;border-radius:50%;background:var(--danger-100);color:var(--danger-700);display:grid;place-items:center;flex:none;font-family:Caprasimo,serif;font-size:26px">!</div>
+      <div>
+        <h1 style="font-family:Caprasimo,serif;font-weight:400;font-size:30px;line-height:1.15;margin:0 0 6px;overflow-wrap:anywhere">{{ jobName }}</h1>
+        <p style="margin:0;color:var(--muted);font-size:15px">This recording could not be processed.</p>
+      </div>
+    </div>
+    <div style="background:var(--surface);border-radius:24px;padding:18px 22px">
+      <div style="font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);margin-bottom:8px">What the server said</div>
+      <pre style="margin:0;font:12.5px/1.55 ui-monospace,Menlo,monospace;white-space:pre-wrap;overflow-wrap:anywhere;color:var(--text);max-height:280px;overflow:auto">{{ jobError }}</pre>
+    </div>
+    <button onClick="{{ goHome }}" style="align-self:flex-start;border:none;background:var(--acc);color:var(--onacc);font-family:Caprasimo,serif;font-size:15px;padding:11px 22px;border-radius:999px;cursor:pointer" style-hover="background:var(--acc-h)">Back to recordings</button>
+  </div>
+</div>
+</sc-if>
+
+<!-- ═══ REVIEW ═══ -->
+<sc-if value="{{ isReview }}" hint-placeholder-val="{{ false }}">
+<div data-screen-label="Review" style="flex:1;display:flex;flex-direction:column;padding:20px 28px 80px;gap:16px;max-width:1500px;width:100%;margin:0 auto">
+  <header style="display:flex;align-items:center;gap:14px;flex-wrap:wrap">
+    <button onClick="{{ goHome }}" title="All recordings" style="width:38px;height:38px;border-radius:50%;border:1px solid var(--divider);background:transparent;color:var(--text);cursor:pointer;display:grid;place-items:center;flex:none" style-hover="background:var(--surface)"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.75" stroke-linecap="round" stroke-linejoin="round"><path d="m12 19-7-7 7-7"/><path d="M19 12H5"/></svg></button>
+    <div style="min-width:0;flex:1">
+      <h1 style="font-family:Caprasimo,serif;font-weight:400;font-size:22px;line-height:1.15;margin:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{ jobName }}</h1>
+      <div style="font-size:12px;color:var(--muted)">{{ jobMeta }}</div>
+    </div>
+    <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+      <div style="display:inline-flex;border:1px solid var(--divider);border-radius:999px;overflow:hidden;font-size:12px">
+        <sc-for list="{{ layoutOptions }}" as="l" hint-placeholder-count="3"><button onClick="{{ l.pick }}" style="border:none;padding:7px 12px;cursor:pointer;font:inherit;font-size:12px;background:{{ l.bg }};color:{{ l.fg }};border-left:1px solid var(--divider);margin-left:-1px">{{ l.label }}</button></sc-for>
+      </div>
+      <sc-if value="{{ hasTranscript }}" hint-placeholder-val="{{ true }}">
+        <button onClick="{{ toggleTranscript }}" style="border:1px solid var(--divider);background:{{ transcriptBtnBg }};color:{{ transcriptBtnFg }};font:inherit;font-size:13px;padding:8px 14px;border-radius:999px;cursor:pointer;display:inline-flex;gap:6px;align-items:center" style-hover="border-color:var(--acc)">Transcript <kbd style="font:600 10px ui-monospace,Menlo,monospace;background:var(--surface2);padding:1px 5px;border-radius:5px;opacity:.8">T</kbd></button>
+        <button onClick="{{ toggleReanalyze }}" style="border:1px solid var(--divider);background:{{ reanalyzeBtnBg }};color:{{ reanalyzeBtnFg }};font:inherit;font-size:13px;padding:8px 14px;border-radius:999px;cursor:pointer" style-hover="border-color:var(--acc)">New prompt</button>
+      </sc-if>
+      <sc-if value="{{ exportIsButton }}" hint-placeholder-val="{{ true }}">
+        <button onClick="{{ doExport }}" disabled="{{ exportDisabled }}" title="{{ exportTitle }}" style="border:none;background:var(--acc);color:var(--onacc);font-family:Caprasimo,serif;font-size:14px;padding:9px 18px;border-radius:999px;cursor:pointer;display:inline-flex;gap:8px;align-items:center;opacity:{{ exportOpacity }}" style-hover="background:var(--acc-h)"><sc-if value="{{ exportBusy }}" hint-placeholder-val="{{ false }}"><span style="width:12px;height:12px;border-radius:50%;border:2px solid var(--onacc);border-top-color:transparent;animation:cc-spin .9s linear infinite"></span></sc-if>{{ exportLabel }}</button>
+      </sc-if>
+      <sc-if value="{{ exportReady }}" hint-placeholder-val="{{ false }}">
+        <a href="#" onClick="{{ noop }}" style="text-decoration:none;background:var(--acc2);color:var(--onacc);font-family:Caprasimo,serif;font-size:14px;padding:9px 18px;border-radius:999px;display:inline-flex;gap:8px;align-items:center" style-hover="background:var(--acc2-h)"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.75" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12"/><path d="m17 10-5 5-5-5"/><path d="M5 21h14"/></svg>Download edited file</a>
+      </sc-if>
+    </div>
+  </header>
+
+  <sc-if value="{{ exportFailed }}" hint-placeholder-val="{{ false }}">
+    <div style="display:flex;gap:14px;align-items:flex-start;background:var(--danger-100);color:var(--danger-700);padding:12px 18px;border-radius:20px;font-size:13px">
+      <div style="flex:1;min-width:0"><strong style="font-weight:700">Export failed.</strong> <span style="font-family:ui-monospace,Menlo,monospace;font-size:12px;overflow-wrap:anywhere">{{ exportError }}</span></div>
+      <button onClick="{{ doExport }}" style="flex:none;border:1px solid currentColor;background:transparent;color:inherit;font:inherit;font-size:12px;padding:5px 12px;border-radius:999px;cursor:pointer">Retry export</button>
+    </div>
+  </sc-if>
+  <sc-if value="{{ errorBanner }}" hint-placeholder-val="{{ false }}">
+    <div style="display:flex;gap:14px;align-items:flex-start;background:var(--danger-100);color:var(--danger-700);padding:12px 18px;border-radius:20px;font-size:13px"><span style="flex:1;overflow-wrap:anywhere">{{ errorBanner }}</span><button onClick="{{ dismissError }}" style="border:none;background:transparent;color:inherit;cursor:pointer;font-size:16px;line-height:1;padding:0 4px">×</button></div>
+  </sc-if>
+  <sc-if value="{{ warningText }}" hint-placeholder-val="{{ false }}">
+    <div style="display:flex;gap:12px;align-items:flex-start;background:var(--acc2-100);color:var(--acc2-700);padding:12px 18px;border-radius:20px;font-size:13px"><span style="flex:none;font-weight:700;letter-spacing:.06em;font-size:11px;text-transform:uppercase;padding-top:2px">Heads up</span><span style="flex:1;text-wrap:pretty">{{ warningText }}</span></div>
+  </sc-if>
+
+  <sc-if value="{{ showReanalyze }}" hint-placeholder-val="{{ false }}">
+    <section style="background:var(--surface);border-radius:28px;padding:22px 24px;display:flex;flex-direction:column;gap:16px">
+      <div style="display:flex;align-items:baseline;gap:12px"><h2 style="font-family:Caprasimo,serif;font-weight:400;font-size:20px;margin:0">Ask something new about this transcript</h2><span style="font-size:12px;color:var(--muted)">re-reads the stored transcript — the audio is not transcribed again</span></div>
+      <div style="display:grid;grid-template-columns:1.4fr 1fr;gap:18px;align-items:start">
+        <div style="position:relative">
+          <textarea value="{{ rePrompt }}" onChange="{{ setRePrompt }}" disabled="{{ rePresetActive }}" style="width:100%;min-height:96px;resize:vertical;font:inherit;font-size:14px;padding:12px 16px;color:var(--text);background:var(--bg);border:1px solid var(--divider);border-radius:20px;caret-color:var(--acc)" style-focus="border-color:var(--acc)"></textarea>
+          <sc-if value="{{ rePresetActive }}" hint-placeholder-val="{{ false }}"><div style="position:absolute;inset:0;border-radius:20px;background:var(--bg);opacity:.92;display:grid;place-items:center;padding:16px;text-align:center;font-size:13px;color:var(--muted)">The <strong style="color:var(--acc2-700)">{{ rePresetName }}</strong> rulebook will drive this analysis.</div></sc-if>
+        </div>
+        <div style="display:flex;flex-direction:column;gap:6px">
+          <sc-for list="{{ rePresetOptions }}" as="p" hint-placeholder-count="3">
+            <button onClick="{{ p.pick }}" style="display:flex;align-items:center;gap:10px;text-align:left;border:1px solid var(--divider);background:{{ p.bg }};color:var(--text);padding:8px 12px;border-radius:999px;cursor:pointer;font:inherit;font-size:13px" style-hover="border-color:var(--acc)"><span style="width:14px;height:14px;border-radius:50%;flex:none;border:1.5px solid {{ p.dotBorder }};background:{{ p.dotBg }};box-shadow:{{ p.dotShadow }}"></span>{{ p.name }}</button>
+          </sc-for>
+        </div>
+      </div>
+      <div style="display:flex;gap:12px;align-items:center;background:var(--bg);border-radius:18px;padding:12px 16px;font-size:13px;text-wrap:pretty">
+        <span style="flex:none;width:30px;height:30px;border-radius:50%;background:var(--danger-100);color:var(--danger-700);display:grid;place-items:center;font-weight:700">!</span>
+        <span>Re-analysis <strong style="font-weight:700">discards every model suggestion — including the {{ acceptedLlmCount }} you've already accepted</strong>. Filler-word and dead-air suggestions and your decisions on them are kept.</span>
+      </div>
+      <div style="display:flex;gap:10px;justify-content:flex-end">
+        <button onClick="{{ toggleReanalyze }}" style="border:1px solid var(--divider);background:transparent;color:var(--text);font:inherit;font-size:14px;padding:9px 18px;border-radius:999px;cursor:pointer" style-hover="background:var(--surface2)">Cancel</button>
+        <button onClick="{{ submitReanalyze }}" style="border:none;background:var(--acc);color:var(--onacc);font-family:Caprasimo,serif;font-size:14px;padding:9px 20px;border-radius:999px;cursor:pointer" style-hover="background:var(--acc-h)">Re-analyze and discard</button>
+      </div>
+    </section>
+  </sc-if>
+
+  <div style="display:grid;gap:16px;grid-template-columns:{{ gridCols }};grid-template-areas:{{ gridAreas }};align-items:start">
+
+    <!-- list -->
+    <section style="grid-area:list;background:var(--surface);border-radius:28px;display:flex;flex-direction:column;overflow:hidden;max-height:{{ listMaxH }}">
+      <div style="padding:16px 18px 10px;display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+        <h2 style="font-family:Caprasimo,serif;font-weight:400;font-size:19px;margin:0">{{ suggestionCount }} suggestions</h2>
+        <span style="font-size:12px;color:var(--muted)">{{ decisionSummary }}</span>
+        <sc-if value="{{ showCleanAll }}" hint-placeholder-val="{{ false }}"><button onClick="{{ cleanAll }}" style="margin-left:auto;border:none;background:var(--acc2);color:var(--onacc);font-family:Caprasimo,serif;font-size:13px;padding:7px 14px;border-radius:999px;cursor:pointer;white-space:nowrap" style-hover="background:var(--acc2-h)">Clean all {{ pendingDetCount }}</button></sc-if>
+        <sc-if value="{{ showUndoClean }}" hint-placeholder-val="{{ false }}"><button onClick="{{ undoCleanAll }}" style="margin-left:auto;border:1px solid var(--divider);background:transparent;color:var(--text);font:inherit;font-size:13px;padding:6px 14px;border-radius:999px;cursor:pointer" style-hover="background:var(--surface2)">Undo clean all ({{ lastSweepCount }})</button></sc-if>
+      </div>
+      <sc-if value="{{ noSuggestions }}" hint-placeholder-val="{{ false }}">
+        <div style="padding:32px 24px 40px;text-align:center;color:var(--muted);font-size:14px;text-wrap:pretty"><div style="width:48px;height:48px;border-radius:50%;background:var(--bg);margin:0 auto 12px"></div>Nothing to review — the analysis found no matches for this instruction. You can ask a new question with <strong>New prompt</strong>.</div>
+      </sc-if>
+      <div ref="{{ listRef }}" style="overflow:auto;padding:0 8px 10px;display:flex;flex-direction:column;gap:2px;flex:1">
+        <sc-for list="{{ rows }}" as="r" hint-placeholder-count="8">
+          <div id="{{ r.domId }}" onClick="{{ r.select }}" style="display:grid;grid-template-columns:44px 1fr auto;gap:10px;align-items:center;padding:9px 12px;border-radius:18px;cursor:pointer;background:{{ r.bg }};box-shadow:{{ r.shadow }};opacity:{{ r.opacity }}" style-hover="background:var(--bg)">
+            <span style="font:600 12px ui-monospace,Menlo,monospace;color:var(--muted)">{{ r.start }}</span>
+            <div style="min-width:0">
+              <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap"><span style="font-size:11px;letter-spacing:.04em;padding:1px 8px;border-radius:999px;background:{{ r.labelBg }};color:{{ r.labelFg }}">{{ r.label }}</span><sc-if value="{{ r.severity }}" hint-placeholder-val="{{ false }}"><span style="font-size:10px;letter-spacing:.06em;text-transform:uppercase;color:{{ r.sevColor }};font-weight:700">{{ r.severity }}</span></sc-if><sc-if value="{{ r.caution }}" hint-placeholder-val="{{ false }}"><span title="Needs a look before accepting" style="width:16px;height:16px;border-radius:50%;background:var(--danger-100);color:var(--danger-700);font-size:10px;font-weight:700;display:grid;place-items:center">!</span></sc-if></div>
+              <div style="font-size:13px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--text);text-decoration:{{ r.strike }}">“{{ r.text }}”</div>
+            </div>
+            <div style="display:flex;flex-direction:column;align-items:flex-end;gap:3px">
+              <span style="font-size:10px;letter-spacing:.08em;text-transform:uppercase;color:{{ r.actionFg }}">{{ r.action }}</span>
+              <span style="width:9px;height:9px;border-radius:50%;background:{{ r.decDot }};border:1.5px solid {{ r.decBorder }}"></span>
+            </div>
+          </div>
+        </sc-for>
+      </div>
+    </section>
+
+    <!-- media -->
+    <section style="grid-area:media;display:flex;flex-direction:column;gap:12px;min-width:0">
+      <sc-if value="{{ isVideo }}" hint-placeholder-val="{{ false }}">
+        <div style="aspect-ratio:16/9;border-radius:24px;background:repeating-linear-gradient(135deg,var(--surface) 0 10px,var(--surface2) 10px 20px);display:grid;place-items:center;color:var(--muted);font:12px ui-monospace,Menlo,monospace;position:relative;overflow:hidden;max-height:{{ videoMaxH }}">original video · {{ jobName }}<div style="position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);width:54px;height:54px;border-radius:50%;background:var(--acc);display:grid;place-items:center;color:var(--onacc)"><svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><path d="M7 4.5v15l12-7.5z"/></svg></div></div>
+      </sc-if>
+      <div style="background:var(--surface);border-radius:28px;padding:16px 18px 14px;display:flex;flex-direction:column;gap:12px">
+        <div onClick="{{ waveClick }}" style="position:relative;height:{{ waveH }};cursor:crosshair;border-radius:14px;overflow:hidden;background:var(--bg)">
+          <div style="position:absolute;inset:0;display:flex;align-items:center;gap:1px;padding:0 4px">
+            <sc-for list="{{ peaks }}" as="p" hint-placeholder-count="40"><div style="flex:1;height:{{ p.h }}%;border-radius:2px;background:var(--faint)"></div></sc-for>
+          </div>
+          <sc-for list="{{ regions }}" as="g" hint-placeholder-count="0">
+            <div onClick="{{ g.select }}" title="{{ g.title }}" style="position:absolute;top:0;bottom:0;left:{{ g.left }}%;width:{{ g.width }}%;min-width:3px;background:{{ g.bg }};border-left:2px solid {{ g.edge }};opacity:{{ g.opacity }};cursor:pointer;background-image:{{ g.pattern }}"></div>
+          </sc-for>
+          <div style="position:absolute;top:0;bottom:0;left:{{ playheadPct }}%;width:2px;background:var(--text);pointer-events:none"><div style="position:absolute;top:-1px;left:-4px;width:10px;height:10px;border-radius:50%;background:var(--text)"></div></div>
+        </div>
+        <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+          <button onClick="{{ skipBack }}" disabled="{{ mediaNotLoaded }}" title="Back 5s" style="width:36px;height:36px;border-radius:50%;border:1px solid var(--divider);background:transparent;color:var(--text);cursor:pointer;display:grid;place-items:center;opacity:{{ mediaOpacity }}" style-hover="background:var(--bg)"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.75" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 1 0 3-6.7"/><path d="M3 3v6h6"/></svg></button>
+          <button onClick="{{ togglePlay }}" disabled="{{ mediaNotLoaded }}" style="width:44px;height:44px;border-radius:50%;border:none;background:var(--acc);color:var(--onacc);cursor:pointer;display:grid;place-items:center;opacity:{{ mediaOpacity }}" style-hover="background:var(--acc-h)"><sc-if value="{{ playing }}" hint-placeholder-val="{{ false }}"><svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><rect x="5" y="4" width="5" height="16" rx="1.5"/><rect x="14" y="4" width="5" height="16" rx="1.5"/></svg></sc-if><sc-if value="{{ notPlaying }}" hint-placeholder-val="{{ true }}"><svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M7 4.5v15l12-7.5z"/></svg></sc-if></button>
+          <button onClick="{{ skipFwd }}" disabled="{{ mediaNotLoaded }}" title="Forward 5s" style="width:36px;height:36px;border-radius:50%;border:1px solid var(--divider);background:transparent;color:var(--text);cursor:pointer;display:grid;place-items:center;opacity:{{ mediaOpacity }}" style-hover="background:var(--bg)"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.75" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-3-6.7"/><path d="M21 3v6h-6"/></svg></button>
+          <span style="font:600 13px ui-monospace,Menlo,monospace;color:var(--muted);margin-left:6px;white-space:nowrap;flex:none">{{ timeReadout }}</span>
+          <sc-if value="{{ mediaNotLoaded }}" hint-placeholder-val="{{ false }}"><span style="font-size:12px;color:var(--faint);display:inline-flex;gap:6px;align-items:center;white-space:nowrap;flex:none"><span style="width:10px;height:10px;border-radius:50%;border:2px solid var(--faint);border-top-color:transparent;animation:cc-spin .9s linear infinite"></span>loading audio…</span></sc-if>
+          <div style="margin-left:auto;display:flex;gap:12px;font-size:11px;color:var(--muted);align-items:center;flex-wrap:wrap;justify-content:flex-end;white-space:nowrap">
+            <span style="display:inline-flex;gap:5px;align-items:center"><span style="width:14px;height:8px;border-radius:3px;background:var(--acc)"></span>cut</span>
+            <span style="display:inline-flex;gap:5px;align-items:center"><span style="width:14px;height:8px;border-radius:3px;background:repeating-linear-gradient(135deg,var(--acc2) 0 2px,transparent 2px 4px)"></span>mute</span>
+            <span style="display:inline-flex;gap:5px;align-items:center"><span style="width:8px;height:8px;border-radius:50%;border:1.5px solid var(--acc)"></span>pending</span>
+            <span style="display:inline-flex;gap:5px;align-items:center"><span style="width:8px;height:8px;border-radius:50%;background:var(--acc)"></span>accepted</span>
+            <span style="display:inline-flex;gap:5px;align-items:center"><span style="width:8px;height:8px;border-radius:50%;background:var(--faint)"></span>rejected</span>
+          </div>
+        </div>
+      </div>
+      <sc-if value="{{ exportReady }}" hint-placeholder-val="{{ false }}">
+        <div style="background:var(--acc2-100);border-radius:24px;padding:14px 18px;display:flex;align-items:center;gap:14px;color:var(--acc2-700)">
+          <button style="width:38px;height:38px;border-radius:50%;border:none;background:var(--acc2);color:var(--onacc);cursor:pointer;display:grid;place-items:center;flex:none"><svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M7 4.5v15l12-7.5z"/></svg></button>
+          <div style="flex:1;min-width:0"><div style="font-weight:600;font-size:14px">Edited result</div><div style="font-size:12px;opacity:.8">{{ exportSummary }}</div></div>
+          <div style="flex:1;height:4px;border-radius:2px;background:var(--acc2-300)"><div style="width:0%;height:100%;border-radius:2px;background:var(--acc2)"></div></div>
+          <span style="font:600 12px ui-monospace,Menlo,monospace">0:00 / {{ exportDuration }}</span>
+        </div>
+      </sc-if>
+    </section>
+
+    <!-- detail -->
+    <section style="grid-area:detail;background:var(--surface);border-radius:28px;padding:20px 22px 18px;display:flex;flex-direction:column;gap:16px;min-width:0">
+      <sc-if value="{{ noSelection }}" hint-placeholder-val="{{ false }}">
+        <div style="padding:30px 12px 40px;text-align:center;color:var(--muted);font-size:14px;text-wrap:pretty">
+          <div style="width:64px;height:64px;border-radius:50%;background:var(--bg);margin:0 auto 14px"></div>
+          {{ noSelectionText }}
+        </div>
+      </sc-if>
+      <sc-if value="{{ sel }}" hint-placeholder-val="{{ true }}">
+        <div style="display:flex;align-items:flex-start;gap:12px;flex-wrap:wrap">
+          <div style="flex:1;min-width:0">
+            <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:4px">
+              <span style="font-size:12px;letter-spacing:.04em;padding:2px 10px;border-radius:999px;background:{{ sel.labelBg }};color:{{ sel.labelFg }}">{{ sel.label }}</span>
+              <sc-if value="{{ sel.severity }}" hint-placeholder-val="{{ false }}"><span style="font-size:11px;letter-spacing:.06em;text-transform:uppercase;font-weight:700;color:{{ sel.sevColor }}">{{ sel.severity }} severity</span></sc-if>
+              <span style="font-size:12px;color:var(--muted)">{{ sel.index }} of {{ suggestionCount }}</span>
+            </div>
+            <sc-if value="{{ sel.rule }}" hint-placeholder-val="{{ false }}"><div style="font-size:13px;color:var(--muted)">Rule: <span style="color:var(--text)">{{ sel.rule }}</span></div></sc-if>
+          </div>
+          <span style="font:600 13px ui-monospace,Menlo,monospace;color:var(--muted);flex:none">{{ sel.start }} → {{ sel.end }} <span style="opacity:.6">({{ sel.length }})</span></span>
+        </div>
+        <blockquote style="margin:0;font-family:Caprasimo,serif;font-size:{{ quoteSize }};line-height:1.25;letter-spacing:-.01em;text-wrap:pretty;overflow-wrap:anywhere">“{{ sel.text }}”</blockquote>
+        <p style="margin:0;font-size:14px;color:var(--muted);text-wrap:pretty;line-height:1.55">{{ sel.reasoning }}</p>
+        <sc-if value="{{ sel.hasFlags }}" hint-placeholder-val="{{ false }}">
+          <div style="display:flex;flex-direction:column;gap:8px">
+            <sc-for list="{{ sel.flags }}" as="f" hint-placeholder-count="1">
+              <div style="display:flex;gap:12px;align-items:flex-start;background:var(--danger-100);color:var(--danger-700);padding:10px 14px;border-radius:18px;font-size:13px"><span style="flex:none;font-size:11px;letter-spacing:.06em;text-transform:uppercase;font-weight:700;padding-top:2px;white-space:nowrap">{{ f.name }}</span><span style="text-wrap:pretty">{{ f.text }}</span></div>
+            </sc-for>
+          </div>
+        </sc-if>
+        <div style="display:flex;align-items:center;gap:14px;flex-wrap:wrap;padding-top:4px;border-top:1px solid var(--divider);margin-top:2px">
+          <div style="display:flex;flex-direction:column;gap:4px">
+            <span style="font-size:11px;color:var(--muted);letter-spacing:.06em;text-transform:uppercase">On export</span>
+            <div style="display:inline-flex;border:1px solid var(--divider);border-radius:999px;overflow:hidden">
+              <button onClick="{{ setCut }}" disabled="{{ saving }}" style="border:none;padding:7px 14px;cursor:pointer;font:inherit;font-size:13px;background:{{ cutBg }};color:{{ cutFg }}">Cut <span style="opacity:.7;font-size:11px">shortens</span></button>
+              <button onClick="{{ setMute }}" disabled="{{ saving }}" style="border:none;border-left:1px solid var(--divider);padding:7px 14px;cursor:pointer;font:inherit;font-size:13px;background:{{ muteBg }};color:{{ muteFg }}">Mute <span style="opacity:.7;font-size:11px">keeps timing</span></button>
+            </div>
+          </div>
+          <button onClick="{{ playClip }}" disabled="{{ mediaNotLoaded }}" style="align-self:flex-end;border:1px solid var(--divider);background:transparent;color:var(--text);font:inherit;font-size:13px;padding:8px 14px;border-radius:999px;cursor:pointer;display:inline-flex;gap:6px;align-items:center;opacity:{{ mediaOpacity }}" style-hover="background:var(--bg)"><svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><path d="M7 4.5v15l12-7.5z"/></svg>Play clip <kbd style="font:600 10px ui-monospace,Menlo,monospace;background:var(--bg);padding:1px 5px;border-radius:5px">P</kbd></button>
+          <div style="margin-left:auto;display:flex;gap:8px;align-items:center;align-self:flex-end">
+            <sc-if value="{{ saving }}" hint-placeholder-val="{{ false }}"><span style="font-size:12px;color:var(--muted);display:inline-flex;gap:6px;align-items:center"><span style="width:10px;height:10px;border-radius:50%;border:2px solid var(--faint);border-top-color:transparent;animation:cc-spin .9s linear infinite"></span>saving</span></sc-if>
+            <sc-if value="{{ sel.pending }}" hint-placeholder-val="{{ true }}">
+              <button onClick="{{ reject }}" disabled="{{ saving }}" style="border:1px solid var(--divider);background:transparent;color:var(--text);font:inherit;font-size:14px;padding:9px 16px;border-radius:999px;cursor:pointer;display:inline-flex;gap:8px;align-items:center" style-hover="background:var(--bg)">Reject <kbd style="font:600 10px ui-monospace,Menlo,monospace;background:var(--bg);padding:1px 5px;border-radius:5px">R</kbd></button>
+              <button onClick="{{ accept }}" disabled="{{ saving }}" style="border:none;background:var(--acc);color:var(--onacc);font-family:Caprasimo,serif;font-size:15px;padding:10px 20px;border-radius:999px;cursor:pointer;display:inline-flex;gap:8px;align-items:center" style-hover="background:var(--acc-h)">Accept <kbd style="font:600 10px ui-monospace,Menlo,monospace;background:rgba(255,255,255,.2);padding:1px 5px;border-radius:5px">A</kbd></button>
+            </sc-if>
+            <sc-if value="{{ sel.decided }}" hint-placeholder-val="{{ false }}">
+              <span style="font-size:13px;padding:6px 14px;border-radius:999px;background:{{ sel.decBg }};color:{{ sel.decFg }};font-weight:600">{{ sel.decisionLabel }}</span>
+              <button onClick="{{ undoDecision }}" disabled="{{ saving }}" style="border:1px solid var(--divider);background:transparent;color:var(--text);font:inherit;font-size:13px;padding:8px 14px;border-radius:999px;cursor:pointer" style-hover="background:var(--bg)">Undo</button>
+            </sc-if>
+          </div>
+        </div>
+      </sc-if>
+    </section>
+
+    <!-- transcript -->
+    <sc-if value="{{ showTranscript }}" hint-placeholder-val="{{ false }}">
+    <section style="grid-area:transcript;background:var(--surface);border-radius:28px;display:flex;flex-direction:column;overflow:hidden;max-height:{{ listMaxH }};min-width:0">
+      <div style="padding:16px 18px 10px;display:flex;align-items:center;gap:12px">
+        <h2 style="font-family:Caprasimo,serif;font-weight:400;font-size:19px;margin:0">Transcript</h2>
+        <input value="{{ transcriptQuery }}" onChange="{{ setTranscriptQuery }}" placeholder="Search the transcript" style="flex:1;min-width:0;font:inherit;font-size:13px;padding:6px 14px;border-radius:999px;border:1px solid var(--divider);background:var(--bg);color:var(--text)" style-focus="border-color:var(--acc)">
+      </div>
+      <sc-if value="{{ transcriptEmpty }}" hint-placeholder-val="{{ false }}"><div style="padding:24px;text-align:center;color:var(--muted);font-size:13px">No lines match “{{ transcriptQuery }}”.</div></sc-if>
+      <div ref="{{ transcriptRef }}" style="overflow:auto;padding:0 8px 12px;display:flex;flex-direction:column;gap:1px;flex:1">
+        <sc-for list="{{ transcriptRows }}" as="t" hint-placeholder-count="10">
+          <div id="{{ t.domId }}" onClick="{{ t.seek }}" style="display:grid;grid-template-columns:40px 1fr;gap:10px;padding:7px 10px;border-radius:14px;cursor:pointer;background:{{ t.bg }};border-left:3px solid {{ t.mark }}" style-hover="background:var(--bg)">
+            <span style="font:600 11px ui-monospace,Menlo,monospace;color:var(--muted);padding-top:2px">{{ t.start }}</span>
+            <span style="font-size:13px;line-height:1.45;color:{{ t.fg }};text-decoration:{{ t.strike }}">{{ t.text }}<sc-if value="{{ t.actionTag }}" hint-placeholder-val="{{ false }}"> <span style="font-size:10px;letter-spacing:.06em;text-transform:uppercase;color:{{ t.tagColor }};font-weight:700;margin-left:6px">{{ t.actionTag }}</span></sc-if></span>
+          </div>
+        </sc-for>
+      </div>
+    </section>
+    </sc-if>
+  </div>
+
+  <!-- shortcuts -->
+  <div style="position:fixed;left:50%;bottom:16px;transform:translateX(-50%);z-index:20">
+    <sc-if value="{{ shortcutsOpen }}" hint-placeholder-val="{{ false }}">
+      <div style="background:var(--surface);box-shadow:var(--shadow-lg);border-radius:24px;padding:14px 20px;display:flex;gap:18px;flex-wrap:wrap;font-size:12px;color:var(--muted);align-items:center;max-width:760px">
+        <sc-for list="{{ shortcuts }}" as="k" hint-placeholder-count="9"><span style="display:inline-flex;gap:6px;align-items:center"><kbd style="font:600 11px ui-monospace,Menlo,monospace;background:var(--bg);color:var(--text);padding:2px 7px;border-radius:7px;min-width:22px;text-align:center">{{ k.key }}</kbd>{{ k.what }}</span></sc-for>
+        <button onClick="{{ toggleShortcuts }}" style="border:none;background:transparent;color:var(--muted);cursor:pointer;font-size:16px;line-height:1;padding:0 2px">×</button>
+      </div>
+    </sc-if>
+    <sc-if value="{{ shortcutsClosed }}" hint-placeholder-val="{{ true }}">
+      <button onClick="{{ toggleShortcuts }}" style="border:none;background:var(--surface);box-shadow:var(--shadow-md);color:var(--muted);font:inherit;font-size:12px;padding:7px 14px;border-radius:999px;cursor:pointer;display:inline-flex;gap:8px;align-items:center" style-hover="color:var(--text)"><kbd style="font:600 11px ui-monospace,Menlo,monospace;background:var(--bg);color:var(--text);padding:1px 7px;border-radius:7px">J</kbd><kbd style="font:600 11px ui-monospace,Menlo,monospace;background:var(--bg);color:var(--text);padding:1px 7px;border-radius:7px">K</kbd><kbd style="font:600 11px ui-monospace,Menlo,monospace;background:var(--bg);color:var(--text);padding:1px 7px;border-radius:7px">A</kbd><kbd style="font:600 11px ui-monospace,Menlo,monospace;background:var(--bg);color:var(--text);padding:1px 7px;border-radius:7px">R</kbd> step through · <kbd style="font:600 11px ui-monospace,Menlo,monospace;background:var(--bg);color:var(--text);padding:1px 7px;border-radius:7px">?</kbd> all shortcuts</button>
+    </sc-if>
+  </div>
+</div>
+</sc-if>
+
+<!-- ═══ ADMIN ═══ -->
+<sc-if value="{{ isAdmin }}" hint-placeholder-val="{{ false }}">
+<div data-screen-label="Admin" style="max-width:760px;width:100%;margin:0 auto;padding:56px 32px 80px;display:flex;flex-direction:column;gap:36px">
+  <div>
+    <button onClick="{{ goHome }}" style="border:none;background:transparent;color:var(--muted);font:inherit;font-size:13px;cursor:pointer;padding:0;margin-bottom:18px" style-hover="color:var(--acc)">← Back to CleanCut</button>
+    <h1 style="font-family:Caprasimo,serif;font-weight:400;font-size:34px;line-height:1.1;margin:0 0 8px">Maintenance</h1>
+    <p style="margin:0;color:var(--muted);font-size:15px;max-width:52ch;text-wrap:pretty">Housekeeping for this local instance. Statistics are always readable; the reset actions need the admin token configured on the server.</p>
+  </div>
+  <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:12px">
+    <sc-for list="{{ stats }}" as="s" hint-placeholder-count="3">
+      <div style="background:var(--surface);border-radius:26px;padding:18px 20px;min-height:104px;display:flex;flex-direction:column;justify-content:space-between">
+        <div style="font-size:12px;color:var(--muted)">{{ s.label }}</div>
+        <sc-if value="{{ s.loading }}" hint-placeholder-val="{{ false }}"><div style="height:30px;width:60%;border-radius:999px;background:var(--surface2);animation:cc-pulse 1.4s infinite"></div></sc-if>
+        <sc-if value="{{ s.error }}" hint-placeholder-val="{{ false }}"><div style="font-size:12px;color:var(--danger-700);display:flex;justify-content:space-between;gap:8px;align-items:center">Couldn't load <button onClick="{{ loadStats }}" style="border:none;background:transparent;color:var(--acc);cursor:pointer;font:inherit;font-size:12px;padding:0">retry</button></div></sc-if>
+        <sc-if value="{{ s.value }}" hint-placeholder-val="{{ true }}"><div style="font-family:Caprasimo,serif;font-size:30px;line-height:1">{{ s.value }}<span style="font-size:14px;color:var(--muted);margin-left:4px">{{ s.unit }}</span></div></sc-if>
+      </div>
+    </sc-for>
+  </div>
+  <div style="display:flex;flex-direction:column;gap:6px;max-width:420px">
+    <label style="font-size:12px;color:var(--muted)">Admin token</label>
+    <input type="password" value="{{ adminToken }}" onChange="{{ setAdminToken }}" placeholder="Paste the ADMIN_TOKEN from the server config" style="font:inherit;font-size:14px;padding:9px 16px;border-radius:999px;border:1px solid var(--divider);background:var(--surface);color:var(--text)" style-focus="border-color:var(--acc)">
+    <span style="font-size:12px;color:var(--faint)">Sent as a header with each destructive action and kept only in this browser.</span>
+  </div>
+  <div style="display:flex;flex-direction:column;gap:10px">
+    <h2 style="font-family:Caprasimo,serif;font-weight:400;font-size:22px;margin:0 0 4px;display:flex;align-items:center;gap:10px">Irreversible actions <span style="font-family:Figtree,sans-serif;font-size:11px;letter-spacing:.08em;text-transform:uppercase;background:var(--danger-100);color:var(--danger-700);padding:3px 10px;border-radius:999px">no undo</span></h2>
+    <sc-for list="{{ ops }}" as="o" hint-placeholder-count="3">
+      <div style="display:grid;grid-template-columns:1fr auto;gap:16px;align-items:center;background:var(--surface);border-radius:24px;padding:16px 20px">
+        <div><div style="font-weight:600;font-size:15px">{{ o.name }}</div><div style="font-size:13px;color:var(--muted)">{{ o.desc }}</div>
+          <sc-if value="{{ o.result }}" hint-placeholder-val="{{ false }}"><div style="margin-top:8px;font-size:12px;padding:6px 12px;border-radius:14px;background:{{ o.resultBg }};color:{{ o.resultFg }};overflow-wrap:anywhere">{{ o.result }}</div></sc-if>
+        </div>
+        <button onClick="{{ o.ask }}" disabled="{{ o.running }}" style="border:1px solid var(--danger);background:transparent;color:var(--danger-700);font:inherit;font-size:13px;font-weight:600;padding:8px 16px;border-radius:999px;cursor:pointer;display:inline-flex;gap:8px;align-items:center;opacity:{{ o.opacity }}" style-hover="background:var(--danger-100)"><sc-if value="{{ o.running }}" hint-placeholder-val="{{ false }}"><span style="width:11px;height:11px;border-radius:50%;border:2px solid currentColor;border-top-color:transparent;animation:cc-spin .9s linear infinite"></span></sc-if>{{ o.btn }}</button>
+      </div>
+    </sc-for>
+  </div>
+  <sc-if value="{{ confirmOp }}" hint-placeholder-val="{{ false }}">
+    <div style="position:fixed;inset:0;display:grid;place-items:center;padding:24px;background:rgba(20,18,36,.5);z-index:50">
+      <div style="width:min(440px,100%);background:var(--surface);border-radius:32px;box-shadow:var(--shadow-lg);padding:26px 26px 22px;display:flex;flex-direction:column;gap:14px">
+        <div style="width:44px;height:44px;border-radius:50%;background:var(--danger-100);color:var(--danger-700);display:grid;place-items:center;font-family:Caprasimo,serif;font-size:22px">!</div>
+        <h3 style="font-family:Caprasimo,serif;font-weight:400;font-size:22px;margin:0">{{ confirmOp.name }}?</h3>
+        <p style="margin:0;font-size:14px;color:var(--muted);text-wrap:pretty">{{ confirmOp.desc }}. This cannot be undone — there is no backup and no recycle bin on this instance.</p>
+        <div style="display:flex;justify-content:flex-end;gap:10px;margin-top:6px">
+          <button onClick="{{ cancelConfirm }}" style="border:1px solid var(--divider);background:transparent;color:var(--text);font:inherit;font-size:14px;padding:9px 18px;border-radius:999px;cursor:pointer" style-hover="background:var(--surface2)">Keep everything</button>
+          <button onClick="{{ runConfirm }}" style="border:none;background:var(--danger);color:#fff;font-family:Caprasimo,serif;font-size:14px;padding:9px 20px;border-radius:999px;cursor:pointer">Yes, {{ confirmOp.verb }}</button>
+        </div>
+      </div>
+    </div>
+  </sc-if>
+</div>
+</sc-if>
+
+<!-- demo strip -->
+<div style="position:fixed;right:14px;bottom:14px;z-index:30;display:flex;gap:4px;align-items:center;background:var(--surface);box-shadow:var(--shadow-md);border-radius:999px;padding:4px 6px 4px 12px;font-size:11px;color:var(--muted)">
+  <span style="letter-spacing:.08em;text-transform:uppercase;margin-right:4px">Demo</span>
+  <sc-for list="{{ demoLinks }}" as="d" hint-placeholder-count="6"><button onClick="{{ d.go }}" style="border:none;background:{{ d.bg }};color:{{ d.fg }};font:inherit;font-size:11px;padding:4px 9px;border-radius:999px;cursor:pointer">{{ d.label }}</button></sc-for>
+  <button onClick="{{ toggleTheme }}" title="Toggle light / dark" style="border:none;background:var(--bg);color:var(--text);width:24px;height:24px;border-radius:50%;cursor:pointer;display:grid;place-items:center;margin-left:4px"><span style="width:10px;height:10px;border-radius:50%;background:var(--text);box-shadow:inset 3px -3px 0 0 var(--bg)"></span></button>
+</div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;theme&quot;:{&quot;editor&quot;:&quot;enum&quot;,&quot;options&quot;:[&quot;light&quot;,&quot;dark&quot;],&quot;default&quot;:&quot;light&quot;,&quot;tsType&quot;:&quot;'light' | 'dark'&quot;,&quot;section&quot;:&quot;Appearance&quot;},&quot;reviewLayout&quot;:{&quot;editor&quot;:&quot;enum&quot;,&quot;options&quot;:[&quot;list-left&quot;,&quot;waveform-top&quot;,&quot;detail-focused&quot;],&quot;tsType&quot;:&quot;'list-left' | 'waveform-top' | 'detail-focused'&quot;,&quot;section&quot;:&quot;Review screen&quot;},&quot;exportFails&quot;:{&quot;editor&quot;:&quot;boolean&quot;,&quot;default&quot;:false,&quot;tsType&quot;:&quot;boolean&quot;,&quot;section&quot;:&quot;Review screen&quot;}}">
+const fmt = s => { if (s == null || isNaN(s)) return '–'; const m = Math.floor(s / 60), r = Math.floor(s % 60); return `${m}:${String(r).padStart(2, '0')}`; };
+const PRESETS = [{ id: 'income-claims', name: 'Income claims', description: 'Flags every statement promising, implying or quantifying earnings, so a compliance reviewer can mute or cut them.' }, { id: 'pii-redaction', name: 'PII redaction', description: 'Finds names, phone numbers, addresses and account details spoken aloud, for muting before publication.' }];
+const STAGES = [
+  { id: 'converting', label: 'Converting', caption: 'Transcoding the upload to a format the transcriber can read. Only AIFF uploads need this.' },
+  { id: 'transcribing', label: 'Transcribing', caption: 'Listening to the recording and timing every word.' },
+  { id: 'analyzing', label: 'Analyzing', caption: 'Reading the transcript against your instruction.' },
+  { id: 'exporting', label: 'Exporting', caption: 'Rendering the pre-accepted edits. Only when auto-apply or scrubber mode was on.' },
+  { id: 'completed', label: 'Ready to review', caption: 'Every proposed edit, waiting for your decision.' }];
+const DET = ['Filler Word', 'Dead Air'];
+const SUG_AUDIO = [
+  { id: 'a1', start: 4.2, end: 4.7, label: 'Filler Word', text: 'um', action: 'cut', status: 'pending', reasoning: 'Matched the hesitation list; nothing around it reads as a real word.' },
+  { id: 'a2', start: 19.1, end: 19.9, label: 'Filler Word', text: 'you know', action: 'cut', status: 'pending', ambiguous: true, reasoning: 'Matched "you know" from the hesitation list. It is also an ordinary phrase, so this one was not pre-accepted.' },
+  { id: 'a3', start: 31.4, end: 33.3, label: 'Dead Air', text: '(1.9s of silence)', action: 'cut', status: 'accepted', reasoning: 'No words for 1.9s and the audio level stayed below the silence threshold for the whole gap.' },
+  { id: 'a4', start: 62.3, end: 66.8, label: 'Income Claim', text: 'you can realistically make ten thousand a month with this', action: 'mute', status: 'pending', approximate: true, reasoning: 'The speaker states a specific monthly income figure as an achievable outcome. This is an earnings claim under your instruction.' },
+  { id: 'a5', start: 75.0, end: 75.4, label: 'Filler Word', text: 'like', action: 'cut', status: 'pending', ambiguous: true, reasoning: 'Matched "like" from the hesitation list, but the surrounding words could make it a verb or comparison.' },
+  { id: 'a6', start: 107.2, end: 109.6, label: 'Dead Air', text: '(2.4s of silence)', action: 'cut', status: 'pending', reasoning: 'No words for 2.4s; level measurement agrees.' },
+  { id: 'a7', start: 123.5, end: 126.1, label: 'Income Claim', text: 'six figures, guaranteed, in your first year', action: 'mute', status: 'accepted', reasoning: 'A guaranteed income outcome with a figure and a timeframe — the clearest kind of income claim.' },
+  { id: 'a8', start: 150.8, end: 151.2, label: 'Filler Word', text: 'uh', action: 'cut', status: 'rejected', reasoning: 'Matched the hesitation list.' },
+  { id: 'a9', start: 191.0, end: 191.5, label: 'Filler Word', text: 'um', action: 'cut', status: 'pending', reasoning: 'Matched the hesitation list.' },
+  { id: 'a10', start: 220.4, end: 222.0, label: 'Dead Air', text: '(1.6s of silence)', action: 'cut', status: 'pending', reasoning: 'No words for 1.6s; level measurement agrees.' },
+  { id: 'a11', start: 252.7, end: 256.9, label: 'Income Claim', text: 'most of our students replace their salary within ninety days', action: 'mute', status: 'pending', approximate: true, reasoning: 'Describes a typical financial result for participants. The quoted sentence could not be matched word-for-word to the transcript, so the span is estimated.' },
+  { id: 'a12', start: 305.3, end: 306.2, label: 'Filler Word', text: 'so, uh', action: 'cut', status: 'pending', reasoning: 'Matched "uh" from the hesitation list; the leading "so" is part of the same hesitation.' },
+  { id: 'a13', start: 351.9, end: 354.0, label: 'Dead Air', text: '(2.1s of silence)', action: 'cut', status: 'pending', reasoning: 'No words for 2.1s; level measurement agrees.' }];
+const SUG_VIDEO = [
+  { id: 'v1', start: 12.0, end: 15.4, label: 'Earnings promise', rule: 'No guaranteed or typical income figures', severity: 'high', text: 'everyone who follows the system clears five grand their first month', action: 'mute', status: 'pending', reasoning: 'States a typical earnings outcome for all participants. Under the income-claims rulebook this is the most serious category.' },
+  { id: 'v2', start: 41.6, end: 42.1, label: 'Filler Word', text: 'um', action: 'cut', status: 'pending', reasoning: 'Matched the hesitation list.' },
+  { id: 'v3', start: 58.2, end: 61.0, label: 'Lifestyle implication', rule: 'No implied income through lifestyle', severity: 'medium', text: 'I bought this car with what I made in one weekend', action: 'mute', status: 'pending', reasoning: 'Implies a large short-term income through a purchase rather than a stated figure.' },
+  { id: 'v4', start: 84.9, end: 87.3, label: 'Dead Air', text: '(2.4s of silence)', action: 'cut', status: 'accepted', reasoning: 'No words for 2.4s; level measurement agrees.' },
+  { id: 'v5', start: 132.4, end: 134.2, label: 'Testimonial as promise', rule: 'Testimonials must not be framed as typical', severity: 'low', text: 'Dana did it, so can you', action: 'mute', status: 'rejected', reasoning: 'Frames one person\'s result as attainable for the viewer. Low severity because no figure is given.' },
+  { id: 'v6', start: 170.0, end: 173.6, label: 'Earnings promise', rule: 'No guaranteed or typical income figures', severity: 'high', text: 'you will make your money back in the first two weeks', action: 'mute', status: 'pending', approximate: true, reasoning: 'A guaranteed return within a timeframe. Quote could not be matched exactly to the transcript, so the span is estimated.' }];
+const TRANSCRIPT = [[0, 3.8, 'Alright, welcome back everyone, thanks for being here.'], [3.9, 9.5, 'Um, so today I want to walk you through the exact process we use.'], [9.6, 18.2, 'This is the same thing we teach inside the program and it works whether you have an audience or not.'], [18.3, 30.9, 'You know, a lot of people ask me how long it takes, and honestly it depends on how consistent you are.'], [33.4, 45.0, 'Let me pull up the first example so you can see what a finished one looks like.'], [45.1, 61.8, 'This was built in about a week and it is still running today with almost no maintenance.'], [62.0, 74.5, 'Now, you can realistically make ten thousand a month with this if you follow the steps.'], [74.6, 90.2, 'I know that sounds, like, a big number, but I want to be straight with you about what is possible.'], [90.3, 107.0, 'Step one is picking the niche. Do not overthink this part.'], [109.7, 123.2, 'Step two is the offer, and this is where most people get stuck.'], [123.3, 138.8, 'Our students are looking at six figures, guaranteed, in your first year if they stick with it.'], [138.9, 150.5, 'Okay, step three. This is the part that actually takes some work.'], [151.3, 170.7, 'Uh, you are going to set up the automation, and I will show you every click.'], [170.8, 190.6, 'Once that is running you basically check in once a week.'], [191.6, 220.2, 'Um, and the last piece is traffic. There are three ways to do this.'], [222.1, 252.4, 'The paid route, the organic route, and partnerships. We will cover all three.'], [252.5, 270.0, 'Most of our students replace their salary within ninety days of starting.'], [270.1, 305.0, 'So let me show you the dashboard where all of this comes together.'], [306.3, 351.6, 'You can see every stage here, and this is what you will have by the end of the week.'], [354.1, 384.0, 'That is it for today. Drop your questions below and I will see you in the next one.']];
+const JOBS = [
+  { id: 'j1', name: 'ep47-monetization-masterclass-final-mix-v3.mp3', media: 'audio', duration: 384, status: 'completed', mode: 'prompt', prompt: 'Remove filler words and long silences, and flag every income claim', count: 13, warning: 'Partial analysis: 2 of 14 transcript chunks could not be analyzed (the model returned an unparseable answer). Suggestions for those spans may be missing.' },
+  { id: 'j2', name: 'Q3 sales seminar — room mic.mp4', media: 'video', duration: 1922, status: 'completed', mode: 'preset', preset: 'income-claims', count: 6 },
+  { id: 'j3', name: 'Interview with Priya (raw).wav', media: 'audio', duration: 2711, status: 'transcribing', mode: 'prompt', prompt: 'Remove filler words', count: 0, autoScrub: true },
+  { id: 'j4', name: 'lecture-03-intro-to-distributions.m4a', media: 'audio', duration: null, status: 'pending', mode: 'prompt', prompt: 'Cut the long pauses', count: 0 },
+  { id: 'j5', name: 'voice memo 2026-08-29.aiff', media: 'audio', duration: null, status: 'failed', mode: 'prompt', prompt: 'Remove filler words', count: 0, error: 'ffprobe: could not determine duration of uploads/voice memo 2026-08-29.aiff\n  [aiff @ 0x55d1] Invalid chunk size 0 in COMM\n  moov atom not found\nJob aborted before transcription (worker.py:212)' },
+  { id: 'j6', name: 'course-module-2-take-2.mov', media: 'video', duration: 1204, status: 'completed', mode: 'prompt', prompt: 'Remove filler words', count: 0 }];
+const SHORTCUTS = [['J / ↓', 'next'], ['K / ↑', 'previous'], ['A', 'accept, advance'], ['R', 'reject, advance'], ['M', 'cut ↔ mute'], ['Space', 'play / pause'], ['P', 'play clip'], ['T', 'transcript'], ['?', 'this list']];
+const rand = seed => { let x = seed; return () => { x = (x * 1664525 + 1013904223) % 4294967296; return x / 4294967296; }; };
+
+class Component extends DCLogic {
+  state = {
+    route: 'home', jobId: null, jobs: JOBS.map(j => ({ ...j })), prompt: '', preset: null, autoFix: false, autoScrub: false, dragging: false, uploads: [], homeError: null, refreshing: false,
+    procStage: null, sugs: {}, selected: null, layout: 'list-left', showTranscript: false, showReanalyze: false, rePrompt: '', rePreset: null, transcriptQuery: '', shortcutsOpen: false,
+    playing: false, time: 0, mediaLoaded: false, saving: false, exportStatus: 'none', exportRev: null, editRev: 0, errorBanner: null, lastSweep: null,
+    adminToken: '', stats: null, statsLoading: true, statsError: false, confirmOp: null, opState: {}, theme: 'light', dark: false };
+  peaks = (() => { const r = rand(7); return Array.from({ length: 220 }, (_, i) => ({ h: Math.round(12 + 70 * Math.abs(Math.sin(i / 9)) * (0.4 + 0.6 * r())) })); })();
+  listRef = React.createRef(); transcriptRef = React.createRef();
+  componentDidMount() {
+    this.applyTheme();
+    this.key = e => this.onKey(e); window.addEventListener('keydown', this.key);
+    this.poll = setInterval(() => this.tickJobs(), 3000);
+  }
+  componentWillUnmount() { window.removeEventListener('keydown', this.key); clearInterval(this.poll); clearInterval(this.playT); clearTimeout(this.clipT); }
+  componentDidUpdate(pp, ps) {
+    if (pp.theme !== this.props.theme) this.applyTheme();
+    if (pp.reviewLayout !== this.props.reviewLayout && this.props.reviewLayout) this.setState({ layout: this.props.reviewLayout });
+    if (ps.selected !== this.state.selected && this.listRef.current) { const el = this.listRef.current.querySelector('#sug-' + this.state.selected); if (el) { const c = this.listRef.current; const top = el.offsetTop - c.offsetTop; if (top < c.scrollTop || top + el.offsetHeight > c.scrollTop + c.clientHeight) c.scrollTop = top - c.clientHeight / 2 + el.offsetHeight / 2; } }
+  }
+  applyTheme() { const t = this.props.theme ?? (this.state.dark ? 'dark' : 'light'); document.body.dataset.theme = t; }
+  job() { return this.state.jobs.find(j => j.id === this.state.jobId); }
+  sugsFor(j) { return this.state.sugs[j.id] || []; }
+  tickJobs() {
+    const order = ['pending', 'converting', 'transcribing', 'analyzing', 'exporting', 'completed'];
+    this.setState(s => ({ jobs: s.jobs.map(j => { if (['completed', 'failed'].includes(j.status)) return j; let i = order.indexOf(j.status) + 1; if (order[i] === 'converting' && !/\.aiff?$/i.test(j.name)) i++; if (order[i] === 'exporting' && !j.autoFix && !j.autoScrub) i++; const st = order[i]; return { ...j, status: st, duration: j.duration ?? (st !== 'pending' ? 1487 : null), count: st === 'completed' ? 9 : j.count }; }) }));
+  }
+  openJob(id) {
+    const j = this.state.jobs.find(x => x.id === id);
+    const sugs = this.state.sugs[id] || (j.media === 'video' && j.id === 'j2' ? SUG_VIDEO : j.id === 'j1' ? SUG_AUDIO : []).map(x => ({ ...x }));
+    this.setState(s => ({ route: 'job', jobId: id, sugs: { ...s.sugs, [id]: sugs }, selected: sugs[0]?.id ?? null, mediaLoaded: false, playing: false, time: 0, showTranscript: false, showReanalyze: false, exportStatus: 'none', exportRev: null, editRev: 0, errorBanner: j.id === 'j2' ? 'Could not save the change to "Dana did it, so can you": the server answered 500 Internal Server Error. Your last decision may not have been stored — try again.' : null, lastSweep: null, shortcutsOpen: false, transcriptQuery: '' }));
+    clearTimeout(this.loadT); this.loadT = setTimeout(() => this.setState({ mediaLoaded: true }), 1800);
+  }
+  demoOpen(kind) {
+    if (kind === 'processing') { this.setState(s => ({ jobs: s.jobs.map(j => j.id === 'j3' ? { ...j, status: 'transcribing' } : j) })); this.openJob('j3'); }
+    else if (kind === 'queued') { this.setState(s => ({ jobs: s.jobs.map(j => j.id === 'j4' ? { ...j, status: 'pending' } : j) })); this.openJob('j4'); }
+    else if (kind === 'failed') this.openJob('j5');
+    else if (kind === 'audio') this.openJob('j1');
+    else if (kind === 'video') this.openJob('j2');
+    else if (kind === 'empty') this.openJob('j6');
+  }
+  select(id) { const j = this.job(); const s = this.sugsFor(j).find(x => x.id === id); this.setState({ selected: id, time: Math.max(0, s.start - 0.8) }); }
+  step(d) { const list = this.sugsFor(this.job()); const i = list.findIndex(x => x.id === this.state.selected); const n = Math.min(list.length - 1, Math.max(0, i + d)); if (list[n]) this.select(list[n].id); }
+  update(id, patch, advance) {
+    if (this.state.saving) return;
+    this.setState({ saving: true });
+    setTimeout(() => this.setState(s => { const j = s.jobs.find(x => x.id === s.jobId); const list = s.sugs[j.id].map(x => x.id === id ? { ...x, ...patch } : x); const stale = s.exportStatus === 'ready' ? 'none' : s.exportStatus; return { saving: false, sugs: { ...s.sugs, [j.id]: list }, editRev: s.editRev + 1, exportStatus: stale, lastSweep: patch.status ? null : s.lastSweep }; }, () => { if (advance) this.step(1); }), 350);
+  }
+  onKey(e) {
+    if (this.state.route !== 'job' || /INPUT|TEXTAREA/.test(e.target.tagName)) return;
+    const k = e.key; const sel = this.state.selected; const cur = this.sugsFor(this.job() || {}).find(x => x.id === sel);
+    if (k === 'j' || k === 'ArrowDown') { e.preventDefault(); this.step(1); }
+    else if (k === 'k' || k === 'ArrowUp') { e.preventDefault(); this.step(-1); }
+    else if (k === 'a' && cur) this.update(sel, { status: 'accepted' }, true);
+    else if (k === 'r' && cur) this.update(sel, { status: 'rejected' }, true);
+    else if (k === 'm' && cur) this.update(sel, { action: cur.action === 'cut' ? 'mute' : 'cut' });
+    else if (k === ' ') { e.preventDefault(); this.togglePlay(); }
+    else if (k === 'p') this.playClip();
+    else if (k === 't') this.setState(s => ({ showTranscript: !s.showTranscript }));
+    else if (k === '?') this.setState(s => ({ shortcutsOpen: !s.shortcutsOpen }));
+  }
+  togglePlay() {
+    if (!this.state.mediaLoaded) return;
+    if (this.state.playing) { clearInterval(this.playT); this.setState({ playing: false }); return; }
+    const d = this.job().duration || 0;
+    this.playT = setInterval(() => this.setState(s => { const t = s.time + 0.1; if (t >= d) { clearInterval(this.playT); return { playing: false, time: d }; } return { time: t }; }), 100);
+    this.setState({ playing: true });
+  }
+  playClip() {
+    const cur = this.sugsFor(this.job()).find(x => x.id === this.state.selected); if (!cur || !this.state.mediaLoaded) return;
+    clearInterval(this.playT); clearTimeout(this.clipT);
+    this.setState({ time: Math.max(0, cur.start - 0.5), playing: true });
+    this.playT = setInterval(() => this.setState(s => ({ time: s.time + 0.1 })), 100);
+    this.clipT = setTimeout(() => { clearInterval(this.playT); this.setState({ playing: false }); }, (cur.end - cur.start + 1) * 1000);
+  }
+  doExport() {
+    if (this.props.exportFails) { this.setState({ exportStatus: 'queued' }); setTimeout(() => this.setState({ exportStatus: 'failed' }), 1500); return; }
+    this.setState({ exportStatus: 'queued' }); setTimeout(() => this.setState({ exportStatus: 'exporting' }), 900); setTimeout(() => this.setState(s => ({ exportStatus: 'ready', exportRev: s.editRev })), 3200);
+  }
+  cleanAll() {
+    const j = this.job(); const ids = this.sugsFor(j).filter(x => DET.includes(x.label) && x.status === 'pending').map(x => x.id);
+    this.setState(s => ({ sugs: { ...s.sugs, [j.id]: s.sugs[j.id].map(x => ids.includes(x.id) ? { ...x, status: 'accepted' } : x) }, lastSweep: ids, editRev: s.editRev + 1, exportStatus: s.exportStatus === 'ready' ? 'none' : s.exportStatus }));
+  }
+  undoCleanAll() { const j = this.job(); const ids = this.state.lastSweep || []; this.setState(s => ({ sugs: { ...s.sugs, [j.id]: s.sugs[j.id].map(x => ids.includes(x.id) ? { ...x, status: 'pending' } : x) }, lastSweep: null, editRev: s.editRev + 1 })); }
+  submitReanalyze() {
+    const j = this.job(); const kept = this.sugsFor(j).filter(x => DET.includes(x.label));
+    this.setState(s => ({ showReanalyze: false, sugs: { ...s.sugs, [j.id]: kept }, jobs: s.jobs.map(x => x.id === j.id ? { ...x, status: 'analyzing', mode: s.rePreset ? 'preset' : 'prompt', preset: s.rePreset, prompt: s.rePrompt, count: kept.length } : x), selected: kept[0]?.id ?? null }));
+    setTimeout(() => this.setState(s => ({ jobs: s.jobs.map(x => x.id === j.id ? { ...x, status: 'completed' } : x) })), 4500);
+  }
+  loadStats() { this.setState({ statsLoading: true, statsError: false }); setTimeout(() => this.setState({ statsLoading: false, statsError: false, stats: { jobs: 6, sugs: 128, mb: 2841.6 } }), 1200); }
+  runOp(op) {
+    this.setState(s => ({ confirmOp: null, opState: { ...s.opState, [op.id]: { running: true } } }));
+    setTimeout(() => this.setState(s => ({ opState: { ...s.opState, [op.id]: this.state.adminToken ? { result: op.ok, ok: true } : { result: 'This server requires an admin token. Enter the configured ADMIN_TOKEN above and try again.', ok: false } } })), 1400);
+  }
+  handleFiles(names) {
+    const ok = /\.(mp3|wav|m4a|flac|ogg|webm|aif|aiff|mp4|mov)$/i; const valid = names.filter(n => ok.test(n));
+    if (!valid.length) { this.setState({ homeError: 'None of those files is a supported format. Drop mp3, wav, m4a, flac, ogg, webm, aif, aiff, mp4 or mov.' }); return; }
+    this.setState({ homeError: null, uploads: valid.map(n => ({ name: n, state: 'uploading' })) });
+    valid.forEach((n, i) => setTimeout(() => { const fail = /rejected|big|huge/i.test(n); this.setState(s => ({ uploads: s.uploads.map(u => u.name === n ? { ...u, state: fail ? 'failed' : 'queued' } : u), homeError: fail ? 'File exceeds the maximum duration of 3 hours (uploaded: 4:12:09).' : s.homeError, jobs: fail ? s.jobs : [{ id: 'n' + Date.now() + i, name: n, media: /\.(mp4|mov|webm)$/i.test(n) ? 'video' : 'audio', duration: null, status: 'pending', mode: s.preset ? 'preset' : 'prompt', preset: s.preset, prompt: s.prompt, count: 0, autoFix: s.autoFix, autoScrub: s.autoScrub }, ...s.jobs] })); }, 700 + i * 500));
+    setTimeout(() => this.setState({ uploads: [] }), 6000);
+  }
+  renderVals() {
+    const s = this.state, P = this.props; const dark = document.body.dataset.theme === 'dark';
+    const layout = s.layout;
+    const j = this.job(); const isJob = s.route === 'job' && j;
+    const status = j?.status;
+    const isProcessing = isJob && !['completed', 'failed'].includes(status); const isFailed = isJob && status === 'failed'; const isReview = isJob && status === 'completed';
+    const presetName = id => PRESETS.find(p => p.id === id)?.name;
+    const presetOpts = (cur, set) => [{ id: null, name: 'None — use my instructions' }, ...PRESETS].map(p => { const on = cur === p.id; return { name: p.name, pick: () => set(p.id), bg: on ? 'var(--acc2-100)' : 'transparent', dotBorder: on ? 'var(--acc2)' : 'var(--divider)', dotBg: on ? 'var(--acc2)' : 'transparent', dotShadow: on ? 'inset 0 0 0 3px var(--bg)' : 'none' }; });
+    const jobMeta = j ? [j.media === 'video' ? 'Video' : 'Audio', fmt(j.duration), j.mode === 'preset' ? `${presetName(j.preset)} preset` : 'Prompt mode'].join(' · ') : '';
+    // stages
+    let stages = []; if (isProcessing) { const idx = STAGES.findIndex(x => x.id === status); stages = STAGES.map((st, i) => { let state = 'pending'; if (st.id === 'converting' && !/\.aiff?$/i.test(j.name)) state = 'skipped'; else if (st.id === 'exporting' && !j.autoFix && !j.autoScrub) state = 'skipped'; else if (idx >= 0 && i < idx) state = 'done'; else if (idx === i) state = 'active'; const lab = { done: 'done', active: 'in progress', skipped: st.id === 'exporting' ? 'not required' : 'skipped', pending: '' }[state]; return { ...st, stateLabel: lab, hasLine: i < STAGES.length - 1, opacity: state === 'skipped' ? .5 : 1, dotBg: state === 'done' || state === 'active' ? 'var(--acc)' : state === 'skipped' ? 'var(--surface2)' : 'transparent', dotBorder: state === 'pending' ? 'var(--divider)' : state === 'skipped' ? 'var(--divider)' : 'var(--acc)', dotAnim: state === 'active' ? 'cc-breathe 1.6s ease-in-out infinite' : 'none', titleColor: state === 'active' ? 'var(--text)' : state === 'done' ? 'var(--text)' : 'var(--muted)', stateColor: state === 'active' ? 'var(--acc)' : 'var(--muted)' }; }); }
+    // suggestions
+    const list = isReview ? this.sugsFor(j) : []; const d = j?.duration || 1;
+    const sel0 = list.find(x => x.id === s.selected) || null;
+    const lblStyle = x => DET.includes(x.label) ? { labelBg: 'var(--acc2-100)', labelFg: 'var(--acc2-700)' } : { labelBg: 'var(--acc-200)', labelFg: 'var(--acc-700)' };
+    const sevColor = v => v === 'high' ? 'var(--danger-700)' : v === 'medium' ? 'var(--acc-700)' : 'var(--muted)';
+    const rows = list.map((x, i) => { const on = x.id === s.selected; return { ...x, ...lblStyle(x), domId: 'sug-' + x.id, start: fmt(x.start), select: () => this.select(x.id), bg: on ? 'var(--bg)' : 'transparent', shadow: on ? 'inset 0 0 0 2px var(--acc)' : 'none', opacity: x.status === 'rejected' ? .55 : 1, strike: x.status === 'rejected' ? 'line-through' : 'none', caution: x.approximate || x.ambiguous, sevColor: sevColor(x.severity), actionFg: x.action === 'cut' ? 'var(--acc)' : 'var(--acc2)', decDot: x.status === 'accepted' ? 'var(--acc)' : x.status === 'rejected' ? 'var(--faint)' : 'transparent', decBorder: x.status === 'pending' ? 'var(--acc)' : 'transparent' }; });
+    const regions = list.map(x => { const cut = x.action === 'cut'; const col = cut ? 'var(--acc)' : 'var(--acc2)'; return { left: x.start / d * 100, width: Math.max(0.35, (x.end - x.start) / d * 100), select: e => { e.stopPropagation(); this.select(x.id); }, title: `${x.label} · ${fmt(x.start)}`, bg: x.status === 'rejected' ? 'var(--faint)' : x.status === 'accepted' ? col : (cut ? 'var(--acc-200)' : 'var(--acc2-200)'), edge: x.status === 'rejected' ? 'transparent' : col, opacity: x.status === 'rejected' ? .35 : x.id === s.selected ? 1 : .8, pattern: !cut && x.status !== 'rejected' ? `repeating-linear-gradient(135deg, transparent 0 3px, rgba(255,255,255,${dark ? .18 : .5}) 3px 5px)` : 'none' }; });
+    const flags = sel0 ? [sel0.approximate && { name: 'Approximate', text: 'The quoted text could not be matched to the transcript, so this span is the model\'s estimate rather than a measurement. Play the clip before accepting.' }, sel0.ambiguous && { name: 'Check wording', text: `"${sel0.text}" is also an ordinary word, and nothing around it marks this instance as a hesitation. Cutting it may remove a real word.` }].filter(Boolean) : [];
+    const sel = sel0 ? { ...sel0, ...lblStyle(sel0), index: list.indexOf(sel0) + 1, start: fmt(sel0.start), end: fmt(sel0.end), length: (sel0.end - sel0.start).toFixed(1) + 's', sevColor: sevColor(sel0.severity), flags, hasFlags: flags.length > 0, pending: sel0.status === 'pending', decided: sel0.status !== 'pending', decisionLabel: sel0.status === 'accepted' ? `Accepted · will ${sel0.action}` : 'Rejected · untouched', decBg: sel0.status === 'accepted' ? 'var(--acc-200)' : 'var(--surface2)', decFg: sel0.status === 'accepted' ? 'var(--acc-700)' : 'var(--muted)' } : null;
+    const accepted = list.filter(x => x.status === 'accepted'); const pendingDet = list.filter(x => DET.includes(x.label) && x.status === 'pending');
+    const stale = s.exportStatus === 'ready' && s.exportRev !== s.editRev;
+    const ex = stale ? 'none' : s.exportStatus;
+    const exportLabel = ex === 'queued' ? 'Queued…' : ex === 'exporting' ? 'Exporting…' : accepted.length ? `Export ${accepted.length} edit${accepted.length > 1 ? 's' : ''}` : 'Export';
+    const cutN = accepted.filter(x => x.action === 'cut').reduce((a, x) => a + x.end - x.start, 0);
+    // transcript
+    const q = s.transcriptQuery.trim().toLowerCase();
+    const tRows = isReview ? TRANSCRIPT.filter(t => !q || t[2].toLowerCase().includes(q)).map(([a, b, text], i) => { const now = s.time >= a && s.time < b; const hit = list.find(x => x.status !== 'rejected' && x.start < b && x.end > a); return { domId: 'tr-' + i, start: fmt(a), text, seek: () => this.setState({ time: a }), bg: now ? 'var(--bg)' : 'transparent', mark: hit ? (hit.action === 'cut' ? 'var(--acc)' : 'var(--acc2)') : 'transparent', fg: now ? 'var(--text)' : 'var(--muted)', strike: hit && hit.action === 'cut' && hit.status === 'accepted' ? 'line-through' : 'none', actionTag: hit ? hit.action : null, tagColor: hit?.action === 'cut' ? 'var(--acc)' : 'var(--acc2)' }; }) : [];
+    // layout
+    const tr = s.showTranscript;
+    const grids = {
+      'list-left': { cols: tr ? '340px 1fr 320px' : '360px 1fr', areas: tr ? '"list media transcript" "list detail transcript"' : '"list media" "list detail"' },
+      'waveform-top': { cols: tr ? '1fr 1fr 320px' : '1fr 1.1fr', areas: tr ? '"media media media" "list detail transcript"' : '"media media" "list detail"' },
+      'detail-focused': { cols: tr ? '1fr 300px 300px' : '1fr 320px', areas: tr ? '"detail list transcript" "media list transcript"' : '"detail list" "media list"' } };
+    const g = grids[layout] || grids['list-left'];
+    const layoutOptions = [['list-left', 'List left'], ['waveform-top', 'Waveform top'], ['detail-focused', 'Detail first']].map(([id, label]) => ({ label, pick: () => this.setState({ layout: id }), bg: layout === id ? 'var(--acc)' : 'transparent', fg: layout === id ? 'var(--onacc)' : 'var(--text)' }));
+    // jobs
+    const stBg = st => st === 'completed' ? 'var(--acc2-100)' : st === 'failed' ? 'var(--danger-100)' : 'var(--acc-200)';
+    const stFg = st => st === 'completed' ? 'var(--acc2-700)' : st === 'failed' ? 'var(--danger-700)' : 'var(--acc-700)';
+    const jobRows = s.jobs.map(x => ({ ...x, duration: fmt(x.duration), mode: x.mode === 'preset' ? presetName(x.preset) + ' preset' : 'prompt', isVideo: x.media === 'video', isAudio: x.media !== 'video', completed: x.status === 'completed', failed: x.status === 'failed', busy: !['completed', 'failed'].includes(x.status), showCount: x.status === 'completed', open: () => this.openJob(x.id), opacity: 1, iconBg: x.status === 'failed' ? 'var(--danger-100)' : 'var(--acc-200)', iconFg: x.status === 'failed' ? 'var(--danger-700)' : 'var(--acc-700)', statusBg: stBg(x.status), statusFg: stFg(x.status), statusAnim: ['completed', 'failed'].includes(x.status) ? 'none' : 'cc-pulse 1.8s infinite' }));
+    const polling = s.jobs.some(x => !['completed', 'failed'].includes(x.status));
+    const statsSrc = s.stats; const stats = [['Jobs', statsSrc?.jobs, ''], ['Suggestions', statsSrc?.sugs, ''], ['Storage used', statsSrc ? statsSrc.mb.toLocaleString() : null, 'MB']].map(([label, v, unit]) => ({ label, unit, loading: s.statsLoading, error: s.statsError, value: !s.statsLoading && !s.statsError ? String(v) : null }));
+    const OPS = [{ id: 'db', name: 'Reset database', desc: 'Clear all job records and suggestions', verb: 'reset it', btn: 'Reset', ok: 'Database reset. 6 jobs and 128 suggestions removed.' }, { id: 'st', name: 'Clear storage', desc: 'Delete all uploaded and exported media files', verb: 'delete them', btn: 'Clear', ok: 'Storage cleared. 2,841.6 MB freed across 11 files.' }, { id: 'all', name: 'System wipe', desc: 'Reset the database and clear storage together', verb: 'wipe everything', btn: 'Wipe', ok: 'Database reset. Storage cleared.' }];
+    const ops = OPS.map(o => { const st = s.opState[o.id] || {}; return { ...o, running: !!st.running, opacity: st.running ? .6 : 1, result: st.result || null, resultBg: st.ok ? 'var(--acc2-100)' : 'var(--danger-100)', resultFg: st.ok ? 'var(--acc2-700)' : 'var(--danger-700)', ask: () => this.setState({ confirmOp: o }) }; });
+    const demo = [['Home', () => this.setState({ route: 'home' })], ['Queued', () => this.demoOpen('queued')], ['Processing', () => this.demoOpen('processing')], ['Failed', () => this.demoOpen('failed')], ['Review · audio', () => this.demoOpen('audio')], ['Review · video', () => this.demoOpen('video')], ['Empty', () => this.demoOpen('empty')], ['Admin', () => this.setState({ route: 'admin' }, () => this.loadStats())]];
+    const activeDemo = s.route === 'home' ? 'Home' : s.route === 'admin' ? 'Admin' : isFailed ? 'Failed' : isProcessing ? (status === 'pending' ? 'Queued' : 'Processing') : j?.id === 'j2' ? 'Review · video' : j?.id === 'j6' ? 'Empty' : 'Review · audio';
+    return {
+      isHome: s.route === 'home', isAdmin: s.route === 'admin', isProcessing, isFailed, isReview, isQueued: status === 'pending',
+      goHome: () => this.setState({ route: 'home' }), goAdmin: () => this.setState({ route: 'admin' }, () => this.loadStats()), noop: e => e.preventDefault(),
+      prompt: s.prompt, setPrompt: e => this.setState({ prompt: e.target.value }), presetActive: !!s.preset, presetName: presetName(s.preset), presetDescription: PRESETS.find(p => p.id === s.preset)?.description, presetOptions: presetOpts(s.preset, id => this.setState({ preset: id })),
+      autoFixBg: s.autoFix ? 'var(--acc-100)' : 'transparent', autoFixTrack: s.autoFix ? 'var(--acc)' : 'var(--surface2)', autoFixKnob: s.autoFix ? '17px' : '3px', toggleAutoFix: () => this.setState({ autoFix: !s.autoFix }),
+      autoScrubBg: s.autoScrub ? 'var(--acc-100)' : 'transparent', autoScrubTrack: s.autoScrub ? 'var(--acc)' : 'var(--surface2)', autoScrubKnob: s.autoScrub ? '17px' : '3px', toggleAutoScrub: () => this.setState({ autoScrub: !s.autoScrub }),
+      dropBorder: s.dragging ? 'var(--acc)' : 'var(--divider)', dropBg: s.dragging ? 'var(--acc-100)' : 'transparent',
+      dragOver: e => { e.preventDefault(); if (!s.dragging) this.setState({ dragging: true }); }, dragLeave: e => { e.preventDefault(); this.setState({ dragging: false }); },
+      drop: e => { e.preventDefault(); this.setState({ dragging: false }); this.handleFiles(Array.from(e.dataTransfer.files).map(f => f.name)); },
+      pickFiles: () => this.handleFiles(['ep48-listener-questions.mp3', 'ep48-b-roll (too big).mov', 'notes.txt']),
+      hasUploads: s.uploads.length > 0, uploads: s.uploads.map(u => ({ ...u, bg: u.state === 'failed' ? 'var(--danger-100)' : u.state === 'queued' ? 'var(--acc2-100)' : 'var(--acc-200)', fg: u.state === 'failed' ? 'var(--danger-700)' : u.state === 'queued' ? 'var(--acc2-700)' : 'var(--acc-700)' })),
+      homeError: s.homeError, clearHomeError: () => this.setState({ homeError: null }),
+      hasJobs: s.jobs.length > 0, jobRows, jobCount: s.jobs.length, polling, refreshing: s.refreshing, refreshOpacity: s.refreshing ? .6 : 1, refreshSpin: s.refreshing ? 'cc-spin .9s linear infinite' : 'none', refreshLabel: s.refreshing ? 'Refreshing' : 'Refresh', refreshJobs: () => { this.setState({ refreshing: true }); setTimeout(() => this.setState({ refreshing: false }), 900); },
+      jobName: j?.name, jobMeta, jobError: j?.error, stages,
+      layoutOptions, gridCols: g.cols, gridAreas: g.areas, listMaxH: layout === 'waveform-top' ? '560px' : 'calc(100vh - 150px)', waveH: layout === 'waveform-top' ? '150px' : '104px', videoMaxH: layout === 'detail-focused' ? '220px' : '360px', quoteSize: layout === 'detail-focused' ? '34px' : '24px',
+      hasTranscript: j?.id !== 'j6', showTranscript: tr, toggleTranscript: () => this.setState({ showTranscript: !tr }), transcriptBtnBg: tr ? 'var(--acc-200)' : 'transparent', transcriptBtnFg: tr ? 'var(--acc-700)' : 'var(--text)',
+      showReanalyze: s.showReanalyze, toggleReanalyze: () => this.setState({ showReanalyze: !s.showReanalyze, rePrompt: j?.prompt || '', rePreset: j?.preset || null }), reanalyzeBtnBg: s.showReanalyze ? 'var(--acc-200)' : 'transparent', reanalyzeBtnFg: s.showReanalyze ? 'var(--acc-700)' : 'var(--text)',
+      rePrompt: s.rePrompt, setRePrompt: e => this.setState({ rePrompt: e.target.value }), rePresetActive: !!s.rePreset, rePresetName: presetName(s.rePreset), rePresetOptions: presetOpts(s.rePreset, id => this.setState({ rePreset: id })), submitReanalyze: () => this.submitReanalyze(), acceptedLlmCount: accepted.filter(x => !DET.includes(x.label)).length,
+      exportIsButton: ex !== 'ready' && ex !== 'failed', exportReady: ex === 'ready', exportFailed: ex === 'failed', exportBusy: ex === 'queued' || ex === 'exporting', exportDisabled: !accepted.length || ex === 'queued' || ex === 'exporting', exportOpacity: !accepted.length ? .45 : 1, exportLabel, exportTitle: accepted.length ? '' : 'Accept at least one edit to export', doExport: () => this.doExport(), exportError: 'ffmpeg exited with code 1: [mp3 @ 0x5583] Could not write header for output file #0 (incorrect codec parameters?): Invalid argument', exportSummary: `${accepted.length} edits applied · ${cutN.toFixed(1)}s removed`, exportDuration: fmt((j?.duration || 0) - cutN),
+      errorBanner: s.errorBanner, dismissError: () => this.setState({ errorBanner: null }), warningText: j?.warning,
+      suggestionCount: list.length, decisionSummary: list.length ? `${list.filter(x => x.status === 'pending').length} pending · ${accepted.length} accepted · ${list.filter(x => x.status === 'rejected').length} rejected` : '', noSuggestions: isReview && list.length === 0, rows, listRef: this.listRef,
+      showCleanAll: pendingDet.length > 0 && !s.lastSweep, pendingDetCount: pendingDet.length, cleanAll: () => this.cleanAll(), showUndoClean: !!s.lastSweep, lastSweepCount: s.lastSweep?.length, undoCleanAll: () => this.undoCleanAll(),
+      isVideo: j?.media === 'video', peaks: this.peaks, regions, playheadPct: Math.min(100, s.time / d * 100), waveClick: e => { const r = e.currentTarget.getBoundingClientRect(); this.setState({ time: (e.clientX - r.left) / r.width * d }); },
+      playing: s.playing, notPlaying: !s.playing, togglePlay: () => this.togglePlay(), skipBack: () => this.setState({ time: Math.max(0, s.time - 5) }), skipFwd: () => this.setState({ time: Math.min(d, s.time + 5) }), mediaNotLoaded: !s.mediaLoaded, mediaOpacity: s.mediaLoaded ? 1 : .45, timeReadout: `${fmt(s.time)} / ${fmt(j?.duration)}`,
+      sel, noSelection: !sel, noSelectionText: list.length ? 'Pick a suggestion from the list, or press J to start at the top.' : 'This recording produced no suggestions, so there is nothing to decide. Export is unavailable until an edit is accepted.',
+      saving: s.saving, accept: () => this.update(sel.id, { status: 'accepted' }, true), reject: () => this.update(sel.id, { status: 'rejected' }, true), undoDecision: () => this.update(sel.id, { status: 'pending' }), setCut: () => this.update(sel.id, { action: 'cut' }), setMute: () => this.update(sel.id, { action: 'mute' }), playClip: () => this.playClip(),
+      cutBg: sel?.action === 'cut' ? 'var(--acc)' : 'transparent', cutFg: sel?.action === 'cut' ? 'var(--onacc)' : 'var(--text)', muteBg: sel?.action === 'mute' ? 'var(--acc2)' : 'transparent', muteFg: sel?.action === 'mute' ? 'var(--onacc)' : 'var(--text)',
+      transcriptRows: tRows, transcriptRef: this.transcriptRef, transcriptQuery: s.transcriptQuery, setTranscriptQuery: e => this.setState({ transcriptQuery: e.target.value }), transcriptEmpty: tr && tRows.length === 0,
+      shortcuts: SHORTCUTS.map(([key, what]) => ({ key, what })), shortcutsOpen: s.shortcutsOpen, shortcutsClosed: !s.shortcutsOpen, toggleShortcuts: () => this.setState({ shortcutsOpen: !s.shortcutsOpen }),
+      stats, loadStats: () => this.loadStats(), adminToken: s.adminToken, setAdminToken: e => this.setState({ adminToken: e.target.value }), ops, confirmOp: s.confirmOp, cancelConfirm: () => this.setState({ confirmOp: null }), runConfirm: () => this.runOp(s.confirmOp),
+      demoLinks: demo.map(([label, go]) => ({ label, go, bg: label === activeDemo ? 'var(--acc)' : 'transparent', fg: label === activeDemo ? 'var(--onacc)' : 'var(--muted)' })),
+      toggleTheme: () => { const t = document.body.dataset.theme === 'dark' ? 'light' : 'dark'; document.body.dataset.theme = t; this.setState({ dark: t === 'dark' }); } };
+  }
+}
+</script>
+</body>
+</html>

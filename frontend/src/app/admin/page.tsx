@@ -119,7 +119,7 @@ export default function AdminDashboard() {
             { id: 'storage', title: "Clear Storage", desc: "Purge all media files from volume." },
             { id: 'all', title: "System Wipe", desc: "Full factory reset of all data." }
           ].map(op => (
-            <div key={op.id} className="flex items-center justify-between p-4 border rounded-md hover:bg-muted/30 transition-all">
+            <div key={op.id} className="flex items-center justify-between p-4 border rounded-md hover:bg-surface2/30 transition-all">
               <div>
                 <div className="text-sm font-semibold">{op.title}</div>
                 <div className="text-xs text-muted-foreground">{op.desc}</div>

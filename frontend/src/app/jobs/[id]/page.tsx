@@ -387,7 +387,7 @@ export default function ReviewPage() {
           {job.original_filename || job.filename} could not be processed.
         </p>
         {job.error_message && (
-          <pre className="max-w-2xl w-full overflow-auto rounded-lg border bg-muted/40 p-4 text-left text-xs whitespace-pre-wrap">
+          <pre className="max-w-2xl w-full overflow-auto rounded-lg border bg-surface2/40 p-4 text-left text-xs whitespace-pre-wrap">
             {job.error_message}
           </pre>
         )}
@@ -484,13 +484,13 @@ export default function ReviewPage() {
       )}
 
       <div className="flex-1 flex overflow-hidden">
-        <aside className="w-80 border-r bg-muted/20">
+        <aside className="w-80 border-r bg-surface2/20">
           <ViolationList violations={violations} selectedViolation={selectedViolation} onSelect={setSelectedViolation} onCleanAll={handleCleanAll} onUndoCleanAll={handleUndoCleanAll}
             canUndoCleanAll={lastSweep !== null && lastSweep.length > 0} isCleaning={isCleaning} />
         </aside>
 
         <main className="flex-1 flex flex-col overflow-hidden">
-          <div className="p-8 border-b bg-muted/10">
+          <div className="p-8 border-b bg-surface2/10">
             <div className="max-w-4xl mx-auto w-full">
               {job.media_type === "video" && (
                 <video ref={videoRef} src={api.getAudioUrl(jobId)} className="w-full aspect-video rounded-lg border mb-8 bg-black" controls />
@@ -524,7 +524,7 @@ export default function ReviewPage() {
         </main>
 
         {transcript && showTranscript && (
-          <aside className="w-80 border-l bg-muted/20">
+          <aside className="w-80 border-l bg-surface2/20">
             <TranscriptPanel
               segments={transcript.segments}
               violations={violations}

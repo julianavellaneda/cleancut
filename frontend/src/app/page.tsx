@@ -4,6 +4,7 @@ import { useState, useEffect, useRef, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+import { ThemeToggle } from "@/components/ThemeToggle";
 import { api, JobListItem, Preset } from "@/lib/api";
 import { cn } from "@/lib/utils";
 
@@ -173,9 +174,25 @@ export default function UploadPage() {
 
   return (
     <div className="container max-w-4xl mx-auto py-12 px-6 space-y-12">
-      <header className="space-y-2">
-        <h1 className="text-3xl font-bold tracking-tight">CleanCut</h1>
-        <p className="text-muted-foreground">Describe what to find in plain English. Review it on a waveform. Export a surgically edited file.</p>
+      <header className="flex items-end justify-between gap-6">
+        <div className="space-y-2">
+          <h1 className="text-3xl font-bold tracking-tight">CleanCut</h1>
+          <p className="text-muted-foreground">Describe what to find in plain English. Review it on a waveform. Export a surgically edited file.</p>
+        </div>
+        {/*
+          The layout footer that used to carry the Admin link is gone with the
+          redesign, so the link lives here. Phase 2 restyles this header; the
+          route has to stay reachable in between.
+        */}
+        <div className="flex flex-none items-center gap-2">
+          <a
+            href="/admin"
+            className="rounded-full px-3 py-1.5 text-sm text-muted-foreground no-underline transition-colors hover:bg-surface hover:text-foreground"
+          >
+            Maintenance
+          </a>
+          <ThemeToggle />
+        </div>
       </header>
 
       <Card>
@@ -227,7 +244,7 @@ export default function UploadPage() {
             )}
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <label className="flex items-center gap-3 p-3 border rounded-md cursor-pointer hover:bg-muted/50 transition-colors">
+              <label className="flex items-center gap-3 p-3 border rounded-md cursor-pointer hover:bg-surface2/50 transition-colors">
                 <input
                   type="checkbox"
                   checked={autoFix}
@@ -236,7 +253,7 @@ export default function UploadPage() {
                 />
                 <span className="text-sm font-medium">Auto-apply markers</span>
               </label>
-              <label className="flex items-center gap-3 p-3 border rounded-md cursor-pointer hover:bg-muted/50 transition-colors">
+              <label className="flex items-center gap-3 p-3 border rounded-md cursor-pointer hover:bg-surface2/50 transition-colors">
                 <input
                   type="checkbox"
                   checked={autoScrub}
