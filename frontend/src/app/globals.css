@@ -69,6 +69,7 @@
   --color-danger-100: var(--danger-100);
   --color-danger-700: var(--danger-700);
   --color-onacc: var(--onacc);
+  --color-backdrop: var(--backdrop);
 
   /* shadcn semantic names, aliased onto the same tokens. */
   --color-background: var(--bg);
@@ -161,6 +162,9 @@
   --shadow-lg-token: 0 12px 32px rgba(38, 35, 51, 0.22);
 
   --selection: rgba(106, 87, 201, 0.3);
+  /* The scrim behind a modal. A token rather than a literal so the dark theme
+     can go darker than a tinted lavender, which reads as fog rather than depth. */
+  --backdrop: rgba(20, 18, 36, 0.5);
 }
 
 :root[data-theme="dark"] {
@@ -199,6 +203,7 @@
   --shadow-lg-token: 0 12px 32px rgba(0, 0, 0, 0.5);
 
   --selection: rgba(166, 147, 230, 0.32);
+  --backdrop: rgba(8, 7, 18, 0.62);
 }
 
 @media (prefers-color-scheme: dark) {
@@ -238,6 +243,7 @@
     --shadow-lg-token: 0 12px 32px rgba(0, 0, 0, 0.5);
 
     --selection: rgba(166, 147, 230, 0.32);
+    --backdrop: rgba(8, 7, 18, 0.62);
   }
 }
 
