@@ -76,7 +76,7 @@ export function ExportPreview({ src, editCount, secondsRemoved }: ExportPreviewP
 
       <div className="min-w-0 flex-1">
         <div className="text-sm font-semibold">Edited result</div>
-        <div className="text-xs opacity-80">
+        <div className="text-xs">
           {editCount} edit{editCount === 1 ? "" : "s"} applied ·{" "}
           {secondsRemoved.toFixed(1)}s removed
         </div>

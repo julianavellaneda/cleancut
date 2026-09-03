@@ -197,7 +197,7 @@ export default function AdminDashboard() {
           }}
           className="rounded-full border border-divider bg-surface px-4 py-2.5 text-sm text-text focus-visible:border-acc"
         />
-        <span className="text-xs text-faint">
+        <span className="text-xs text-muted">
           Sent as <code className="font-mono">X-Admin-Token</code> with each destructive action
           and kept only in this browser.
         </span>

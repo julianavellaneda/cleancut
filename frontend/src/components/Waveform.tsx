@@ -396,7 +396,7 @@ export const Waveform = forwardRef<WaveformHandle, WaveformProps>(function Wavef
         </span>
 
         {!isReady && (
-          <span className="inline-flex shrink-0 items-center gap-1.5 text-xs whitespace-nowrap text-faint">
+          <span className="inline-flex shrink-0 items-center gap-1.5 text-xs whitespace-nowrap text-muted">
             <span className="size-2.5 animate-cc-spin rounded-full border-2 border-faint border-t-transparent" />
             loading audio…
           </span>

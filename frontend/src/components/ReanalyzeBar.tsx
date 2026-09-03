@@ -87,7 +87,7 @@ export function ReanalyzeBar({
             onChange={e => setPrompt(e.target.value)}
             disabled={usingPreset || isSubmitting}
             placeholder="e.g. flag anything that sounds like a guarantee"
-            className="min-h-24 w-full resize-y rounded-[20px] border border-divider bg-bg px-4 py-3 text-sm leading-normal caret-acc outline-none transition-colors focus:border-acc"
+            className="min-h-24 w-full resize-y rounded-[20px] border border-divider bg-bg px-4 py-3 text-sm leading-normal caret-acc transition-colors focus:border-acc"
           />
           {/*
             The same overlay the upload screen uses, for the same reason:

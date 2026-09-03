@@ -582,10 +582,72 @@ System dependency: `brew install ffmpeg`.
   until WaveSurfer emits `ready`: without it a clip played before the file loaded divided by zero
   and seeked to `NaN`.
 
+## Design system
+
+The frontend is built against the mockup in `Organic design system mockups/CleanCut.dc.html`, not
+against shadcn defaults. Four rules, each of which has already been broken once:
+
+- **`src/app/globals.css` is the single owner of colour.** Every value in a component comes from a
+  `var(--…)` or a Tailwind utility bridged to one (`bg-surface`, `text-muted`, `bg-acc`); there is
+  not a single literal hex or `rgba()` in any `.tsx`, and adding one is the change to reject. The
+  sheet is **three** blocks, not two - `:root`, `:root[data-theme="dark"]`, and the same dark values
+  again under `@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) }`. The media
+  query alone cannot be overridden by an explicit toggle in *both* directions, and the duplication
+  is pinned by `app/contrast.test.ts` so the two dark blocks cannot drift apart.
+- **`--muted` is a text colour; `--faint` is not.** `app/contrast.test.ts` parses the sheet and holds
+  text pairings to 4.5:1 and non-text UI (dots, borders, the waveform, swatches) to 3:1. `--faint`
+  is only ever measured against 3:1, which is only honest while nothing renders words in it - so the
+  test also greps for `text-faint` and fails if it comes back. The mockup's own values needed three
+  corrections to pass: `--muted` at .58 alpha, `--faint` at .36, and `--acc2`/`--danger` light, which
+  carried `--onacc` at 3.9:1 on the Download, Clean all and confirm-wipe buttons.
+- **Never dim live text with `opacity`.** A wash multiplies into the token's own alpha and lands
+  below every threshold the audit checks - `opacity-45` over `--muted` measured 1.9:1. The
+  de-emphasis a design wants is a *token* (`--muted` vs `--text`), a font size, or a state word.
+  `disabled:opacity-50` is fine and deliberate: WCAG exempts disabled controls.
+- **The focus ring is global and must not be suppressed.** `:focus-visible { outline: 2px solid
+  var(--acc); outline-offset: 2px }` in `@layer base`. A Tailwind `outline-none` on a control sits in
+  the utilities layer and silently wins, which left the textarea, every `ui/button` variant and the
+  suggestion rows reachable by keyboard and invisible once reached. `focus:border-acc` is a tint,
+  not an indicator.
+
+**Fonts** are self-hosted through `next/font/local` from `frontend/src/app/fonts/`: Caprasimo on
+`--font-display` (opt in with `.font-heading`), Figtree on `--font-body`, Geist Mono kept on
+`--font-mono` for timestamps. `next/font/google` is prohibited and
+`tests/test_docker_layout.py` pins both halves - a `next build` must not need the network.
+
+**Theme** lives in the DOM and in `localStorage`, not in React. `lib/theme.ts` owns the key and the
+event and must never become client-only: a `"use client"` module's exports do not survive into the
+server bundle, and importing the key from `ThemeToggle` once serialized
+`localStorage.getItem(undefined)` into the no-flash script. That script is inline and synchronous in
+`<head>` because a `useEffect` runs after first paint, which is one lavender flash per navigation.
+
+**Motion** is two keyframes, `cc-pulse` and `cc-spin`, both listed in the
+`@media (prefers-reduced-motion: reduce)` block. Each has a static frame that reads the same, so
+suppressing them costs no information. Add a third and add it to that block in the same commit.
+
+**Waveform regions encode `action`, not `severity`** (`components/Waveform.tsx`): cut is a solid
+`--acc` band, mute is a `repeating-linear-gradient` hatch in `--acc2`, and `status` is carried in
+opacity. Severity did not stop existing - it moved to a word in the list and detail panels, where it
+reads without a legend. The legend under the transport spells the region encoding out anyway, because
+two dimensions in one swatch are not guessable. WaveSurfer takes its colours at construction, so a
+theme flip calls `setOptions` and repaints the regions; rebuilding the instance would re-fetch and
+re-decode the audio.
+
+**The review grid is written as the `grid-template` shorthand** (`globals.css`), and that is not a
+style preference. Lightning CSS, in the Next pipeline, folds `grid-template-rows` +
+`grid-template-areas` into that shorthand itself and **drops a row size on the way**:
+`grid-template-rows: min-content 1fr` came out as `"list media" min-content "list detail"`, leaving
+the second row `auto`, the spanning suggestion list free to split its height across both rows, and
+the detail panel starting halfway down the page under a screen-high gap. Saying it in the shorthand
+is lossless. Below 1100px the same rule collapses to one column - media, list, detail - and the
+transcript leaves the grid entirely to become a fixed bottom sheet, since a fourth row would put it
+below the fold with no sign it had opened.
+
 ## Conventions
 
 - Backend: Pydantic for validation (`schemas.py`), logic in `services/`, routing in `routes/`.
-- Frontend: functional components, Tailwind v4, strictly typed API interactions.
+- Frontend: functional components, Tailwind v4, strictly typed API interactions. Colour, type,
+  motion and focus all come from the design system above - read it before styling anything.
 - `GEMINI.md` mirrors this file for Gemini CLI and has drifted badly enough in the past to state the
   opposite of the truth about admin auth. If you change the architecture, update both.
 - **Memoization is a decision, not a dependency-array reflex.** `useCallback` is for callbacks that

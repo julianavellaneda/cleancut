@@ -95,7 +95,7 @@ export function ViolationCard({
         </div>
         <span className="shrink-0 font-mono text-[13px] font-semibold text-muted">
           {formatTimestamp(violation.start_time)} → {formatTimestamp(violation.end_time)}{" "}
-          <span className="opacity-60">({length})</span>
+          ({length})
         </span>
       </div>
 
@@ -157,7 +157,7 @@ export function ViolationCard({
                   action === a ? "bg-acc text-onacc" : "text-text hover:bg-bg"
                 )}
               >
-                {a} <span className="text-[11px] opacity-70">{consequence}</span>
+                {a} <span className="text-[11px]">{consequence}</span>
               </button>
             ))}
           </div>

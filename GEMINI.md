@@ -106,7 +106,31 @@ The CLI is a module, not a script: `analysis/` imports are package-relative, so
     makes FastAPI read them as query params and they silently never arrive.
 - **Frontend**:
   - Functional components, Tailwind CSS v4.
-  - `wavesurfer.js` regions to visualize suggested-edit intervals.
+  - **`src/app/globals.css` is the single owner of colour.** Every value comes from a `var(--…)` or
+    a utility bridged to one; there is no literal hex in any `.tsx` and adding one is wrong. Three
+    token blocks: `:root`, `:root[data-theme="dark"]`, and the dark set again under
+    `@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) }` — the media query
+    alone cannot be overridden by an explicit toggle in both directions.
+  - `--muted` is a text colour, held to 4.5:1; `--faint` is **non-text only**, held to 3:1. Never
+    render words in `--faint`. `app/contrast.test.ts` parses the sheet, checks both bars in every
+    theme, and greps for `text-faint`.
+  - Never dim live text with `opacity` — it multiplies into the token's alpha and lands below the
+    thresholds (`opacity-45` over `--muted` is 1.9:1). Use a different token, a size, or a word.
+    `disabled:opacity-*` is exempt and fine.
+  - The focus ring is global: `:focus-visible { outline: 2px solid var(--acc) }`. Never add
+    `outline-none` — it sits in the utilities layer and silently wins, leaving a control reachable
+    by keyboard and invisible once reached.
+  - Motion is `cc-pulse` and `cc-spin`, both suppressed under `prefers-reduced-motion: reduce`. A
+    new animation joins that block in the same commit.
+  - Fonts are self-hosted via `next/font/local` (Caprasimo display, Figtree body, Geist Mono);
+    `next/font/google` is prohibited so `next build` needs no network.
+  - `wavesurfer.js` regions visualize suggested-edit intervals, keyed off **`action`** — cut is a
+    solid `--acc` band, mute an `--acc2` hatch, with `status` in opacity. Severity is a word in the
+    list and detail panels, not a colour. WaveSurfer takes colours at construction, so a theme flip
+    calls `setOptions` and repaints rather than rebuilding the instance.
+  - The review grid uses the `grid-template` **shorthand**: Lightning CSS folds separate
+    `grid-template-rows` + `grid-template-areas` into it and drops a row size doing so, which left
+    the detail panel under a screen-high gap.
   - Strictly type all API interactions and component props.
   - Read the API base from `NEXT_PUBLIC_API_URL`; never hardcode a host.
   - Memoize a callback only when it closes over nothing reactive (setters, refs, the API client),

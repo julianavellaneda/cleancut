@@ -243,7 +243,7 @@ export default function UploadPage() {
                 value={activePreset ? "" : prompt}
                 onChange={(e) => setPrompt(e.target.value)}
                 disabled={!!activePreset}
-                className="min-h-[120px] w-full resize-y rounded-[20px] border border-divider bg-bg px-4 py-3 text-sm leading-normal caret-acc outline-none transition-colors focus:border-acc"
+                className="min-h-[120px] w-full resize-y rounded-[20px] border border-divider bg-bg px-4 py-3 text-sm leading-normal caret-acc transition-colors focus:border-acc"
               />
               {/*
                 An overlay rather than the old 50% dim. Dimming says the control
@@ -444,7 +444,7 @@ export default function UploadPage() {
             })}
           </div>
 
-          <div className="px-2 py-1 text-xs text-faint">
+          <div className="px-2 py-1 text-xs text-muted">
             Showing {jobs.length} of {jobs.length} · newest first
           </div>
         </section>

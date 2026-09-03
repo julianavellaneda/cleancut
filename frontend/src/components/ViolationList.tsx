@@ -133,11 +133,10 @@ export function ViolationList({
                 }}
                 className={cn(
                   "grid cursor-pointer grid-cols-[44px_1fr_auto] items-center gap-2.5",
-                  "rounded-md px-3 py-2.5 transition-colors outline-none",
+                  "rounded-md px-3 py-2.5 transition-colors",
                   isSelected
                     ? "bg-bg shadow-[inset_0_0_0_2px_var(--acc)]"
-                    : "hover:bg-bg",
-                  v.status === "rejected" && "opacity-55"
+                    : "hover:bg-bg"
                 )}
               >
                 <span className="font-mono text-xs font-semibold text-muted">

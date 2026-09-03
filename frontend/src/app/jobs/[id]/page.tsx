@@ -612,7 +612,7 @@ export default function ReviewPage() {
 
         <section className="review-detail min-w-0 rounded-2xl bg-surface px-[22px] pt-5 pb-4.5">
           {selectedViolation ? (
-            <ViolationCard violation={selectedViolation} index={violations.indexOf(selectedViolation) + 1} total={violations.length} onAccept={() => handleStatusUpdate("accepted")} onReject={() => handleStatusUpdate("rejected")} onActionChange={handleActionChange} onPlayClip={() => waveformRef.current?.playClip(selectedViolation.start_time, selectedViolation.end_time)} isUpdating={isUpdating} />
+            <ViolationCard violation={selectedViolation} index={selectedIndex + 1} total={violations.length} onAccept={() => handleStatusUpdate("accepted")} onReject={() => handleStatusUpdate("rejected")} onActionChange={handleActionChange} onPlayClip={() => waveformRef.current?.playClip(selectedViolation.start_time, selectedViolation.end_time)} isUpdating={isUpdating} />
           ) : (
             <div className="py-12 text-center text-sm text-muted text-pretty">
               {violations.length === 0

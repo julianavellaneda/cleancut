@@ -146,13 +146,13 @@ export function ProcessingView({ job }: { job: Job }) {
             const isLast = i === STAGES.length - 1;
 
             return (
+              // No opacity wash for the inactive states: over --muted it
+              // measured 2.8:1 (pending) and 1.9:1 (skipped). The dot, the
+              // --muted title and the state word already say where a stage
+              // stands, and they all stay readable.
               <li
                 key={stage.id}
-                className={cn(
-                  "grid grid-cols-[28px_1fr_auto] items-start gap-4.5 py-3.5",
-                  state === "pending" && "opacity-70",
-                  state === "skipped" && "opacity-45"
-                )}
+                className="grid grid-cols-[28px_1fr_auto] items-start gap-4.5 py-3.5"
               >
                 <div className="flex h-full flex-col items-center gap-1.5">
                   <StageDot state={state} />
@@ -189,7 +189,7 @@ export function ProcessingView({ job }: { job: Job }) {
           })}
         </ol>
 
-        <p className="flex items-center gap-2 text-xs text-faint">
+        <p className="flex items-center gap-2 text-xs text-muted">
           <span className="size-1.5 flex-none rounded-full bg-acc animate-cc-pulse" />
           This page checks for progress every 2 seconds. You can leave it open and walk away.
         </p>

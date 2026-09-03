@@ -1,5 +1,4 @@
 @import "tailwindcss";
-@import "tw-animate-css";
 
 /*
  * The `dark:` variant keys off the same two signals the token blocks below do:
@@ -134,7 +133,13 @@
    * three light grounds (4.8 / 4.6 / 4.6). Fixed here rather than per site.
    */
   --muted: rgba(30, 28, 43, 0.66);
-  --faint: rgba(30, 28, 43, 0.36);
+  /*
+   * .36 measured 2.1-2.2:1 on the three light grounds - below the 3:1 that
+   * non-text UI needs, let alone text. .52 clears 3:1 on all three. It is a
+   * non-text tier and nothing else: the five places that used it for actual
+   * words now use --muted, which is measured against 4.5:1.
+   */
+  --faint: rgba(30, 28, 43, 0.52);
   --divider: rgba(30, 28, 43, 0.14);
 
   --acc: #6a57c9;
@@ -144,14 +149,18 @@
   --acc-300: #c9bff3;
   --acc-700: #4a3b92;
 
-  --acc2: #4a7bc4;
+  /* Darkened from the mockup's #4a7bc4, which put --onacc at 3.95:1 on the
+     Download and Clean all buttons. #4470b3 is 4.6:1 and holds the same hue. */
+  --acc2: #4470b3;
   --acc2-h: #3f6aae;
   --acc2-100: #ecf2fc;
   --acc2-200: #d9e5f8;
   --acc2-300: #b9cff1;
   --acc2-700: #3a568c;
 
-  --danger: #c15c66;
+  /* Same fix as --acc2: the mockup's #c15c66 carried --onacc at 3.89:1 on the
+     confirm-wipe button and the destructive variant. #af535c is 4.6:1. */
+  --danger: #af535c;
   --danger-100: #fbeaec;
   --danger-700: #7d3039;
 
@@ -270,9 +279,11 @@
     color: var(--acc-h);
   }
 
+  /* Placeholders are text, so they are measured against 4.5:1 like any other
+     text - --faint is the non-text tier and does not clear it. */
   input::placeholder,
   textarea::placeholder {
-    color: var(--faint);
+    color: var(--muted);
   }
 
   ::selection {
@@ -295,7 +306,7 @@
   font-weight: 400;
 }
 
-/* The mockup's three: a status pill that breathes, a spinner, a focus halo. */
+/* The mockup's two that survived: a status pill that pulses, and a spinner. */
 @keyframes cc-pulse {
   0%, 100% { opacity: 1; }
   50% { opacity: 0.35; }
@@ -303,11 +314,6 @@
 
 @keyframes cc-spin {
   to { transform: rotate(360deg); }
-}
-
-@keyframes cc-breathe {
-  0%, 100% { box-shadow: 0 0 0 4px var(--acc-200); }
-  50% { box-shadow: 0 0 0 9px var(--acc-200); }
 }
 
 .animate-cc-pulse {
@@ -318,20 +324,15 @@
   animation: cc-spin 0.9s linear infinite;
 }
 
-.animate-cc-breathe {
-  animation: cc-breathe 2.4s ease-in-out infinite;
-}
-
 /*
- * All three animations are decorative - every one of them has a static frame
- * that reads the same, so suppressing them costs no information. The processing
+ * Both animations are decorative - each has a static frame that reads the
+ * same, so suppressing them costs no information. The processing
  * screen's sweeping bar was dropped in favour of the pulsing stage dot: two
  * pieces of motion saying the same thing pulled the eye off the stage labels.
  */
 @media (prefers-reduced-motion: reduce) {
   .animate-cc-pulse,
-  .animate-cc-spin,
-  .animate-cc-breathe {
+  .animate-cc-spin {
     animation: none;
   }
 }
@@ -360,17 +361,33 @@
   display: grid;
   gap: 16px;
   align-items: start;
-  grid-template-columns: 360px minmax(0, 1fr);
-  grid-template-areas:
-    "list media"
-    "list detail";
+  /*
+   * The media row hugs the waveform and the detail row takes the remainder.
+   * Both halves matter: without the explicit `1fr` the list, which spans both
+   * rows, has its height distributed across them, and the detail panel starts
+   * halfway down the page under a screen-high gap.
+   *
+   * Written as the `grid-template` shorthand rather than as three properties
+   * because Lightning CSS (the minifier in the Next pipeline) collapses
+   * rows + areas into this shorthand itself, and drops a row size while doing
+   * it: `grid-template-rows: min-content 1fr` came out the other side as
+   * `"list media" min-content "list detail"`, leaving row two `auto` and the
+   * gap exactly as it was. Saying it in the shorthand is lossless, and it is
+   * the form the browser receives either way.
+   */
+  grid-template:
+    "list media"  min-content
+    "list detail" 1fr
+    / 360px minmax(0, 1fr);
 }
 
+/* Same shorthand, same reason: setting areas and columns separately here let
+   the minifier fold them together and drop the row sizes the base rule set. */
 .review-grid[data-transcript="open"] {
-  grid-template-columns: 340px minmax(0, 1fr) 320px;
-  grid-template-areas:
-    "list media transcript"
-    "list detail transcript";
+  grid-template:
+    "list media  transcript" min-content
+    "list detail transcript" 1fr
+    / 340px minmax(0, 1fr) 320px;
 }
 
 .review-list { grid-area: list; }
@@ -403,11 +420,13 @@
 @media (max-width: 1100px) {
   .review-grid,
   .review-grid[data-transcript="open"] {
-    grid-template-columns: minmax(0, 1fr);
-    grid-template-areas:
-      "media"
-      "list"
-      "detail";
+    /* Three stacked rows, each sized to its own panel. Also the shorthand, so
+       this resets the two-row template above rather than layering onto it. */
+    grid-template:
+      "media"  auto
+      "list"   auto
+      "detail" auto
+      / minmax(0, 1fr);
   }
 
   .review-list {
