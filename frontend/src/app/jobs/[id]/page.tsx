@@ -7,7 +7,8 @@ import { Button } from "@/components/ui/button";
 import { ThemeToggle } from "@/components/ThemeToggle";
 import { ArrowLeftGlyph, DownloadGlyph } from "@/components/icons";
 import { Waveform, WaveformHandle } from "@/components/Waveform";
-import { ViolationList, SCRUB_LABELS } from "@/components/ViolationList";
+import { ViolationList } from "@/components/ViolationList";
+import { ExportPreview } from "@/components/ExportPreview";
 import { ViolationCard } from "@/components/ViolationCard";
 import { FailedView } from "@/components/FailedView";
 import { ProcessingView } from "@/components/ProcessingView";
@@ -16,6 +17,7 @@ import { ReanalyzeBar } from "@/components/ReanalyzeBar";
 import { TranscriptPanel } from "@/components/TranscriptPanel";
 import { api, ExportStatus, Job, Preset, Transcript, Violation } from "@/lib/api";
 import { formatDuration } from "@/lib/format";
+import { SCRUB_LABELS } from "@/lib/violations";
 import { cn } from "@/lib/utils";
 
 function isProcessing(status: string): boolean {
@@ -79,7 +81,14 @@ export default function ReviewPage() {
   const exportStatus: ExportStatus = job?.export_status ?? "none";
   const exportStale = isExportStale(job);
   const exportReady = exportStatus === "ready" && !exportStale;
-  const acceptedCount = violations.filter(v => v.status === "accepted").length;
+  const acceptedEdits = violations.filter(v => v.status === "accepted");
+  const acceptedCount = acceptedEdits.length;
+  // What the render actually shortened: only the accepted *cuts*. A mute keeps
+  // the timeline, so counting it here would promise a file shorter than the one
+  // the strip is playing.
+  const secondsRemoved = acceptedEdits
+    .filter(v => v.action !== "mute")
+    .reduce((total, v) => total + (v.end_time - v.start_time), 0);
   // What a re-analysis would throw away: the accepted suggestions the *model*
   // made. The scrubber's are deterministic and survive a re-run, decisions
   // included, so counting them here would overstate the cost of the click.
@@ -581,20 +590,29 @@ export default function ReviewPage() {
           </div>
 
           {exportReady && (
-            <div className="rounded-lg bg-acc2-100 px-[18px] py-3.5 text-acc2-700">
-              <div className="mb-2 text-sm font-semibold">Edited result</div>
-              {job.media_type === "video" ? (
+            job.media_type === "video" ? (
+              <div className="rounded-lg bg-acc2-100 px-[18px] py-3.5 text-acc2-700">
+                <div className="mb-2 text-sm font-semibold">Edited result</div>
+                {/*
+                  A video export keeps the browser's own controls: the audio
+                  strip below is a transport with no picture, and a render whose
+                  point is the picture needs one.
+                */}
                 <video src={api.getExportStreamUrl(jobId)} className="w-full rounded-md bg-black" controls />
-              ) : (
-                <audio src={api.getExportStreamUrl(jobId)} className="w-full" controls />
-              )}
-            </div>
+              </div>
+            ) : (
+              <ExportPreview
+                src={api.getExportStreamUrl(jobId)}
+                editCount={acceptedEdits.length}
+                secondsRemoved={secondsRemoved}
+              />
+            )
           )}
         </section>
 
         <section className="review-detail min-w-0 rounded-2xl bg-surface px-[22px] pt-5 pb-4.5">
           {selectedViolation ? (
-            <ViolationCard violation={selectedViolation} onAccept={() => handleStatusUpdate("accepted")} onReject={() => handleStatusUpdate("rejected")} onActionChange={handleActionChange} onPlayClip={() => waveformRef.current?.playClip(selectedViolation.start_time, selectedViolation.end_time)} isUpdating={isUpdating} />
+            <ViolationCard violation={selectedViolation} index={violations.indexOf(selectedViolation) + 1} total={violations.length} onAccept={() => handleStatusUpdate("accepted")} onReject={() => handleStatusUpdate("rejected")} onActionChange={handleActionChange} onPlayClip={() => waveformRef.current?.playClip(selectedViolation.start_time, selectedViolation.end_time)} isUpdating={isUpdating} />
           ) : (
             <div className="py-12 text-center text-sm text-muted text-pretty">
               {violations.length === 0

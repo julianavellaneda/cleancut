@@ -84,3 +84,46 @@ export function DownloadGlyph(props: GlyphProps) {
     </Glyph>
   );
 }
+
+/*
+ * The two transport glyphs are *filled*, not stroked, so they sit apart from
+ * the line family above: a play triangle drawn in 2.75px outline at 16px is a
+ * smudge, and these are the only glyphs that ever appear inside a solid accent
+ * button where a fill is what reads.
+ */
+export function PlayGlyph({ size = 16, className }: GlyphProps) {
+  return (
+    <svg
+      width={size} height={size} viewBox="0 0 24 24" fill="currentColor"
+      aria-hidden focusable="false" className={className}
+    >
+      <path d="M7 4.5v15l12-7.5z" />
+    </svg>
+  );
+}
+
+export function PauseGlyph({ size = 16, className }: GlyphProps) {
+  return (
+    <svg
+      width={size} height={size} viewBox="0 0 24 24" fill="currentColor"
+      aria-hidden focusable="false" className={className}
+    >
+      <rect x="5" y="4" width="5" height="16" rx="1.5" />
+      <rect x="14" y="4" width="5" height="16" rx="1.5" />
+    </svg>
+  );
+}
+
+/** The skip pair: `RefreshGlyph` mirrored, so the two read as one control. */
+export function SkipBackGlyph(props: GlyphProps) {
+  return (
+    <Glyph {...props}>
+      <path d="M3 12a9 9 0 1 0 3-6.7" />
+      <path d="M3 3v6h6" />
+    </Glyph>
+  );
+}
+
+// The forward skip is the same circular arrow as `RefreshGlyph`, aliased
+// rather than redrawn: the two never share a screen, and one path is one path.
+export const SkipForwardGlyph = RefreshGlyph;

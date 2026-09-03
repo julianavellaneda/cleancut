@@ -135,7 +135,7 @@ describe("deciding on an edit after an export finished", () => {
     render(<ReviewPage />);
     await waitFor(() => expect(downloadLink()).toBeInTheDocument());
 
-    await userEvent.click(screen.getByRole("button", { name: "Undo Status" }));
+    await userEvent.click(screen.getByRole("button", { name: "Undo" }));
 
     await waitFor(() => expect(downloadLink()).not.toBeInTheDocument());
   });
@@ -185,7 +185,7 @@ describe("an edit made while a render is in flight", () => {
       expect(screen.getByRole("button", { name: "Exporting…" })).toBeInTheDocument()
     );
 
-    await userEvent.click(screen.getByRole("button", { name: "Undo Status" }));
+    await userEvent.click(screen.getByRole("button", { name: "Undo" }));
 
     await waitFor(() => expect(api.updateViolation).toHaveBeenCalled());
     expect(screen.getByRole("button", { name: "Exporting…" })).toBeInTheDocument();

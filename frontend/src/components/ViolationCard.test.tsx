@@ -37,6 +37,8 @@ function renderCard(v: Violation) {
   render(
     <ViolationCard
       violation={v}
+      index={1}
+      total={1}
       onAccept={vi.fn()}
       onReject={vi.fn()}
       onActionChange={vi.fn()}

@@ -272,24 +272,24 @@ describe("the panels", () => {
     await waitFor(() =>
       expect(screen.getByRole("button", { name: "Transcript" })).toBeInTheDocument()
     );
-    expect(screen.queryByPlaceholderText("Search the transcript…")).not.toBeInTheDocument();
+    expect(screen.queryByPlaceholderText("Search the transcript")).not.toBeInTheDocument();
 
     await userEvent.keyboard("t");
-    expect(screen.getByPlaceholderText("Search the transcript…")).toBeInTheDocument();
+    expect(screen.getByPlaceholderText("Search the transcript")).toBeInTheDocument();
 
     await userEvent.keyboard("t");
-    expect(screen.queryByPlaceholderText("Search the transcript…")).not.toBeInTheDocument();
+    expect(screen.queryByPlaceholderText("Search the transcript")).not.toBeInTheDocument();
   });
 
   it("toggles the shortcut legend on ?", async () => {
     await renderReview();
-    expect(screen.getByRole("button", { name: /Keyboard shortcuts/ })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /all shortcuts/ })).toBeInTheDocument();
 
     await userEvent.keyboard("?");
-    expect(screen.getByText("Accept and advance")).toBeInTheDocument();
+    expect(screen.getByText("accept, advance")).toBeInTheDocument();
 
     await userEvent.keyboard("?");
-    expect(screen.queryByText("Accept and advance")).not.toBeInTheDocument();
+    expect(screen.queryByText("accept, advance")).not.toBeInTheDocument();
   });
 });
 
@@ -313,7 +313,7 @@ describe("the guards", () => {
     await renderReview();
     await userEvent.keyboard("t");
 
-    const search = screen.getByPlaceholderText("Search the transcript…");
+    const search = screen.getByPlaceholderText("Search the transcript");
     await userEvent.click(search);
     // Every letter here is also a binding: searching for "a jar" must not
     // accept an edit, jump the selection, or close the panel it was typed into.
@@ -322,7 +322,7 @@ describe("the guards", () => {
     expect(search).toHaveValue("a jar");
     expect(api.updateViolation).not.toHaveBeenCalled();
     expect(await selected()).toBe("reason one");
-    expect(screen.getByPlaceholderText("Search the transcript…")).toBeInTheDocument();
+    expect(screen.getByPlaceholderText("Search the transcript")).toBeInTheDocument();
   });
 
   it("leaves Space to a focused button, so activating one does not also toggle playback", async () => {
