@@ -114,6 +114,26 @@ class JobListResponse(BaseModel):
         from_attributes = True
 
 
+class ActiveJobResponse(BaseModel):
+    """
+    The small answer the home page's poll needs.
+
+    Just enough to move a card that is already on screen: what stage it is at,
+    whether a render is running, and how many suggestions exist so far. The full
+    `JobListResponse` carries the filename, prompt, preset and timestamps too -
+    none of which change while a job runs, and all of which were being re-sent
+    every three seconds for every job in the entire history.
+    """
+
+    id: str
+    status: str
+    export_status: str = "none"
+    violation_count: int = 0
+
+    class Config:
+        from_attributes = True
+
+
 class PresetResponse(BaseModel):
     """A selectable rule preset the analyzer can run instead of a free-form prompt."""
     id: str

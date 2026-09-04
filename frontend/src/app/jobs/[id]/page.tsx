@@ -4,14 +4,21 @@ import { useEffect, useState, useCallback, useRef } from "react";
 import { useParams } from "next/navigation";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
+import { ThemeToggle } from "@/components/ThemeToggle";
+import { ArrowLeftGlyph, DownloadGlyph } from "@/components/icons";
 import { Waveform, WaveformHandle } from "@/components/Waveform";
-import { ViolationList, SCRUB_LABELS } from "@/components/ViolationList";
+import { ViolationList } from "@/components/ViolationList";
+import { ExportPreview } from "@/components/ExportPreview";
 import { ViolationCard } from "@/components/ViolationCard";
+import { FailedView } from "@/components/FailedView";
 import { ProcessingView } from "@/components/ProcessingView";
 import { KeyboardLegend } from "@/components/KeyboardLegend";
 import { ReanalyzeBar } from "@/components/ReanalyzeBar";
 import { TranscriptPanel } from "@/components/TranscriptPanel";
-import { api, ExportStatus, Job, Transcript, Violation } from "@/lib/api";
+import { api, ExportStatus, Job, Preset, Transcript, Violation } from "@/lib/api";
+import { formatDuration } from "@/lib/format";
+import { SCRUB_LABELS } from "@/lib/violations";
+import { cn } from "@/lib/utils";
 
 function isProcessing(status: string): boolean {
   return !["completed", "failed"].includes(status);
@@ -61,6 +68,11 @@ export default function ReviewPage() {
   const [transcript, setTranscript] = useState<Transcript | null>(null);
   const [showTranscript, setShowTranscript] = useState(false);
   const [currentTime, setCurrentTime] = useState(0);
+  // Fetched once for the whole screen: the header turns the job's preset id
+  // into a name with it, and the re-analysis card offers the same list. A
+  // failure leaves it empty, which degrades to the slug and to prompt mode
+  // rather than to a blank screen.
+  const [presets, setPresets] = useState<Preset[]>([]);
 
   const waveformRef = useRef<WaveformHandle>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
@@ -69,7 +81,20 @@ export default function ReviewPage() {
   const exportStatus: ExportStatus = job?.export_status ?? "none";
   const exportStale = isExportStale(job);
   const exportReady = exportStatus === "ready" && !exportStale;
-  const acceptedCount = violations.filter(v => v.status === "accepted").length;
+  const acceptedEdits = violations.filter(v => v.status === "accepted");
+  const acceptedCount = acceptedEdits.length;
+  // What the render actually shortened: only the accepted *cuts*. A mute keeps
+  // the timeline, so counting it here would promise a file shorter than the one
+  // the strip is playing.
+  const secondsRemoved = acceptedEdits
+    .filter(v => v.action !== "mute")
+    .reduce((total, v) => total + (v.end_time - v.start_time), 0);
+  // What a re-analysis would throw away: the accepted suggestions the *model*
+  // made. The scrubber's are deterministic and survive a re-run, decisions
+  // included, so counting them here would overstate the cost of the click.
+  const acceptedModelCount = violations.filter(
+    v => v.status === "accepted" && !(v.label && SCRUB_LABELS.includes(v.label))
+  ).length;
 
   /**
    * Mirror the retirement the server just performed.
@@ -109,6 +134,14 @@ export default function ReviewPage() {
   }, [jobId]);
 
   useEffect(() => { loadData(); }, [loadData]);
+
+  useEffect(() => {
+    let cancelled = false;
+    api.listPresets()
+      .then(list => { if (!cancelled) setPresets(list); })
+      .catch(() => {});
+    return () => { cancelled = true; };
+  }, []);
 
   // Fetched separately from the job: it can be large, it never changes once the
   // job completes, and a job without one is a normal case rather than an error.
@@ -379,96 +412,141 @@ export default function ReviewPage() {
   // A failed job has no violations and no waveform worth showing. Render the
   // reason instead of an empty review UI, which otherwise looks like a clean
   // recording rather than a job that never ran.
-  if (job.status === "failed") {
-    return (
-      <div className="h-screen flex flex-col items-center justify-center gap-4 px-8 text-center">
-        <h1 className="text-lg font-bold tracking-tight">Processing failed</h1>
-        <p className="text-sm text-muted-foreground max-w-xl">
-          {job.original_filename || job.filename} could not be processed.
-        </p>
-        {job.error_message && (
-          <pre className="max-w-2xl w-full overflow-auto rounded-lg border bg-muted/40 p-4 text-left text-xs whitespace-pre-wrap">
-            {job.error_message}
-          </pre>
-        )}
-        <Link href="/"><Button size="sm">Back to Projects</Button></Link>
-      </div>
-    );
-  }
+  if (job.status === "failed") return <FailedView job={job} />;
+
+  const jobName = job.original_filename || job.filename;
+  const activePreset = presets.find(p => p.id === job.preset) ?? null;
+  const jobMeta = [
+    job.media_type === "video" ? "Video" : "Audio",
+    job.duration_seconds ? formatDuration(job.duration_seconds) : null,
+    // An unfetched preset list falls back to the slug rather than to "Prompt
+    // mode", which would misdescribe the job.
+    job.preset ? `${activePreset?.name ?? job.preset} preset` : "Prompt mode",
+  ].filter(Boolean).join(" · ");
+
+  // A failed render owns the retry, and it lives in the banner that explains
+  // the failure rather than in the header - so the header's export control is
+  // whatever is left: the download once a current file exists, otherwise the
+  // button that makes one.
+  const exportFailed = exportStatus === "failed" && !exportStale;
+  const exportLabel =
+    exportStatus === "queued" ? "Queued…"
+    : exportStatus === "exporting" ? "Exporting…"
+    : acceptedCount > 0 ? `Export ${acceptedCount} edit${acceptedCount === 1 ? "" : "s"}`
+    : "Export";
+
+  /* The pills in the header's right cluster: one border, one toggling fill. */
+  const chromePill = (active: boolean) => cn(
+    "inline-flex items-center gap-1.5 rounded-full border border-divider px-3.5 py-2",
+    "text-[13px] transition-colors hover:border-acc disabled:pointer-events-none disabled:opacity-50",
+    active ? "bg-surface2 text-text" : "bg-transparent text-text"
+  );
 
   return (
-    <div className="h-screen flex flex-col bg-background">
-      <header className="border-b px-8 py-4 flex items-center justify-between">
-        <div className="flex items-center gap-6">
-          <Link href="/" className="text-sm font-medium hover:underline transition-all">← Projects</Link>
-          <h1 className="text-lg font-bold tracking-tight truncate max-w-md">{job.original_filename || job.filename}</h1>
+    <div className="mx-auto flex w-full max-w-[1500px] flex-col gap-4 px-7 pt-5 pb-20">
+      <header className="flex flex-wrap items-center gap-3.5">
+        <Link
+          href="/"
+          title="All recordings"
+          aria-label="All recordings"
+          className="grid size-[38px] flex-none place-items-center rounded-full border border-divider text-text no-underline transition-colors hover:bg-surface"
+        >
+          <ArrowLeftGlyph size={16} />
+        </Link>
+
+        <div className="min-w-0 flex-1">
+          <h1 className="truncate font-heading text-[22px] leading-[1.15]">{jobName}</h1>
+          <div className="text-xs text-muted">{jobMeta}</div>
         </div>
-        {/* The render happens on the worker queue, so the button reports the
+
+        {/* The render happens on the worker queue, so the control reports the
             job's export_status rather than the lifetime of a hanging request. */}
-        <div className="flex items-center gap-3">
+        <div className="flex flex-wrap items-center gap-2">
           {transcript && (
-            <Button
-              size="sm"
-              variant={showTranscript ? "secondary" : "ghost"}
+            <button
+              type="button"
               onClick={() => setShowTranscript(v => !v)}
+              aria-pressed={showTranscript}
+              className={chromePill(showTranscript)}
             >
               Transcript
-            </Button>
+              {/* Hidden from the accessible name: the shortcut is a hint for
+                  people looking at the button, and "Transcript T" is not what
+                  the button is called. */}
+              <kbd aria-hidden className="rounded-[5px] bg-surface2 px-1.5 py-px font-mono text-[10px] font-semibold opacity-80">
+                T
+              </kbd>
+            </button>
           )}
           {transcript && (
-            <Button
-              size="sm"
-              variant={showReanalyze ? "secondary" : "ghost"}
+            <button
+              type="button"
               onClick={() => setShowReanalyze(v => !v)}
+              aria-pressed={showReanalyze}
               title="Ask a different question about this recording, without re-transcribing it"
+              className={chromePill(showReanalyze)}
             >
-              New Prompt
-            </Button>
+              New prompt
+            </button>
           )}
-          {exportStatus === "failed" && !exportStale && (
-            <span className="max-w-xs truncate text-xs text-destructive" title={job.export_error ?? undefined}>
-              Export failed: {job.export_error ?? "unknown error"}
-            </span>
-          )}
+
+          <ThemeToggle />
+
           {exportReady ? (
-            <Button size="sm" onClick={() => window.open(api.getExportDownloadUrl(jobId))}>Download Master</Button>
-          ) : (
+            /* Blue rather than violet: the colour change is the signal that the
+               artefact exists, and a real link is what lets the browser save it. */
+            <a
+              href={api.getExportDownloadUrl(jobId)}
+              download
+              className="inline-flex items-center gap-2 rounded-full bg-acc2 px-[18px] py-2.5 font-heading text-sm text-onacc no-underline transition-colors hover:bg-acc2-h hover:text-onacc"
+            >
+              <DownloadGlyph size={14} />
+              Download edited file
+            </a>
+          ) : !exportFailed && (
             <Button
-              size="sm"
               onClick={handleExport}
               disabled={isExportPending(exportStatus) || acceptedCount === 0}
+              title={acceptedCount === 0 ? "Accept at least one edit to export" : undefined}
             >
-              {exportStatus === "queued" ? "Queued…"
-                : exportStatus === "exporting" ? "Exporting…"
-                : exportStatus === "failed" && !exportStale ? "Retry Export"
-                : "Export Edited"}
+              {isExportPending(exportStatus) && (
+                <span aria-hidden className="size-3 animate-cc-spin rounded-full border-2 border-onacc border-t-transparent" />
+              )}
+              {exportLabel}
             </Button>
           )}
         </div>
       </header>
 
-      {showReanalyze && (
-        <ReanalyzeBar
-          currentPrompt={job.prompt}
-          currentPreset={job.preset}
-          isSubmitting={isReanalyzing}
-          onSubmit={handleReanalyze}
-          onCancel={() => setShowReanalyze(false)}
-        />
+      {exportFailed && (
+        <div className="flex items-start gap-3.5 rounded-lg bg-danger-100 px-[18px] py-3 text-[13px] text-danger-700">
+          <div className="min-w-0 flex-1">
+            <strong className="font-bold">Export failed.</strong>{" "}
+            <span className="break-words font-mono text-xs">{job.export_error ?? "unknown error"}</span>
+          </div>
+          <button
+            type="button"
+            onClick={handleExport}
+            className="flex-none rounded-full border border-current px-3 py-1 text-xs transition-opacity hover:opacity-80"
+          >
+            Retry export
+          </button>
+        </div>
       )}
 
       {/* Set by a failed update or a rejected export. Previously assigned and
           never rendered, so an export the server refused looked like nothing
           had happened at all. */}
       {error && (
-        <div className="border-b border-destructive/40 bg-destructive/10 px-8 py-3 text-xs text-destructive">
-          {error}
+        <div className="flex items-start gap-3.5 rounded-lg bg-danger-100 px-[18px] py-3 text-[13px] text-danger-700">
+          <span className="flex-1 break-words">{error}</span>
           <button
             type="button"
             onClick={() => setError(null)}
-            className="ml-3 underline"
+            aria-label="Dismiss"
+            className="px-1 text-base leading-none"
           >
-            Dismiss
+            ×
           </button>
         </div>
       )}
@@ -478,60 +556,81 @@ export default function ReviewPage() {
           ("Partial analysis: ...", "Dead air detection skipped: ..."), so the
           label here stays generic rather than mislabelling one as the other. */}
       {job.error_message && (
-        <div className="border-b border-amber-500/40 bg-amber-500/10 px-8 py-3 text-xs text-amber-900 dark:text-amber-200">
-          <span className="font-bold uppercase tracking-wide">Heads up</span> — {job.error_message}
+        <div className="flex items-start gap-3 rounded-lg bg-acc2-100 px-[18px] py-3 text-[13px] text-acc2-700">
+          <span className="flex-none pt-0.5 text-[11px] font-bold uppercase tracking-[0.06em]">Heads up</span>
+          <span className="flex-1 text-pretty">{job.error_message}</span>
         </div>
       )}
 
-      <div className="flex-1 flex overflow-hidden">
-        <aside className="w-80 border-r bg-muted/20">
+      {showReanalyze && (
+        <ReanalyzeBar
+          currentPrompt={job.prompt}
+          currentPreset={job.preset}
+          presets={presets}
+          acceptedModelCount={acceptedModelCount}
+          isSubmitting={isReanalyzing}
+          onSubmit={handleReanalyze}
+          onCancel={() => setShowReanalyze(false)}
+        />
+      )}
+
+      <div className="review-grid" data-transcript={transcript && showTranscript ? "open" : "closed"}>
+        <section className="review-list rounded-2xl bg-surface">
           <ViolationList violations={violations} selectedViolation={selectedViolation} onSelect={setSelectedViolation} onCleanAll={handleCleanAll} onUndoCleanAll={handleUndoCleanAll}
             canUndoCleanAll={lastSweep !== null && lastSweep.length > 0} isCleaning={isCleaning} />
-        </aside>
+        </section>
 
-        <main className="flex-1 flex flex-col overflow-hidden">
-          <div className="p-8 border-b bg-muted/10">
-            <div className="max-w-4xl mx-auto w-full">
-              {job.media_type === "video" && (
-                <video ref={videoRef} src={api.getAudioUrl(jobId)} className="w-full aspect-video rounded-lg border mb-8 bg-black" controls />
-              )}
-              <Waveform ref={waveformRef} audioUrl={api.getAudioUrl(jobId)} violations={violations} selectedViolation={selectedViolation} onViolationClick={setSelectedViolation} onTimeUpdate={setCurrentTime} mediaRef={job.media_type === "video" ? videoRef : undefined} />
+        <section className="review-media flex min-w-0 flex-col gap-3">
+          {job.media_type === "video" && (
+            <video ref={videoRef} src={api.getAudioUrl(jobId)} className="max-h-[360px] w-full rounded-lg bg-black" controls />
+          )}
 
-              {exportReady && (
-                <div className="mt-8 rounded-lg border bg-background p-4">
-                  <div className="mb-3 text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Result</div>
-                  {job.media_type === "video" ? (
-                    <video src={api.getExportStreamUrl(jobId)} className="w-full aspect-video rounded-md border bg-black" controls />
-                  ) : (
-                    <audio src={api.getExportStreamUrl(jobId)} className="w-full" controls />
-                  )}
-                </div>
-              )}
-            </div>
+          <div className="rounded-2xl bg-surface px-[18px] pt-4 pb-3.5">
+            <Waveform ref={waveformRef} audioUrl={api.getAudioUrl(jobId)} violations={violations} selectedViolation={selectedViolation} onViolationClick={setSelectedViolation} onTimeUpdate={setCurrentTime} mediaRef={job.media_type === "video" ? videoRef : undefined} />
           </div>
 
-          <div className="flex-1 p-8 overflow-auto">
-            <div className="max-w-2xl mx-auto">
-              {selectedViolation ? (
-                <ViolationCard violation={selectedViolation} onAccept={() => handleStatusUpdate("accepted")} onReject={() => handleStatusUpdate("rejected")} onActionChange={handleActionChange} onPlayClip={() => waveformRef.current?.playClip(selectedViolation.start_time, selectedViolation.end_time)} isUpdating={isUpdating} />
-              ) : (
-                <div className="h-full flex items-center justify-center text-muted-foreground text-sm">
-                  {violations.length === 0 ? "No edits suggested for this recording" : "Select an edit to review"}
-                </div>
-              )}
+          {exportReady && (
+            job.media_type === "video" ? (
+              <div className="rounded-lg bg-acc2-100 px-[18px] py-3.5 text-acc2-700">
+                <div className="mb-2 text-sm font-semibold">Edited result</div>
+                {/*
+                  A video export keeps the browser's own controls: the audio
+                  strip below is a transport with no picture, and a render whose
+                  point is the picture needs one.
+                */}
+                <video src={api.getExportStreamUrl(jobId)} className="w-full rounded-md bg-black" controls />
+              </div>
+            ) : (
+              <ExportPreview
+                src={api.getExportStreamUrl(jobId)}
+                editCount={acceptedEdits.length}
+                secondsRemoved={secondsRemoved}
+              />
+            )
+          )}
+        </section>
+
+        <section className="review-detail min-w-0 rounded-2xl bg-surface px-[22px] pt-5 pb-4.5">
+          {selectedViolation ? (
+            <ViolationCard violation={selectedViolation} index={selectedIndex + 1} total={violations.length} onAccept={() => handleStatusUpdate("accepted")} onReject={() => handleStatusUpdate("rejected")} onActionChange={handleActionChange} onPlayClip={() => waveformRef.current?.playClip(selectedViolation.start_time, selectedViolation.end_time)} isUpdating={isUpdating} />
+          ) : (
+            <div className="py-12 text-center text-sm text-muted text-pretty">
+              {violations.length === 0
+                ? "Nothing to review — the analysis found no matches for this instruction. You can ask a new question with New prompt."
+                : "Select an edit to review"}
             </div>
-          </div>
-        </main>
+          )}
+        </section>
 
         {transcript && showTranscript && (
-          <aside className="w-80 border-l bg-muted/20">
+          <section className="review-transcript min-w-0 rounded-2xl bg-surface">
             <TranscriptPanel
               segments={transcript.segments}
               violations={violations}
               currentTime={currentTime}
               onSeek={(time) => waveformRef.current?.seekTo(time)}
             />
-          </aside>
+          </section>
         )}
       </div>
 

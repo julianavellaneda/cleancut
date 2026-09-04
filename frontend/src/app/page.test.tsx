@@ -4,8 +4,8 @@
  * Regression: `handleDrop` and `handleFileInput` were `useCallback(..., [])`.
  * They call `handleFiles`, which closes over prompt, preset, autoFix and
  * autoScrub - so both handlers were frozen around the first render and every
- * upload sent the initial values. The prompt box, the preset select and both
- * checkboxes were silently inert; a user asking for one thing got a default
+ * upload sent the initial values. The prompt box, the preset picker and both
+ * toggles were silently inert; a user asking for one thing got a default
  * analysis of another.
  *
  * These assert on the arguments `api.uploadAudio` is called with, because that
@@ -18,7 +18,7 @@ import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import UploadPage from "./page";
-import { api } from "@/lib/api";
+import { api, JobListItem } from "@/lib/api";
 
 vi.mock("next/navigation", () => ({
   useRouter: () => ({ push: vi.fn() }),
@@ -38,6 +38,7 @@ beforeEach(() => {
   // assertion here is a call count or a last call.
   vi.clearAllMocks();
   vi.spyOn(api, "listJobs").mockResolvedValue([]);
+  vi.spyOn(api, "listActiveJobs").mockResolvedValue([]);
   vi.spyOn(api, "listPresets").mockResolvedValue([
     { id: "income-claims", name: "Income Claims", description: "Earnings talk." },
   ]);
@@ -68,9 +69,9 @@ describe("choosing a file through the browse input", () => {
 
   it("uploads the preset chosen after the page first rendered", async () => {
     render(<UploadPage />);
-    await waitFor(() => expect(screen.getByRole("option", { name: "Income Claims" })).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByRole("radio", { name: "Income Claims" })).toBeInTheDocument());
 
-    await userEvent.selectOptions(screen.getByLabelText("Rule preset"), "income-claims");
+    await userEvent.click(screen.getByRole("radio", { name: "Income Claims" }));
     await userEvent.upload(document.getElementById("file-input") as HTMLInputElement, media());
 
     await waitFor(() => expect(api.uploadAudio).toHaveBeenCalled());
@@ -153,4 +154,178 @@ it("still rejects a file the backend would not accept", async () => {
 
   expect(await screen.findByText("Invalid file format.")).toBeInTheDocument();
   expect(api.uploadAudio).not.toHaveBeenCalled();
+});
+
+// --- polling ---------------------------------------------------------------
+//
+// The timer used to call `listJobs`, re-fetching every job in the entire
+// history every three seconds to notice one card changing stage. With retention
+// off by default that request only grows. These pin the smaller shape: ask what
+// is active, merge it into what is already rendered, and stop when nothing is.
+
+function jobRow(overrides: Partial<JobListItem> = {}): JobListItem {
+  return {
+    id: "job-1",
+    filename: "job-1.mp3",
+    original_filename: "seminar.mp3",
+    media_type: "audio",
+    prompt: "flag income claims",
+    status: "transcribing",
+    auto_fix: false,
+    auto_scrub: false,
+    preset: null,
+    duration_seconds: 120,
+    created_at: new Date().toISOString(),
+    violation_count: 0,
+    ...overrides,
+  };
+}
+
+it("polls the active endpoint rather than the whole job list", async () => {
+  vi.useFakeTimers();
+  vi.mocked(api.listJobs).mockResolvedValue([jobRow()]);
+  vi.mocked(api.listActiveJobs).mockResolvedValue([
+    { id: "job-1", status: "analyzing", export_status: "none", violation_count: 3 },
+  ]);
+
+  render(<UploadPage />);
+  await vi.waitFor(() => expect(api.listJobs).toHaveBeenCalled());
+  const initialFullReads = vi.mocked(api.listJobs).mock.calls.length;
+
+  await vi.advanceTimersByTimeAsync(3000);
+
+  expect(api.listActiveJobs).toHaveBeenCalled();
+  // The expensive call did not repeat: the tick is answered by the small one.
+  expect(vi.mocked(api.listJobs).mock.calls.length).toBe(initialFullReads);
+
+  vi.useRealTimers();
+});
+
+it("merges the poll's statuses into the cards already on screen", async () => {
+  vi.useFakeTimers();
+  vi.mocked(api.listJobs).mockResolvedValue([jobRow()]);
+  vi.mocked(api.listActiveJobs).mockResolvedValue([
+    { id: "job-1", status: "analyzing", export_status: "none", violation_count: 7 },
+  ]);
+
+  render(<UploadPage />);
+  // The status is rendered twice per row (the meta line and the pulsing
+  // badge), so these count matches rather than expecting exactly one.
+  await vi.waitFor(() => expect(screen.getAllByText(/transcribing/i).length).toBeGreaterThan(0));
+
+  await vi.advanceTimersByTimeAsync(3000);
+
+  // The status the poll carried replaced the one the full read set.
+  await vi.waitFor(() => {
+    expect(screen.getAllByText(/analyzing/i).length).toBeGreaterThan(0);
+  });
+  expect(screen.queryAllByText(/transcribing/i)).toHaveLength(0);
+
+  // And the row keeps the fields the poll does not carry: the filename came
+  // from the full read, and the small response has no opinion about it.
+  expect(screen.getByText("seminar.mp3")).toBeInTheDocument();
+
+  vi.useRealTimers();
+});
+
+it("stops polling and takes one final full read when nothing is active", async () => {
+  vi.useFakeTimers();
+  vi.mocked(api.listJobs).mockResolvedValue([jobRow({ status: "completed" })]);
+  vi.mocked(api.listActiveJobs).mockResolvedValue([]);
+
+  render(<UploadPage />);
+  await vi.waitFor(() => expect(api.listJobs).toHaveBeenCalled());
+
+  await vi.advanceTimersByTimeAsync(3000);
+  const afterStop = vi.mocked(api.listActiveJobs).mock.calls.length;
+
+  // The final read is what stops a job that finished between two ticks sitting
+  // on screen mid-stage until the page is reloaded.
+  expect(vi.mocked(api.listJobs).mock.calls.length).toBeGreaterThan(1);
+
+  // And the timer really is off: further time passes with no further polls.
+  await vi.advanceTimersByTimeAsync(9000);
+  expect(vi.mocked(api.listActiveJobs).mock.calls.length).toBe(afterStop);
+
+  vi.useRealTimers();
+});
+
+// --- the rebuilt controls --------------------------------------------------
+//
+// The preset `<select>` is now a radiogroup of pills and the two checkboxes are
+// switches. Both were queried through their accessible names by the tests
+// above, so these pin the roles that keep those names attached: a styled
+// `<div>` would render identically and take the whole upload form's coverage
+// down with it silently.
+
+describe("the rule preset radiogroup", () => {
+  it("is a named group of radios, with prompt mode among them", async () => {
+    render(<UploadPage />);
+
+    const group = await screen.findByLabelText("Rule preset");
+    expect(group).toHaveAttribute("role", "radiogroup");
+
+    // Prompt mode is an option, not the absence of one. The mockup omits it
+    // because its demo always has a preset; without it, picking a preset would
+    // be a one-way door.
+    const none = screen.getByRole("radio", { name: "None — use my instructions" });
+    expect(none).toHaveAttribute("aria-checked", "true");
+    expect(screen.getByRole("radio", { name: "Income Claims" })).toHaveAttribute(
+      "aria-checked",
+      "false",
+    );
+  });
+
+  it("moves and selects with the arrow keys, on one tab stop", async () => {
+    render(<UploadPage />);
+    const none = await screen.findByRole("radio", { name: "None — use my instructions" });
+
+    // Only the checked option is tabbable: that is what makes Tab step past
+    // the group rather than through every option in it.
+    expect(none).toHaveAttribute("tabindex", "0");
+    expect(screen.getByRole("radio", { name: "Income Claims" })).toHaveAttribute(
+      "tabindex",
+      "-1",
+    );
+
+    none.focus();
+    await userEvent.keyboard("{ArrowDown}");
+
+    const preset = screen.getByRole("radio", { name: "Income Claims" });
+    expect(preset).toHaveAttribute("aria-checked", "true");
+    expect(preset).toHaveFocus();
+
+    // And it wraps, which is the radiogroup contract rather than a listbox's.
+    await userEvent.keyboard("{ArrowDown}");
+    expect(none).toHaveAttribute("aria-checked", "true");
+  });
+
+  it("says why the instructions box is unavailable, rather than only dimming it", async () => {
+    render(<UploadPage />);
+    await userEvent.click(await screen.findByRole("radio", { name: "Income Claims" }));
+
+    expect(screen.getByLabelText(/Instructions/)).toBeDisabled();
+    // The reason is readable, which is the point of the overlay: a 50% dim says
+    // the control is unavailable and never says how to get it back.
+    expect(
+      screen.getByText(/rulebook is driving this analysis/i),
+    ).toBeInTheDocument();
+  });
+});
+
+describe("the two toggles", () => {
+  it("are switches that report their own state", async () => {
+    render(<UploadPage />);
+
+    const autoFix = screen.getByLabelText("Auto-apply markers");
+    expect(autoFix).toHaveAttribute("role", "switch");
+    expect(autoFix).toHaveAttribute("aria-checked", "false");
+
+    await userEvent.click(autoFix);
+    expect(autoFix).toHaveAttribute("aria-checked", "true");
+
+    // The accessible name is the title alone. The description sits in
+    // `aria-describedby`, so it does not swallow the name the queries use.
+    expect(autoFix).toHaveAccessibleDescription(/Uncertain ones stay pending/);
+  });
 });

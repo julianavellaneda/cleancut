@@ -78,6 +78,19 @@ export interface JobListItem {
   violation_count: number;
 }
 
+/**
+ * What the poll gets back: enough to move a card already on screen, and no
+ * more. Deliberately not a `Partial<JobListItem>` - the fields here are the
+ * ones that actually change while a job runs, and naming them keeps the merge
+ * on the home page honest about what it is allowed to overwrite.
+ */
+export interface ActiveJob {
+  id: string;
+  status: string;
+  export_status: string;
+  violation_count: number;
+}
+
 export interface Violation {
   id: string;
   job_id: string;
@@ -256,9 +269,30 @@ export const api = {
     return handleResponse(response);
   },
 
-  async listJobs(): Promise<JobListItem[]> {
-    const response = await fetch(`${API_BASE}/jobs`);
+  /**
+   * One bounded page of jobs, newest first.
+   *
+   * The server caps `limit` regardless of what is asked for; the default here
+   * matches the server's own so the common call sends no query string at all.
+   */
+  async listJobs(options: { limit?: number; offset?: number } = {}): Promise<JobListItem[]> {
+    const url = apiUrl("/jobs");
+    if (options.limit !== undefined) url.searchParams.set("limit", String(options.limit));
+    if (options.offset !== undefined) url.searchParams.set("offset", String(options.offset));
+    const response = await fetch(url.toString());
     return handleResponse<JobListItem[]>(response);
+  },
+
+  /**
+   * Just the jobs still being worked on, for the poll.
+   *
+   * Everything but the status is immutable while a job runs, so the timer has
+   * no reason to re-fetch the whole history to notice one card moving from
+   * `transcribing` to `analyzing`.
+   */
+  async listActiveJobs(): Promise<ActiveJob[]> {
+    const response = await fetch(`${API_BASE}/jobs/active`);
+    return handleResponse<ActiveJob[]>(response);
   },
 
   async getJob(jobId: string): Promise<Job> {

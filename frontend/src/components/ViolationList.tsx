@@ -2,14 +2,16 @@
 
 import { useEffect, useRef } from "react";
 
-import { ScrollArea } from "@/components/ui/scroll-area";
-import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
 import { Violation } from "@/lib/api";
+import { formatTimestamp } from "@/lib/format";
+import {
+  SCRUB_LABELS,
+  actionTextClass,
+  cautionFlags,
+  labelTintClass,
+  severityTextClass,
+} from "@/lib/violations";
 import { cn } from "@/lib/utils";
-
-/** Labels produced by the deterministic scrubber - safe to bulk-accept. */
-export const SCRUB_LABELS = ["Filler Word", "Dead Air"];
 
 interface ViolationListProps {
   violations: Violation[];
@@ -22,6 +24,19 @@ interface ViolationListProps {
   isCleaning: boolean;
 }
 
+/**
+ * The suggestion list, as a `44px 1fr auto` grid per row.
+ *
+ * Three columns because a reviewer reads a row in three fixed places: when it
+ * happens, what it is, and what will become of it. A flex row let the middle
+ * column's length shift the other two around, so the timestamps did not line
+ * up into a column you could scan down.
+ *
+ * The decision is a dot rather than a tick or a cross - outlined for pending,
+ * filled for accepted, faint for rejected - because the same three states are
+ * drawn the same way on the waveform's legend, and a reviewer should only have
+ * to learn them once.
+ */
 export function ViolationList({
   violations,
   selectedViolation,
@@ -35,6 +50,14 @@ export function ViolationList({
     (v) => v.status === "pending" && v.label && SCRUB_LABELS.includes(v.label)
   ).length;
 
+  const decisionSummary = violations.length
+    ? [
+        `${violations.filter((v) => v.status === "pending").length} pending`,
+        `${violations.filter((v) => v.status === "accepted").length} accepted`,
+        `${violations.filter((v) => v.status === "rejected").length} rejected`,
+      ].join(" · ")
+    : "";
+
   // J/K can move the selection past the fold, where the reviewer cannot see
   // what they just landed on. Follow it.
   const selectedRef = useRef<HTMLDivElement>(null);
@@ -42,147 +65,150 @@ export function ViolationList({
     selectedRef.current?.scrollIntoView({ block: "nearest" });
   }, [selectedViolation?.id]);
 
-  function formatTime(seconds: number): string {
-    const mins = Math.floor(seconds / 60);
-    const secs = Math.floor(seconds % 60);
-    return `${mins}:${secs.toString().padStart(2, "0")}`;
-  }
-
-  function getActionBadge(action: string | null) {
-    const variant = action?.toLowerCase() === "cut"
-      ? "destructive"
-      : "secondary";
-
-    return (
-      <Badge variant={variant} className="text-[10px] h-4 px-1 leading-none">
-        {action || "CUT"}
-      </Badge>
-    );
-  }
-
-  /**
-   * A mark on the rows the server itself was unsure about.
-   *
-   * This is the "at a glance" half of the two flags: on an auto_fix job the
-   * sidebar is otherwise a list of accepted rows with a few pending ones in it
-   * and no visible reason why those few were held back.
-   */
-  function getCautionPill(v: Violation) {
-    if (!v.is_approximate && !v.is_ambiguous) return null;
-    const reason = v.is_approximate
-      ? "Approximate span - the quote could not be matched to the transcript"
-      : "Also an ordinary word - check before cutting";
-    return (
-      <span
-        title={reason}
-        aria-label={reason}
-        className="text-[10px] leading-none text-amber-600 dark:text-amber-400"
-      >
-        ⚠
-      </span>
-    );
-  }
-
-  function getSeverityPill(severity: string | null) {
-    if (!severity) return null;
-    const level = severity.toLowerCase();
-    const variant =
-      level === "high" ? "destructive" :
-      level === "medium" ? "default" :
-      "secondary";
-    return (
-      <Badge variant={variant} className="text-[10px] h-4 px-1 leading-none uppercase">
-        {severity}
-      </Badge>
-    );
-  }
-
   return (
-    <div className="h-full flex flex-col">
-      <div className="p-4 border-b space-y-3">
-        <h3 className="font-semibold text-sm">
-          Suggested Edits ({violations.length})
-        </h3>
+    <div className="flex h-full min-h-0 flex-col">
+      <div className="flex flex-wrap items-center gap-2.5 px-[18px] pt-4 pb-2.5">
+        <h2 className="font-heading text-[19px] leading-tight">
+          {violations.length} suggestion{violations.length === 1 ? "" : "s"}
+        </h2>
+        {decisionSummary && (
+          <span className="text-xs text-muted">{decisionSummary}</span>
+        )}
         {pendingScrubCount > 0 && (
-          <Button
-            size="sm"
-            variant="secondary"
-            className="w-full text-xs"
+          <button
+            type="button"
             onClick={onCleanAll}
             disabled={isCleaning}
             title="Accept every pending filler word and dead-air edit"
+            className={cn(
+              "ml-auto rounded-full bg-acc2 px-3.5 py-1.5 font-heading text-[13px]",
+              "whitespace-nowrap text-onacc transition-colors hover:bg-acc2-h",
+              "disabled:pointer-events-none disabled:opacity-50"
+            )}
           >
-            {isCleaning
-              ? "Cleaning..."
-              : `Clean All (${pendingScrubCount})`}
-          </Button>
+            {isCleaning ? "Cleaning…" : `Clean all ${pendingScrubCount}`}
+          </button>
         )}
         {canUndoCleanAll && (
-          <Button
-            size="sm"
-            variant="ghost"
-            className="w-full text-xs"
+          <button
+            type="button"
             onClick={onUndoCleanAll}
             disabled={isCleaning}
             title="Put the last Clean All back to pending"
+            className={cn(
+              "ml-auto rounded-full border border-divider px-3.5 py-1.5 text-[13px]",
+              "whitespace-nowrap text-text transition-colors hover:bg-surface2",
+              "disabled:pointer-events-none disabled:opacity-50"
+            )}
           >
-            Undo Clean All
-          </Button>
+            Undo clean all
+          </button>
         )}
       </div>
 
-      <ScrollArea className="flex-1">
-        <div className="p-2 space-y-1" role="listbox" aria-label="Suggested edits">
-          {violations.length === 0 ? (
-            <div className="p-4 text-center text-muted-foreground text-sm">
-              No edits suggested
-            </div>
-          ) : (
-            violations.map((v) => (
+      {violations.length === 0 ? (
+        <div className="px-6 pt-8 pb-10 text-center text-sm text-muted text-pretty">
+          <div className="mx-auto mb-3 size-12 rounded-full bg-bg" />
+          No edits suggested
+        </div>
+      ) : (
+        <div
+          role="listbox"
+          aria-label="Suggested edits"
+          className="flex min-h-0 flex-1 flex-col gap-0.5 overflow-auto px-2 pb-2.5"
+        >
+          {violations.map((v) => {
+            const isSelected = selectedViolation?.id === v.id;
+            const cautions = cautionFlags(v);
+            return (
               <div
                 key={v.id}
-                ref={selectedViolation?.id === v.id ? selectedRef : undefined}
+                ref={isSelected ? selectedRef : undefined}
                 role="option"
                 tabIndex={0}
-                aria-selected={selectedViolation?.id === v.id}
-                className={cn(
-                  "p-3 rounded-md cursor-pointer transition-colors border outline-none",
-                  "focus-visible:ring-2 focus-visible:ring-ring",
-                  selectedViolation?.id === v.id
-                    ? "bg-accent border-accent-foreground/20"
-                    : "border-transparent hover:bg-muted"
-                )}
+                aria-selected={isSelected}
                 onClick={() => onSelect(v)}
                 onKeyDown={(e) => {
                   if (e.key === "Enter") onSelect(v);
                 }}
+                className={cn(
+                  "grid cursor-pointer grid-cols-[44px_1fr_auto] items-center gap-2.5",
+                  "rounded-md px-3 py-2.5 transition-colors",
+                  isSelected
+                    ? "bg-bg shadow-[inset_0_0_0_2px_var(--acc)]"
+                    : "hover:bg-bg"
+                )}
               >
-                <div className="flex items-center justify-between mb-1">
-                  <span className="text-[10px] text-muted-foreground font-mono">
-                    {formatTime(v.start_time)}
-                  </span>
-                  <div className="flex items-center gap-1.5">
-                    {v.status !== "pending" && (
-                      <span className="text-[10px] font-medium text-muted-foreground">
-                        {v.status === "accepted" ? "✓" : "✗"}
+                <span className="font-mono text-xs font-semibold text-muted">
+                  {formatTimestamp(v.start_time)}
+                </span>
+
+                <div className="min-w-0">
+                  <div className="flex flex-wrap items-center gap-1.5">
+                    <span
+                      className={cn(
+                        "rounded-full px-2 py-px text-[11px] tracking-[0.04em]",
+                        labelTintClass(v.label)
+                      )}
+                    >
+                      {v.label || "Suggested Edit"}
+                    </span>
+                    {v.severity && (
+                      <span
+                        className={cn(
+                          "text-[10px] font-bold tracking-[0.06em] uppercase",
+                          severityTextClass(v.severity)
+                        )}
+                      >
+                        {v.severity}
                       </span>
                     )}
-                    {getCautionPill(v)}
-                    {getSeverityPill(v.severity)}
-                    {getActionBadge(v.action)}
+                    {cautions.length > 0 && (
+                      <span
+                        title={cautions.map((c) => c.text).join(" ")}
+                        aria-label={cautions.map((c) => c.text).join(" ")}
+                        className={cn(
+                          "grid size-4 place-items-center rounded-full",
+                          "bg-danger-100 text-[10px] font-bold text-danger-700"
+                        )}
+                      >
+                        !
+                      </span>
+                    )}
+                  </div>
+                  <div
+                    className={cn(
+                      "truncate text-[13px] text-text",
+                      v.status === "rejected" && "line-through"
+                    )}
+                  >
+                    &ldquo;{v.text}&rdquo;
                   </div>
                 </div>
-                <div className="text-xs font-medium truncate">
-                  {v.label || "Suggested Edit"}
-                </div>
-                <div className="text-[10px] text-muted-foreground line-clamp-1 mt-1 italic">
-                  &ldquo;{v.text}&rdquo;
+
+                <div className="flex flex-col items-end gap-[3px]">
+                  <span
+                    className={cn(
+                      "text-[10px] tracking-[0.08em] uppercase",
+                      actionTextClass(v.action)
+                    )}
+                  >
+                    {v.action || "cut"}
+                  </span>
+                  <span
+                    className={cn(
+                      "size-2.5 rounded-full border-[1.5px]",
+                      v.status === "accepted" && "border-transparent bg-acc",
+                      v.status === "rejected" && "border-transparent bg-faint",
+                      v.status === "pending" && "border-acc bg-transparent"
+                    )}
+                  />
                 </div>
               </div>
-            ))
-          )}
+            );
+          })}
         </div>
-      </ScrollArea>
+      )}
     </div>
   );
 }

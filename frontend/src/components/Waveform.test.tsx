@@ -17,10 +17,13 @@
 import { createRef } from "react";
 import { act, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi, type Mock } from "vitest";
+
+import WaveSurfer from "wavesurfer.js";
 
 import { Waveform, WaveformHandle } from "./Waveform";
 import { Violation } from "@/lib/api";
+import { THEME_EVENT, THEME_STORAGE_KEY } from "@/lib/theme";
 
 const ws = vi.hoisted(() => {
   const listeners = new Map<string, ((...args: unknown[]) => void)[]>();
@@ -36,6 +39,7 @@ const ws = vi.hoisted(() => {
     play: vi.fn(),
     pause: vi.fn(),
     playPause: vi.fn(),
+    setOptions: vi.fn(),
     destroy: vi.fn(),
     emit(event: string, ...args: unknown[]) {
       (listeners.get(event) ?? []).forEach(cb => cb(...args));
@@ -341,12 +345,24 @@ describe("regions", () => {
       regions.addRegion.mock.calls.map(([r]) => [r.id, r])
     );
 
-    // Red for a cut, amber for a mute: the two are destructive in different
-    // ways, and the waveform is where the difference is read at a glance.
-    expect(byId.cut.color).toContain("239, 68, 68");
-    expect(byId.mute.color).toContain("234, 179, 8");
+    // Keyed off the *action*, because that is what the export will do to the
+    // file: the first accent for a cut, the second for a mute. Severity used to
+    // be the key here and moved to a word in the list and the detail panel.
+    expect(byId.cut.color).toBe("var(--acc-200)");
+    expect(byId.mute.color).toBe("var(--acc2-200)");
     // A rejected suggestion keeps its place but stops competing for attention.
-    expect(byId.gone.color).toBe("rgba(148, 163, 184, 0.1)");
+    expect(byId.gone.color).toBe("var(--faint)");
+  });
+
+  it("hands the plugin custom properties, not resolved colours", () => {
+    // The whole reason a theme flip does not have to repaint the regions: the
+    // browser re-resolves `var()` on the element itself. Only the canvas needs
+    // real values, and that is what `setOptions` below is for.
+    renderWaveform({ violations: [violation()] });
+    becomeReady(60);
+
+    const [{ color }] = regions.addRegion.mock.calls[0];
+    expect(color).toMatch(/^var\(--/);
   });
 
   it("redraws from scratch when the list changes, so a stale span cannot linger", () => {
@@ -414,6 +430,34 @@ describe("the parent's time callback", () => {
     expect(second).toHaveBeenCalledWith(9);
     expect(first).toHaveBeenCalledTimes(1);
     expect(ws.destroy).not.toHaveBeenCalled();
+    expect(ws.load).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("a theme flip", () => {
+  afterEach(() => {
+    document.documentElement.removeAttribute("data-theme");
+    window.localStorage.removeItem(THEME_STORAGE_KEY);
+  });
+
+  /**
+   * The canvas is the one place `var()` cannot reach: WaveSurfer resolves the
+   * three colours once and fills a canvas gradient with them. Rebuilding the
+   * instance would recolour it - and re-fetch and re-decode the whole file to
+   * do it, dropping the playhead on the way. `setOptions` is the fix.
+   */
+  it("recolours the canvas without rebuilding the player", () => {
+    renderWaveform();
+    becomeReady(60);
+    const buildsBefore = (WaveSurfer.create as unknown as Mock).mock.calls.length;
+
+    act(() => {
+      document.documentElement.setAttribute("data-theme", "dark");
+      window.dispatchEvent(new Event(THEME_EVENT));
+    });
+
+    expect(ws.setOptions).toHaveBeenCalled();
+    expect((WaveSurfer.create as unknown as Mock).mock.calls).toHaveLength(buildsBefore);
     expect(ws.load).toHaveBeenCalledTimes(1);
   });
 });

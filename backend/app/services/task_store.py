@@ -12,15 +12,24 @@ Row-level only, on purpose. What to *do* about an interrupted task - replay it,
 abandon it, mark the job failed - is policy, and it lives in `worker.py` next
 to the pipelines it is deciding about.
 
-Each call takes its own short-lived session rather than a caller's: an enqueue
-happens inside a request whose transaction may still roll back, and a task
-record that disappears with the request would put the durable copy *behind* the
-in-memory one, which is the failure this module exists to prevent.
+Admission is one transaction. `record_in` adds the row to the *caller's*
+session, so a route commits its job-state change and the task row together, and
+only then publishes to the in-memory queue. That ordering is stronger than the
+own-session version it replaces: nothing is put on the queue until the commit
+has returned, so the durable record still cannot fall behind the queue - and the
+half-admitted state the old ordering allowed (a job committed `pending` or
+`queued`, its task row lost to a failure, the request answering 500, the job
+active forever with nothing left to move it) is no longer representable.
+
+`record` keeps the own-session behaviour for callers with no request session to
+join - startup recovery, and tests driving the worker directly.
 """
 
 import logging
 from dataclasses import dataclass, replace
 from datetime import datetime
+
+from sqlalchemy.exc import IntegrityError
 
 from ..database import SessionLocal
 from ..models import Task
@@ -74,31 +83,70 @@ def to_task(row: Task) -> QueuedTask:
     )
 
 
+class DuplicateTask(Exception):
+    """
+    A task of this kind is already outstanding for this job.
+
+    Raised from :func:`record_in` when the `(job_id, kind)` constraint rejects
+    the insert. The routes already check `has_outstanding` first and answer a
+    specific 409; this is the same answer for the case where two requests pass
+    that check together, which no amount of checking in application code can
+    prevent on its own.
+    """
+
+
+def record_in(db, task: QueuedTask) -> QueuedTask:
+    """
+    Add a task row to the caller's session, without committing.
+
+    Flushed rather than committed: the flush is what assigns the id and what
+    surfaces the uniqueness constraint, so the caller learns about a duplicate
+    *here* - while it can still roll back its own change - rather than at a
+    commit it has already decided to make.
+
+    The caller owns the commit, and must publish to the queue only after it
+    returns. See the module docstring for why that ordering is the point.
+    """
+    row = Task(
+        kind=task.kind,
+        job_id=task.job_id,
+        file_path=task.file_path,
+        edit_action=task.edit_action,
+        prompt=task.prompt,
+        preset=task.preset,
+        state="pending",
+        attempts=0,
+        created_at=datetime.utcnow(),
+    )
+    db.add(row)
+    try:
+        db.flush()
+    except IntegrityError as exc:
+        db.rollback()
+        raise DuplicateTask(
+            f"A {task.kind} task is already outstanding for job {task.job_id}"
+        ) from exc
+    return replace(task, task_id=row.id)
+
+
 def record(task: QueuedTask) -> QueuedTask:
     """
-    Persist a task and return it carrying the id of its row.
+    Persist a task in a session of this module's own.
+
+    For callers with no request transaction to join: startup recovery, and tests
+    that drive the worker directly. Anything serving an HTTP request should use
+    :func:`record_in` instead, so the task row and the job state it describes
+    commit or roll back as one.
 
     A failure to write is *not* swallowed. Losing the row would leave the queue
     holding work with no durable record - exactly the state this replaces - and
-    the caller (an upload, an export request) would rather answer 500 than
-    accept work it cannot promise to keep.
+    the caller would rather fail than accept work it cannot promise to keep.
     """
     db = SessionLocal()
     try:
-        row = Task(
-            kind=task.kind,
-            job_id=task.job_id,
-            file_path=task.file_path,
-            edit_action=task.edit_action,
-            prompt=task.prompt,
-            preset=task.preset,
-            state="pending",
-            attempts=0,
-            created_at=datetime.utcnow(),
-        )
-        db.add(row)
+        recorded = record_in(db, task)
         db.commit()
-        return replace(task, task_id=row.id)
+        return recorded
     finally:
         db.close()
 

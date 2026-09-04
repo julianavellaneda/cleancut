@@ -35,10 +35,15 @@ def client(monkeypatch):
     only get in the way of testing multipart field handling.
     """
     enqueued = []
+    # Admission is now two steps: the task row joins the request's transaction,
+    # then the committed task is published. The stub stands in for the first and
+    # returns what the second is handed, so the route's ordering is exercised
+    # rather than bypassed.
     monkeypatch.setattr(
         "app.routes.jobs.enqueue_job",
-        lambda job_id, path: enqueued.append((job_id, path)),
+        lambda job_id, path, db=None: (enqueued.append((job_id, path)), "task")[1],
     )
+    monkeypatch.setattr("app.routes.jobs.publish", lambda task: task)
     monkeypatch.setattr("app.limits.probe_duration_seconds", lambda path: 30.0)
     c = TestClient(app)
     c.enqueued = enqueued

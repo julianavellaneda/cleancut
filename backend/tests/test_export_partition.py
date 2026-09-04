@@ -55,7 +55,8 @@ def client(monkeypatch, tmp_path):
     monkeypatch.setattr(exports, "EXPORT_DIR", tmp_path)
     monkeypatch.setattr(worker, "UPLOAD_DIR", tmp_path)
     # Keep the live worker thread out of it; the tests drive the export directly.
-    monkeypatch.setattr(audio_routes, "enqueue_export", lambda *a, **k: None)
+    monkeypatch.setattr(audio_routes, "enqueue_export", lambda *a, **k: "task")
+    monkeypatch.setattr(audio_routes, "publish", lambda task: task)
     RecordingEditor.last = None
     return TestClient(app)
 

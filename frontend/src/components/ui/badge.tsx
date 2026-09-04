@@ -4,19 +4,24 @@ import { Slot } from "radix-ui"
 
 import { cn } from "@/lib/utils"
 
+/*
+ * The pill the redesign uses for status, label and severity. Tinted from the
+ * ramps rather than filled with the accent itself: these sit inside dense rows
+ * and a saturated block at that size reads as a button.
+ */
 const badgeVariants = cva(
-  "inline-flex items-center justify-center rounded-md border px-2 py-0.5 text-xs font-medium w-fit whitespace-nowrap shrink-0 [&>svg]:size-3 gap-1 transition-colors",
+  "inline-flex items-center justify-center rounded-full border border-transparent px-2.5 py-0.5 text-[11px] font-medium w-fit whitespace-nowrap shrink-0 [&>svg]:size-3 gap-1 transition-colors",
   {
     variants: {
       variant: {
-        default: "bg-primary text-primary-foreground",
+        default: "bg-acc-200 text-acc-700",
         secondary:
-          "bg-secondary text-secondary-foreground",
+          "bg-surface2 text-text",
         destructive:
-          "bg-destructive text-white",
+          "bg-danger-100 text-danger-700",
         outline:
-          "border-border text-foreground bg-background",
-        ghost: "border-transparent text-foreground",
+          "border-divider text-text bg-transparent",
+        ghost: "text-muted",
       },
     },
     defaultVariants: {

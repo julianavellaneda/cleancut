@@ -1,27 +1,37 @@
 "use client";
 
+import { cn } from "@/lib/utils";
+
 /**
  * The shortcut reference for the review screen.
  *
- * Collapsed to a single hint by default so it never competes with the
- * suggestion under review; `?` expands it.
+ * A fixed pill at the bottom centre rather than a strip under the grid: the
+ * review page scrolls, and a reference that scrolls away is one the reviewer
+ * has to go looking for at exactly the moment they have forgotten a key. The
+ * collapsed state still names the four keys that matter, so `?` is a way to
+ * see the rest rather than the only way to see anything.
  */
 
 const BINDINGS: [string, string][] = [
-  ["J / ↓", "Next suggestion"],
-  ["K / ↑", "Previous suggestion"],
-  ["A", "Accept and advance"],
-  ["R", "Reject and advance"],
-  ["M", "Toggle cut / mute"],
-  ["Space", "Play / pause"],
-  ["P", "Play the selected clip"],
-  ["T", "Show / hide the transcript"],
-  ["?", "Hide this list"],
+  ["J / ↓", "next"],
+  ["K / ↑", "previous"],
+  ["A", "accept, advance"],
+  ["R", "reject, advance"],
+  ["M", "cut ↔ mute"],
+  ["Space", "play / pause"],
+  ["P", "play clip"],
+  ["T", "transcript"],
+  ["?", "this list"],
 ];
 
-function Key({ children }: { children: React.ReactNode }) {
+function Key({ children, wide }: { children: React.ReactNode; wide?: boolean }) {
   return (
-    <kbd className="rounded border bg-background px-1.5 py-0.5 font-mono text-[10px] font-semibold shadow-sm">
+    <kbd
+      className={cn(
+        "rounded-[7px] bg-bg px-1.5 py-0.5 text-center font-mono text-[11px] font-semibold text-text",
+        wide && "min-w-[22px]"
+      )}
+    >
       {children}
     </kbd>
   );
@@ -34,35 +44,46 @@ export function KeyboardLegend({
   open: boolean;
   onToggle: () => void;
 }) {
-  if (!open) {
-    return (
-      <button
-        type="button"
-        onClick={onToggle}
-        className="border-t px-8 py-2 text-left text-[11px] text-muted-foreground hover:text-foreground transition-colors"
-      >
-        <Key>?</Key> <span className="ml-2">Keyboard shortcuts</span>
-      </button>
-    );
-  }
-
   return (
-    <div className="border-t bg-muted/20 px-8 py-3">
-      <div className="flex flex-wrap items-center gap-x-6 gap-y-2">
-        {BINDINGS.map(([key, label]) => (
-          <div key={key} className="flex items-center gap-2 text-[11px] text-muted-foreground">
-            <Key>{key}</Key>
-            <span>{label}</span>
-          </div>
-        ))}
+    <div className="fixed bottom-4 left-1/2 z-20 -translate-x-1/2">
+      {open ? (
+        <div
+          className={cn(
+            "flex max-w-[760px] flex-wrap items-center gap-4 rounded-lg bg-surface",
+            "px-5 py-3.5 text-xs text-muted shadow-lg"
+          )}
+        >
+          {BINDINGS.map(([key, label]) => (
+            <span key={key} className="inline-flex items-center gap-1.5">
+              <Key wide>{key}</Key>
+              {label}
+            </span>
+          ))}
+          <button
+            type="button"
+            onClick={onToggle}
+            aria-label="Hide keyboard shortcuts"
+            className="px-0.5 text-base leading-none text-muted transition-colors hover:text-text"
+          >
+            ×
+          </button>
+        </div>
+      ) : (
         <button
           type="button"
           onClick={onToggle}
-          className="ml-auto text-[11px] underline text-muted-foreground hover:text-foreground"
+          className={cn(
+            "inline-flex items-center gap-2 rounded-full bg-surface px-3.5 py-1.5",
+            "text-xs text-muted shadow-md transition-colors hover:text-text"
+          )}
         >
-          Hide
+          <Key>J</Key>
+          <Key>K</Key>
+          <Key>A</Key>
+          <Key>R</Key>
+          step through ·<Key>?</Key> all shortcuts
         </button>
-      </div>
+      )}
     </div>
   );
 }

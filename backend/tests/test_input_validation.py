@@ -33,7 +33,8 @@ def db_ready():
 @pytest.fixture
 def client(monkeypatch, tmp_path):
     """The API with the render queue stubbed out - nothing here should render."""
-    monkeypatch.setattr(audio_routes, "enqueue_export", lambda job_id, edit_action=None: None)
+    monkeypatch.setattr(audio_routes, "enqueue_export", lambda job_id, edit_action=None, db=None: "task")
+    monkeypatch.setattr(audio_routes, "publish", lambda task: task)
     monkeypatch.setattr(exports, "EXPORT_DIR", tmp_path)
     return TestClient(app)
 

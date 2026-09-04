@@ -36,39 +36,60 @@ job_queue = queue.Queue()
 UPLOAD_DIR = Path(__file__).parent.parent.parent / "uploads"
 
 
-def _enqueue(task: QueuedTask) -> QueuedTask:
+def publish(task: QueuedTask) -> QueuedTask:
     """
-    Write the task down, then hand it to the worker thread.
+    Hand an already-recorded task to the worker thread.
 
-    That order is the whole guarantee. The durable row is never behind the
-    in-memory queue, so the worst a crash between the two lines can do is
-    replay a task nobody was waiting on - as against dropping one an HTTP
-    caller has already been told was accepted.
+    Split out from recording so a route can commit first and publish second.
+    Nothing may be published before its row is committed: the in-memory queue
+    must never hold work the database has not promised to keep.
     """
-    task = task_store.record(task)
     job_queue.put(task)
+    logger.info(f"{task.kind} task for job {task.job_id} published. Queue size: {job_queue.qsize()}")
     return task
 
 
-def enqueue_job(job_id: str, file_path: str):
+def _enqueue(task: QueuedTask, db=None) -> QueuedTask:
+    """
+    Write the task down, then hand it to the worker thread.
+
+    With `db`, the row joins the caller's transaction and this returns *without*
+    publishing: the caller commits its own change alongside the row and then
+    calls :func:`publish`. That is how every route enqueues, so a job can never
+    be committed `pending` or `queued` with its task row missing.
+
+    Without `db`, the row is committed in a session of its own and published
+    here. That path is for callers with no transaction to join - recovery, and
+    tests.
+    """
+    if db is not None:
+        return task_store.record_in(db, task)
+
+    task = task_store.record(task)
+    return publish(task)
+
+
+def enqueue_job(job_id: str, file_path: str, db=None) -> QueuedTask:
     """Add a job to the queue for sequential processing."""
-    _enqueue(QueuedTask(kind="process", job_id=job_id, file_path=file_path))
-    logger.info(f"Job {job_id} enqueued. Queue size: {job_queue.qsize()}")
+    return _enqueue(QueuedTask(kind="process", job_id=job_id, file_path=file_path), db)
 
 
-def enqueue_export(job_id: str, edit_action: str | None = None):
+def enqueue_export(job_id: str, edit_action: str | None = None, db=None) -> QueuedTask:
     """
     Queue an export render.
 
     Export goes through the same single worker thread as everything else so a
     two-hour re-encode cannot hold an HTTP request open, and so two exports
-    never contend for FFmpeg at once.
+    never contend for FFmpeg at once. The `(job_id, kind)` constraint on the
+    task row is what makes "never two" true when two requests arrive together,
+    rather than merely likely.
     """
-    _enqueue(QueuedTask(kind="export", job_id=job_id, edit_action=edit_action))
-    logger.info(f"Export for job {job_id} enqueued. Queue size: {job_queue.qsize()}")
+    return _enqueue(QueuedTask(kind="export", job_id=job_id, edit_action=edit_action), db)
 
 
-def enqueue_reanalysis(job_id: str, prompt: str | None = None, preset: str | None = None):
+def enqueue_reanalysis(
+    job_id: str, prompt: str | None = None, preset: str | None = None, db=None
+) -> QueuedTask:
     """
     Queue a fresh analysis of a job's stored transcript.
 
@@ -78,8 +99,9 @@ def enqueue_reanalysis(job_id: str, prompt: str | None = None, preset: str | Non
     The new question travels with the task. It is not written onto the job
     until the answer comes back - see :func:`_process_reanalysis`.
     """
-    _enqueue(QueuedTask(kind="reanalyze", job_id=job_id, prompt=prompt, preset=preset))
-    logger.info(f"Re-analysis for job {job_id} enqueued. Queue size: {job_queue.qsize()}")
+    return _enqueue(
+        QueuedTask(kind="reanalyze", job_id=job_id, prompt=prompt, preset=preset), db
+    )
 
 
 @dataclass(frozen=True)
@@ -403,7 +425,28 @@ def _process_export(job_id: str, edit_action: str | None = None):
 
         exports.render_export(str(source_path), export_path, cuts, mutes, job.media_type)
 
-        db.refresh(job)
+        # Two questions on the way back, in this order: does the job still
+        # exist, and do its edits still match. The first is the tombstone. A
+        # delete is refused while a render is in flight, but a job can finish
+        # between that check and the delete - and this render then produces a
+        # file for a job that is gone, which nothing but a retention sweep would
+        # ever collect.
+        #
+        # `db.refresh(job)` used to answer the second question, but it raises
+        # rather than answering when the row is gone. The re-query below has to
+        # be preceded by `expire_all`: this session loaded the job before the
+        # render started, so an unexpired query would be served from the
+        # identity map and compare against the revision as it stood *then* -
+        # which is exactly the value the check exists to distrust.
+        db.expire_all()
+        job = db.query(Job).filter(Job.id == job_id).first()
+        if job is None:
+            exports.delete_export_files(job_id)
+            logger.info(
+                f"Export for job {job_id} discarded: the job was deleted while it rendered."
+            )
+            return
+
         if (job.edit_revision or 0) != rendered_revision:
             # The edit list moved under the render. Publishing it would put a
             # download button next to a file that no longer matches the review,

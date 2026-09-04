@@ -104,27 +104,28 @@ def affects_export(violation, new_status: str | None, new_action: str | None) ->
     )
 
 
-def delete_export_files(job_id: str, directory: Path | None = None) -> int:
+def export_files(job_id: str, directory: Path | None = None) -> list[Path]:
     """
-    Remove whatever export a job has on disk. Returns the count unlinked.
+    Whatever export a job has on disk, listed rather than removed.
 
     Globbed rather than rebuilt from the naming rule, so an export written under
-    a container the current code no longer derives is still collected.
+    a container the current code no longer derives is still found.
 
     ``EXPORT_DIR`` is read at call time rather than bound as a default, so a
     test pointing this module at a tmp_path is honoured.
+
+    Split from :func:`delete_export_files` so a caller inside a transaction can
+    decide *what* is superseded now and unlink it after committing.
     """
-    removed = 0
     directory = export_dir(directory)
     if not directory.is_dir():
-        return removed
-    for path in sorted(directory.glob(f"{job_id}_edited.*")):
-        try:
-            path.unlink()
-            removed += 1
-        except OSError:
-            logger.exception(f"Could not delete stale export {path}")
-    return removed
+        return []
+    return sorted(directory.glob(f"{job_id}_edited.*"))
+
+
+def delete_export_files(job_id: str, directory: Path | None = None) -> int:
+    """Remove whatever export a job has on disk. Returns the count unlinked."""
+    return unlink_all(export_files(job_id, directory))
 
 
 def export_is_stale(job: Job) -> bool:
@@ -138,31 +139,84 @@ def export_is_stale(job: Job) -> bool:
     at all.
     """
     if job.export_revision is None:
+        # An export that was *retired* also clears this, so a file that survived
+        # a failed unlink is still served. That is deliberate and pinned by
+        # `test_an_export_of_unknown_provenance_still_downloads`: NULL means
+        # "nothing recorded which edits this came from", and rows predating
+        # these columns are indistinguishable from retired ones. Refusing both
+        # would break a download that works today to close a window that only
+        # opens when `unlink` itself fails.
         return False
     return job.export_revision != (job.edit_revision or 0)
 
 
-def invalidate_export(db, job: Job, directory: Path | None = None) -> None:
+def mark_export_invalidated(job: Job, directory: Path | None = None) -> list[Path]:
     """
-    Record that the accepted edit set changed, and retire the export it replaced.
+    Retire a job's export *in the caller's session*, without committing.
 
-    Every caller that can move a suggestion goes through here, so "the file in
-    exports/ matches the review screen" is a property of one function rather
-    than of every route remembering to clear a flag.
+    The database half of :func:`invalidate_export`, split out so a route can put
+    the reviewer's decision and the invalidation it causes in **one**
+    transaction. They used to be two: the violation was committed, then this
+    function committed again. A failure in between left the decision durable
+    while the file in ``exports/`` went on advertising itself as ready - and the
+    obvious fix, retrying the same request, was a no-op, because
+    ``affects_export`` compares against a status that had already been written.
+
+    Returns the files the caller should unlink once its commit has landed.
+    Deleting after the commit is deliberate: the revision is monotonic, so a
+    file that survives a failed unlink is already refused by ``export_is_stale``
+    on both download routes. Deleting *before* would be the unrecoverable order
+    - bytes gone, transaction rolled back.
 
     A render already in flight is left alone: its file is being written right
-    now, and ``_process_export`` re-checks the revision when it finishes. What
-    is retired here is a *finished* export - deleted rather than merely marked,
-    because the revision is monotonic, so those bytes can never be considered
-    current again and leaving them behind only makes a stale download possible.
+    now, and ``_process_export`` re-checks the revision when it finishes.
     """
     job.edit_revision = (job.edit_revision or 0) + 1
-    if (job.export_status or "none") not in IN_FLIGHT_EXPORT_STATUSES:
-        delete_export_files(job.id, directory)
-        job.export_status = "none"
-        job.export_error = None
-        job.export_revision = None
+    if (job.export_status or "none") in IN_FLIGHT_EXPORT_STATUSES:
+        return []
+
+    superseded = export_files(job.id, directory)
+    job.export_status = "none"
+    job.export_error = None
+    job.export_revision = None
+    return superseded
+
+
+def invalidate_export(db, job: Job, directory: Path | None = None) -> None:
+    """
+    Record that the edit set changed, retire the export, and commit.
+
+    The whole operation for a caller that owns its transaction outright and has
+    nothing else to commit alongside - the worker's re-analysis path. A route
+    handling a reviewer's decision should use :func:`mark_export_invalidated`
+    instead and commit once, so the decision and its consequence cannot come
+    apart.
+
+    Every caller that can move a suggestion goes through one of the two, so "the
+    file in exports/ matches the review screen" is a property of this module
+    rather than of every route remembering to clear a flag.
+    """
+    superseded = mark_export_invalidated(job, directory)
     db.commit()
+    unlink_all(superseded)
+
+
+def unlink_all(paths: Iterable[Path]) -> int:
+    """
+    Remove files that are no longer current. Returns how many actually went.
+
+    A failure is logged, not raised: by the time this runs the transaction that
+    made these files stale has committed, and the revision counters already stop
+    them being served. A leftover file is a wasted block, not a wrong answer.
+    """
+    removed = 0
+    for path in paths:
+        try:
+            path.unlink()
+            removed += 1
+        except OSError:
+            logger.exception(f"Could not delete superseded export {path}")
+    return removed
 
 
 def partition_edits(

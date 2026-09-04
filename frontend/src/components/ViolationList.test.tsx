@@ -52,7 +52,7 @@ function renderList(props: Partial<React.ComponentProps<typeof ViolationList>> =
   return merged;
 }
 
-describe("Clean All", () => {
+describe("Clean all", () => {
   it("counts only the pending scrubber edits", () => {
     renderList({
       violations: [
@@ -63,23 +63,23 @@ describe("Clean All", () => {
       ],
     });
 
-    expect(screen.getByRole("button", { name: /Clean All \(2\)/ })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /Clean all 2/ })).toBeInTheDocument();
   });
 
   it("is hidden when there is nothing left to sweep", () => {
     renderList({ violations: [violation({ status: "accepted" })] });
 
-    expect(screen.queryByRole("button", { name: /Clean All/ })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /Clean all/ })).not.toBeInTheDocument();
   });
 
   it("does not offer to sweep the analyst's own suggestions", () => {
     renderList({ violations: [violation({ label: "Income Claims" })] });
 
-    expect(screen.queryByRole("button", { name: /Clean All/ })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /Clean all/ })).not.toBeInTheDocument();
   });
 });
 
-describe("Undo Clean All", () => {
+describe("Undo clean all", () => {
   it("is absent until a sweep has run", () => {
     renderList({ violations: [violation()] });
 
@@ -89,7 +89,7 @@ describe("Undo Clean All", () => {
   it("appears once a sweep is standing, even with nothing left pending", () => {
     renderList({ violations: [violation({ status: "accepted" })], canUndoCleanAll: true });
 
-    expect(screen.getByRole("button", { name: /Undo Clean All/ })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /Undo clean all/ })).toBeInTheDocument();
   });
 
   it("calls back when clicked", async () => {
@@ -98,7 +98,7 @@ describe("Undo Clean All", () => {
       canUndoCleanAll: true,
     });
 
-    await userEvent.click(screen.getByRole("button", { name: /Undo Clean All/ }));
+    await userEvent.click(screen.getByRole("button", { name: /Undo clean all/ }));
 
     expect(onUndoCleanAll).toHaveBeenCalledOnce();
   });
@@ -110,7 +110,7 @@ describe("Undo Clean All", () => {
       isCleaning: true,
     });
 
-    expect(screen.getByRole("button", { name: /Undo Clean All/ })).toBeDisabled();
+    expect(screen.getByRole("button", { name: /Undo clean all/ })).toBeDisabled();
     expect(screen.getByRole("button", { name: /Cleaning/ })).toBeDisabled();
   });
 });

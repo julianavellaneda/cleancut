@@ -1,104 +1,450 @@
 @import "tailwindcss";
-@import "tw-animate-css";
 
-@custom-variant dark (&:is(.dark *));
-
-@theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-body);
-  --font-mono: var(--font-mono);
-  
-  --color-card: var(--card);
-  --color-card-foreground: var(--card-foreground);
-  --color-popover: var(--popover);
-  --color-popover-foreground: var(--popover-foreground);
-  --color-primary: var(--primary);
-  --color-primary-foreground: var(--primary-foreground);
-  --color-secondary: var(--secondary);
-  --color-secondary-foreground: var(--secondary-foreground);
-  --color-muted: var(--muted);
-  --color-muted-foreground: var(--muted-foreground);
-  --color-accent: var(--accent);
-  --color-accent-foreground: var(--accent-foreground);
-  --color-destructive: var(--destructive);
-  --color-destructive-foreground: var(--destructive-foreground);
-  --color-border: var(--border);
-  --color-input: var(--input);
-  --color-ring: var(--ring);
-}
-
-:root {
-  --background: oklch(1 0 0);
-  --foreground: oklch(0.145 0 0);
-  --card: oklch(1 0 0);
-  --card-foreground: oklch(0.145 0 0);
-  --popover: oklch(1 0 0);
-  --popover-foreground: oklch(0.145 0 0);
-  --primary: oklch(0.205 0 0);
-  --primary-foreground: oklch(0.985 0 0);
-  --secondary: oklch(0.97 0 0);
-  --secondary-foreground: oklch(0.205 0 0);
-  --muted: oklch(0.97 0 0);
-  --muted-foreground: oklch(0.556 0 0);
-  --accent: oklch(0.97 0 0);
-  --accent-foreground: oklch(0.205 0 0);
-  --destructive: oklch(0.577 0.245 27.325);
-  --destructive-foreground: oklch(0.985 0 0);
-  --border: oklch(0.922 0 0);
-  --input: oklch(0.922 0 0);
-  --ring: oklch(0.708 0 0);
-  --radius: 0.5rem;
-}
-
-.dark {
-  --background: oklch(0.145 0 0);
-  --foreground: oklch(0.985 0 0);
-  --card: oklch(0.145 0 0);
-  --card-foreground: oklch(0.985 0 0);
-  --popover: oklch(0.145 0 0);
-  --popover-foreground: oklch(0.985 0 0);
-  --primary: oklch(0.985 0 0);
-  --primary-foreground: oklch(0.205 0 0);
-  --secondary: oklch(0.269 0 0);
-  --secondary-foreground: oklch(0.985 0 0);
-  --muted: oklch(0.269 0 0);
-  --muted-foreground: oklch(0.708 0 0);
-  --accent: oklch(0.269 0 0);
-  --accent-foreground: oklch(0.985 0 0);
-  --destructive: oklch(0.396 0.141 25.723);
-  --destructive-foreground: oklch(0.985 0 0);
-  --border: oklch(0.269 0 0);
-  --input: oklch(0.269 0 0);
-  --ring: oklch(0.439 0 0);
-}
-
-@layer base {
-  * {
-    @apply border-border outline-ring/50;
+/*
+ * The `dark:` variant keys off the same two signals the token blocks below do:
+ * an explicit `data-theme` on <html>, or the OS preference when nothing has
+ * been chosen. The old `&:is(.dark *)` keyed off a `.dark` class nothing ever
+ * set, so every `dark:` utility in the app was dead.
+ */
+@custom-variant dark {
+  &:where([data-theme="dark"], [data-theme="dark"] *) {
+    @slot;
   }
-  body {
-    @apply bg-background text-foreground font-sans antialiased;
+  @media (prefers-color-scheme: dark) {
+    &:where(
+      :root:not([data-theme="light"]),
+      :root:not([data-theme="light"]) *
+    ) {
+      @slot;
+    }
   }
 }
 
 /*
- * Processing view (ProcessingView.tsx). A slow sweep under the active pipeline
- * stage: enough motion that a still frame reads as "working", slow enough not
- * to pull the eye off the stage labels.
+ * ─── Tailwind bridge ───────────────────────────────────────────────────────
+ *
+ * The token sheet below owns colour. This block is the only place the two
+ * naming systems meet: the shadcn semantic names the untouched screens still
+ * use (`bg-card`, `text-muted-foreground`) resolve to design tokens, so a
+ * screen recolours without its markup being edited, and the design tokens get
+ * utilities of their own (`bg-surface`, `text-muted`, `bg-acc`) for the screens
+ * later phases convert.
+ *
+ * Two aliases are worth reading twice, because the same word means different
+ * things on each side:
+ *   - shadcn `muted` is a *background*; the mockup's `--muted` is *text*. The
+ *     mockup wins, so `text-muted` and `text-muted-foreground` are the same
+ *     colour and both are text. The dozen `bg-muted/NN` call sites were
+ *     rewritten to `bg-surface2/NN` rather than aliased: leaving `bg-muted`
+ *     meaning a background while `text-muted` meant text is a trap every later
+ *     phase would have had to remember.
+ *   - shadcn `accent` is the subtle hover fill, not the brand violet. The
+ *     violet is `--acc` (utilities `bg-acc`, `text-acc-700`, …).
  */
-@keyframes stage-sweep {
-  0% { transform: translateX(-110%); }
-  100% { transform: translateX(510%); }
+@theme inline {
+  --font-sans: var(--font-body);
+  --font-mono: var(--font-mono);
+
+  /* Design tokens, as utilities. */
+  --color-bg: var(--bg);
+  --color-surface: var(--surface);
+  --color-surface2: var(--surface2);
+  --color-text: var(--text);
+  --color-faint: var(--faint);
+  --color-divider: var(--divider);
+  --color-acc: var(--acc);
+  --color-acc-h: var(--acc-h);
+  --color-acc-100: var(--acc-100);
+  --color-acc-200: var(--acc-200);
+  --color-acc-300: var(--acc-300);
+  --color-acc-700: var(--acc-700);
+  --color-acc2: var(--acc2);
+  --color-acc2-h: var(--acc2-h);
+  --color-acc2-100: var(--acc2-100);
+  --color-acc2-200: var(--acc2-200);
+  --color-acc2-300: var(--acc2-300);
+  --color-acc2-700: var(--acc2-700);
+  --color-danger: var(--danger);
+  --color-danger-100: var(--danger-100);
+  --color-danger-700: var(--danger-700);
+  --color-onacc: var(--onacc);
+  --color-backdrop: var(--backdrop);
+
+  /* shadcn semantic names, aliased onto the same tokens. */
+  --color-background: var(--bg);
+  --color-foreground: var(--text);
+  --color-card: var(--surface);
+  --color-card-foreground: var(--text);
+  --color-popover: var(--surface);
+  --color-popover-foreground: var(--text);
+  --color-primary: var(--acc);
+  --color-primary-foreground: var(--onacc);
+  --color-secondary: var(--surface2);
+  --color-secondary-foreground: var(--text);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted);
+  --color-accent: var(--surface2);
+  --color-accent-foreground: var(--text);
+  --color-destructive: var(--danger);
+  --color-destructive-foreground: var(--onacc);
+  --color-border: var(--divider);
+  --color-input: var(--divider);
+  --color-ring: var(--acc);
+
+  /*
+   * The mockup over-rounds and uses several radii rather than one scale step,
+   * so they are named rather than derived from a single `--radius`.
+   */
+  --radius-sm: 14px;
+  --radius: 18px;
+  --radius-md: 18px;
+  --radius-lg: 24px;
+  --radius-xl: 28px;
+  --radius-2xl: 32px;
+
+  --shadow-sm: var(--shadow-sm-token);
+  --shadow-md: var(--shadow-md-token);
+  --shadow-lg: var(--shadow-lg-token);
 }
 
-.animate-stage-sweep {
-  animation: stage-sweep 2.6s cubic-bezier(0.45, 0, 0.55, 1) infinite;
+/*
+ * ─── Token sheet ───────────────────────────────────────────────────────────
+ *
+ * Three blocks, not two. The media query alone cannot be overridden by an
+ * explicit toggle in *both* directions: it would win over a user who asked for
+ * light on a dark-preferring OS. So the explicit attribute gets its own block
+ * and the media query excludes `[data-theme="light"]`.
+ *
+ * Values are the mockup's (`CleanCut.dc.html`), not `_ds/styles.css`: the
+ * parent system is cream/terracotta, and this app was composed against the
+ * lavender re-tokenisation — the waveform region colours in particular were
+ * picked to read on `--bg`.
+ */
+:root {
+  color-scheme: light;
+
+  --bg: #efecf8;
+  --surface: #e4e0f2;
+  --surface2: #d8d3ec;
+  --text: #1e1c2b;
+  /*
+   * The mockup's .58 alpha measures 3.9:1 on --bg and 3.8:1 on --surface, so it
+   * fails 4.5:1 for the 12-13px meta text it is used for. .66 clears it on all
+   * three light grounds (4.8 / 4.6 / 4.6). Fixed here rather than per site.
+   */
+  --muted: rgba(30, 28, 43, 0.66);
+  /*
+   * .36 measured 2.1-2.2:1 on the three light grounds - below the 3:1 that
+   * non-text UI needs, let alone text. .52 clears 3:1 on all three. It is a
+   * non-text tier and nothing else: the five places that used it for actual
+   * words now use --muted, which is measured against 4.5:1.
+   */
+  --faint: rgba(30, 28, 43, 0.52);
+  --divider: rgba(30, 28, 43, 0.14);
+
+  --acc: #6a57c9;
+  --acc-h: #5a48b5;
+  --acc-100: #f1eefc;
+  --acc-200: #e2dcf9;
+  --acc-300: #c9bff3;
+  --acc-700: #4a3b92;
+
+  /* Darkened from the mockup's #4a7bc4, which put --onacc at 3.95:1 on the
+     Download and Clean all buttons. #4470b3 is 4.6:1 and holds the same hue. */
+  --acc2: #4470b3;
+  --acc2-h: #3f6aae;
+  --acc2-100: #ecf2fc;
+  --acc2-200: #d9e5f8;
+  --acc2-300: #b9cff1;
+  --acc2-700: #3a568c;
+
+  /* Same fix as --acc2: the mockup's #c15c66 carried --onacc at 3.89:1 on the
+     confirm-wipe button and the destructive variant. #af535c is 4.6:1. */
+  --danger: #af535c;
+  --danger-100: #fbeaec;
+  --danger-700: #7d3039;
+
+  --onacc: #f7f5fd;
+
+  --shadow-sm-token: 0 1px 2px rgba(38, 35, 51, 0.14);
+  --shadow-md-token: 0 3px 10px rgba(38, 35, 51, 0.16);
+  --shadow-lg-token: 0 12px 32px rgba(38, 35, 51, 0.22);
+
+  --selection: rgba(106, 87, 201, 0.3);
+  /* The scrim behind a modal. A token rather than a literal so the dark theme
+     can go darker than a tinted lavender, which reads as fog rather than depth. */
+  --backdrop: rgba(20, 18, 36, 0.5);
 }
 
+:root[data-theme="dark"] {
+  color-scheme: dark;
+
+  --bg: #15132a;
+  --surface: #1f1c36;
+  --surface2: #2a2646;
+  --text: #ece9f6;
+  --muted: rgba(236, 233, 246, 0.6);
+  --faint: rgba(236, 233, 246, 0.38);
+  --divider: rgba(236, 233, 246, 0.14);
+
+  --acc: #a693e6;
+  --acc-h: #b8a8ee;
+  --acc-100: #2a2450;
+  --acc-200: #352d66;
+  --acc-300: #4a3b92;
+  --acc-700: #d6ccf7;
+
+  --acc2: #8fb0e3;
+  --acc2-h: #a4c0ea;
+  --acc2-100: #1f2c48;
+  --acc2-200: #2a3e66;
+  --acc2-300: #3a568c;
+  --acc2-700: #c4d6f2;
+
+  --danger: #e08a92;
+  --danger-100: #4a262c;
+  --danger-700: #f3c3c8;
+
+  --onacc: #15132a;
+
+  --shadow-sm-token: 0 1px 2px rgba(0, 0, 0, 0.4);
+  --shadow-md-token: 0 3px 10px rgba(0, 0, 0, 0.4);
+  --shadow-lg-token: 0 12px 32px rgba(0, 0, 0, 0.5);
+
+  --selection: rgba(166, 147, 230, 0.32);
+  --backdrop: rgba(8, 7, 18, 0.62);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    color-scheme: dark;
+
+    --bg: #15132a;
+    --surface: #1f1c36;
+    --surface2: #2a2646;
+    --text: #ece9f6;
+    --muted: rgba(236, 233, 246, 0.6);
+    --faint: rgba(236, 233, 246, 0.38);
+    --divider: rgba(236, 233, 246, 0.14);
+
+    --acc: #a693e6;
+    --acc-h: #b8a8ee;
+    --acc-100: #2a2450;
+    --acc-200: #352d66;
+    --acc-300: #4a3b92;
+    --acc-700: #d6ccf7;
+
+    --acc2: #8fb0e3;
+    --acc2-h: #a4c0ea;
+    --acc2-100: #1f2c48;
+    --acc2-200: #2a3e66;
+    --acc2-300: #3a568c;
+    --acc2-700: #c4d6f2;
+
+    --danger: #e08a92;
+    --danger-100: #4a262c;
+    --danger-700: #f3c3c8;
+
+    --onacc: #15132a;
+
+    --shadow-sm-token: 0 1px 2px rgba(0, 0, 0, 0.4);
+    --shadow-md-token: 0 3px 10px rgba(0, 0, 0, 0.4);
+    --shadow-lg-token: 0 12px 32px rgba(0, 0, 0, 0.5);
+
+    --selection: rgba(166, 147, 230, 0.32);
+    --backdrop: rgba(8, 7, 18, 0.62);
+  }
+}
+
+@layer base {
+  * {
+    border-color: var(--divider);
+  }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: var(--font-body), system-ui, sans-serif;
+    font-size: 15px;
+    line-height: 1.5;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  a {
+    color: var(--acc);
+    text-underline-offset: 3px;
+  }
+
+  a:hover {
+    color: var(--acc-h);
+  }
+
+  /* Placeholders are text, so they are measured against 4.5:1 like any other
+     text - --faint is the non-text tier and does not clear it. */
+  input::placeholder,
+  textarea::placeholder {
+    color: var(--muted);
+  }
+
+  ::selection {
+    background: var(--selection);
+  }
+
+  :focus {
+    outline: none;
+  }
+
+  :focus-visible {
+    outline: 2px solid var(--acc);
+    outline-offset: 2px;
+  }
+}
+
+/* The display face. Headings opt in with `font-heading`. */
+.font-heading {
+  font-family: var(--font-display), Georgia, serif;
+  font-weight: 400;
+}
+
+/* The mockup's two that survived: a status pill that pulses, and a spinner. */
+@keyframes cc-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.35; }
+}
+
+@keyframes cc-spin {
+  to { transform: rotate(360deg); }
+}
+
+.animate-cc-pulse {
+  animation: cc-pulse 1.6s ease-in-out infinite;
+}
+
+.animate-cc-spin {
+  animation: cc-spin 0.9s linear infinite;
+}
+
+/*
+ * Both animations are decorative - each has a static frame that reads the
+ * same, so suppressing them costs no information. The processing
+ * screen's sweeping bar was dropped in favour of the pulsing stage dot: two
+ * pieces of motion saying the same thing pulled the eye off the stage labels.
+ */
 @media (prefers-reduced-motion: reduce) {
-  .animate-stage-sweep {
+  .animate-cc-pulse,
+  .animate-cc-spin {
     animation: none;
-    transform: translateX(180%);
+  }
+}
+
+/*
+ * ─── Review layout ─────────────────────────────────────────────────────────
+ *
+ * The review screen is a grid with named areas rather than a row of
+ * fixed-width `<aside>`s. The difference is what happens when the transcript
+ * opens: a flex row squeezed the middle column, so the waveform and the detail
+ * panel narrowed to make room. With named areas the whole page reflows and the
+ * transcript takes a column of its own.
+ *
+ * Expressed as areas rather than as three explicit column spans because the
+ * mockup's other two arrangements (waveform on top, detail first) are the same
+ * two rules with a different `grid-template-areas` string. Only `list-left` is
+ * built; the other two are an additive change here, not a rewrite of the page.
+ *
+ * Below 1100px there is no room for two columns, let alone three. The mockup
+ * does not say what happens on a narrow viewport, so this is our decision:
+ * media first (it is what the page is about), then the list, then the detail,
+ * and the transcript stops being a column at all - it becomes an overlay, so
+ * opening it does not push the waveform off the top of the screen.
+ */
+.review-grid {
+  display: grid;
+  gap: 16px;
+  align-items: start;
+  /*
+   * The media row hugs the waveform and the detail row takes the remainder.
+   * Both halves matter: without the explicit `1fr` the list, which spans both
+   * rows, has its height distributed across them, and the detail panel starts
+   * halfway down the page under a screen-high gap.
+   *
+   * Written as the `grid-template` shorthand rather than as three properties
+   * because Lightning CSS (the minifier in the Next pipeline) collapses
+   * rows + areas into this shorthand itself, and drops a row size while doing
+   * it: `grid-template-rows: min-content 1fr` came out the other side as
+   * `"list media" min-content "list detail"`, leaving row two `auto` and the
+   * gap exactly as it was. Saying it in the shorthand is lossless, and it is
+   * the form the browser receives either way.
+   */
+  grid-template:
+    "list media"  min-content
+    "list detail" 1fr
+    / 360px minmax(0, 1fr);
+}
+
+/* Same shorthand, same reason: setting areas and columns separately here let
+   the minifier fold them together and drop the row sizes the base rule set. */
+.review-grid[data-transcript="open"] {
+  grid-template:
+    "list media  transcript" min-content
+    "list detail transcript" 1fr
+    / 340px minmax(0, 1fr) 320px;
+}
+
+.review-list { grid-area: list; }
+.review-media { grid-area: media; }
+.review-detail { grid-area: detail; }
+.review-transcript { grid-area: transcript; }
+
+/*
+ * The two internally-scrolling columns. Both hold a panel that scrolls its own
+ * body under a fixed header, and a panel can only do that against a bounded
+ * height - so the column is a flex container with a cap, and its single child
+ * is stretched into it with `min-height: 0`. Without that the child sizes to
+ * its content, the scroll container inside it believes it has all the room it
+ * asked for, and a long list is simply clipped by the `overflow: hidden` here.
+ */
+.review-list,
+.review-transcript {
+  display: flex;
+  flex-direction: column;
+  max-height: calc(100vh - 150px);
+  overflow: hidden;
+}
+
+.review-list > *,
+.review-transcript > * {
+  flex: 1;
+  min-height: 0;
+}
+
+@media (max-width: 1100px) {
+  .review-grid,
+  .review-grid[data-transcript="open"] {
+    /* Three stacked rows, each sized to its own panel. Also the shorthand, so
+       this resets the two-row template above rather than layering onto it. */
+    grid-template:
+      "media"  auto
+      "list"   auto
+      "detail" auto
+      / minmax(0, 1fr);
+  }
+
+  .review-list {
+    max-height: none;
+  }
+
+  /*
+   * Out of the grid entirely: a fourth row would put the transcript below the
+   * fold with no indication it had opened. As a sheet it covers the page the
+   * way the keyboard legend does, and `T` closes it again.
+   */
+  .review-transcript {
+    position: fixed;
+    inset: auto 0 0 0;
+    z-index: 40;
+    max-height: min(70vh, calc(100vh - 80px));
+    border-bottom-left-radius: 0;
+    border-bottom-right-radius: 0;
+    box-shadow: var(--shadow-lg-token);
   }
 }

@@ -68,7 +68,8 @@ def export_dir(monkeypatch, tmp_path):
 
 @pytest.fixture
 def client(export_dir, monkeypatch):
-    monkeypatch.setattr(audio_routes, "enqueue_export", lambda job_id, edit_action=None: None)
+    monkeypatch.setattr(audio_routes, "enqueue_export", lambda job_id, edit_action=None, db=None: "task")
+    monkeypatch.setattr(audio_routes, "publish", lambda task: task)
     return TestClient(app)
 
 
@@ -416,3 +417,116 @@ def test_an_export_of_unknown_provenance_still_downloads(client, make_job, expor
         db.close()
 
     assert client.get(f"/api/jobs/{job_id}/export/download").status_code == 200
+
+
+# --- The decision and its consequence are one transaction --------------------
+
+
+def test_a_decision_and_its_invalidation_commit_together(client, make_job, export_dir, monkeypatch):
+    """
+    The failure that used to be unrecoverable.
+
+    Invalidation ran in a second commit after the violation's own. If that
+    second commit failed, the decision was durable while the export still said
+    `ready` - and retrying the request fixed nothing, because `affects_export`
+    compares the requested status against the one already written and answers
+    "nothing changed". The stale file stayed current forever.
+
+    Here the whole request fails instead, which is the recoverable shape: the
+    reviewer's click did not land, so clicking again does the same work.
+    """
+    job_id, (violation_id,) = make_job()
+    _render(job_id)
+    assert _export_file(export_dir, job_id).exists()
+
+    before = _job(job_id)
+    revision_before = before.edit_revision
+    assert before.export_status == "ready"
+
+    # Fail at the point the two used to be separated by.
+    def boom(job, directory=None):
+        raise RuntimeError("database went away")
+
+    monkeypatch.setattr(exports, "mark_export_invalidated", boom)
+
+    with pytest.raises(RuntimeError):
+        client.patch(
+            f"/api/jobs/{job_id}/violations/{violation_id}",
+            json={"status": "rejected"},
+        )
+
+    after = _job(job_id)
+    # Neither half landed.
+    assert after.export_status == "ready"
+    assert after.edit_revision == revision_before
+    assert _export_file(export_dir, job_id).exists()
+
+    db = SessionLocal()
+    try:
+        assert db.query(Violation).filter(Violation.id == violation_id).first().status == "accepted"
+    finally:
+        db.close()
+
+
+def test_a_failed_unlink_does_not_fail_the_request(client, make_job, export_dir, monkeypatch):
+    """
+    A file that will not delete must not cost the reviewer their decision.
+
+    Unlinking happens after the commit and its failure is logged rather than
+    raised, so the decision stands either way. Note what this does *not* claim:
+    an orphaned file whose row says `export_status="none"` is still downloadable,
+    because invalidation clears `export_revision` to NULL and NULL is
+    deliberately not stale - see
+    `test_an_export_of_unknown_provenance_still_downloads`. Closing that would
+    mean refusing legacy rows too, which is a trade this codebase has already
+    declined. The ordering here is still the right one: deleting before the
+    commit would destroy a file that a rolled-back transaction still considers
+    current, which is the unrecoverable direction.
+    """
+    job_id, (violation_id,) = make_job()
+    _render(job_id)
+
+    monkeypatch.setattr(exports, "unlink_all", lambda paths: 0)
+
+    response = client.patch(
+        f"/api/jobs/{job_id}/violations/{violation_id}",
+        json={"status": "rejected"},
+    )
+    assert response.status_code == 200
+
+    # The database half landed regardless.
+    job = _job(job_id)
+    assert job.export_status == "none"
+    assert job.export_revision is None
+
+    # The decision landed, which is what the request was for.
+    db = SessionLocal()
+    try:
+        assert db.query(Violation).filter(Violation.id == violation_id).first().status == "rejected"
+    finally:
+        db.close()
+
+
+def test_a_bulk_sweep_invalidates_in_one_commit(client, make_job, export_dir, monkeypatch):
+    """Same guarantee on the bulk route, which 'Clean All' and undo both use."""
+    job_id, (violation_id,) = make_job()
+    _render(job_id)
+
+    def boom(job, directory=None):
+        raise RuntimeError("database went away")
+
+    monkeypatch.setattr(exports, "mark_export_invalidated", boom)
+
+    with pytest.raises(RuntimeError):
+        client.post(
+            f"/api/jobs/{job_id}/violations/bulk-update",
+            json={"status": "rejected"},
+            params={"from_status": "accepted"},
+        )
+
+    assert _job(job_id).export_status == "ready"
+    db = SessionLocal()
+    try:
+        assert db.query(Violation).filter(Violation.id == violation_id).first().status == "accepted"
+    finally:
+        db.close()

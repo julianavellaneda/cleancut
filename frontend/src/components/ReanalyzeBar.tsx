@@ -1,14 +1,26 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useState } from "react";
 
+import { PresetRadioGroup } from "@/components/PresetRadioGroup";
 import { Button } from "@/components/ui/button";
-import { Preset, api } from "@/lib/api";
+import { Preset } from "@/lib/api";
 
 interface ReanalyzeBarProps {
   /** What was asked the last time, shown so the change is a change from something. */
   currentPrompt: string | null;
   currentPreset: string | null;
+  /**
+   * The presets, fetched once by the page. Passed in rather than fetched here:
+   * the header's meta line needs the same list to turn a preset id into a name,
+   * and one screen making the same request twice is one too many.
+   */
+  presets: Preset[];
+  /**
+   * How many model suggestions the reviewer has already accepted - the exact
+   * cost of the click, counted rather than alluded to.
+   */
+  acceptedModelCount: number;
   /** True while the request is in flight; the job's own status takes over after. */
   isSubmitting: boolean;
   onSubmit: (request: { prompt?: string; preset?: string }) => void;
@@ -18,32 +30,32 @@ interface ReanalyzeBarProps {
 /**
  * Ask a different question about a recording that has already been transcribed.
  *
- * The bar deliberately mirrors the upload screen's prompt/preset choice rather
+ * The card deliberately mirrors the upload screen's prompt/preset choice rather
  * than inventing a second vocabulary for the same thing - it is the same
- * question, asked again. What it does not offer is auto-fix: a re-run's
- * suggestions always come back pending, because the reason to re-run is to look
- * at them.
+ * question, asked again, down to sharing the `PresetRadioGroup`. What it does
+ * not offer is auto-fix: a re-run's suggestions always come back pending,
+ * because the reason to re-run is to look at them.
  *
- * The warning about replacing the current suggestions is not decoration. A
- * re-analysis discards every LLM suggestion including the accepted ones, and
- * that is worth saying before the click rather than after.
+ * The warning is not decoration. A re-analysis discards every model suggestion
+ * including the accepted ones, and it says *how many* of those there are - the
+ * page holds the number, and "including the 12 you've already accepted" is a
+ * different sentence from "including any you have already accepted" when the
+ * reviewer has spent twenty minutes on them.
  */
 export function ReanalyzeBar({
   currentPrompt,
   currentPreset,
+  presets,
+  acceptedModelCount,
   isSubmitting,
   onSubmit,
   onCancel,
 }: ReanalyzeBarProps) {
   const [prompt, setPrompt] = useState(currentPrompt ?? "");
-  const [preset, setPreset] = useState(currentPreset ?? "");
-  const [presets, setPresets] = useState<Preset[]>([]);
+  const [preset, setPreset] = useState<string | null>(currentPreset);
 
-  useEffect(() => {
-    api.listPresets().then(setPresets).catch(() => setPresets([]));
-  }, []);
-
-  const usingPreset = preset !== "";
+  const activePreset = presets.find(p => p.id === preset) ?? null;
+  const usingPreset = preset !== null;
   const canSubmit = usingPreset || prompt.trim() !== "";
 
   function submit(event: React.FormEvent) {
@@ -55,52 +67,75 @@ export function ReanalyzeBar({
   return (
     <form
       onSubmit={submit}
-      className="border-b bg-muted/30 px-8 py-4"
       aria-label="Re-analyze this recording"
+      className="flex flex-col gap-4 rounded-2xl bg-surface px-6 py-5"
     >
-      <div className="mx-auto flex max-w-4xl flex-col gap-3">
-        <div className="flex items-baseline justify-between gap-4">
-          <label htmlFor="reanalyze-prompt" className="text-xs font-bold uppercase tracking-widest text-muted-foreground">
-            Ask something else
-          </label>
-          <span className="text-xs text-muted-foreground">
-            No re-transcription — this re-reads the stored transcript.
-          </span>
-        </div>
+      <div className="flex flex-wrap items-baseline gap-3">
+        <h2 className="font-heading text-xl leading-tight">
+          Ask something new about this transcript
+        </h2>
+        <span className="text-xs text-muted">
+          re-reads the stored transcript — the audio is not transcribed again
+        </span>
+      </div>
 
-        <div className="flex flex-col gap-2 sm:flex-row">
-          <input
-            id="reanalyze-prompt"
-            value={prompt}
+      <div className="grid grid-cols-1 items-start gap-4 md:grid-cols-[1.4fr_1fr]">
+        <div className="relative">
+          <textarea
+            aria-label="Ask something new about this transcript"
+            value={usingPreset ? "" : prompt}
             onChange={e => setPrompt(e.target.value)}
             disabled={usingPreset || isSubmitting}
             placeholder="e.g. flag anything that sounds like a guarantee"
-            className="flex-1 rounded-md border bg-background px-3 py-2 text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50"
+            className="min-h-24 w-full resize-y rounded-[20px] border border-divider bg-bg px-4 py-3 text-sm leading-normal caret-acc transition-colors focus:border-acc"
           />
-          <select
-            aria-label="Rule preset"
-            value={preset}
-            onChange={e => setPreset(e.target.value)}
-            disabled={isSubmitting}
-            className="rounded-md border bg-background px-3 py-2 text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring"
-          >
-            <option value="">Prompt mode</option>
-            {presets.map(p => (
-              <option key={p.id} value={p.id}>{p.name}</option>
-            ))}
-          </select>
-          <Button type="submit" size="sm" disabled={!canSubmit || isSubmitting}>
-            {isSubmitting ? "Starting…" : "Re-analyze"}
-          </Button>
-          <Button type="button" size="sm" variant="ghost" onClick={onCancel} disabled={isSubmitting}>
-            Cancel
-          </Button>
+          {/*
+            The same overlay the upload screen uses, for the same reason:
+            dimming says the control is unavailable without saying why, and the
+            why is the one thing needed to get the textarea back.
+          */}
+          {activePreset && (
+            <div className="absolute inset-0 grid place-items-center rounded-[20px] bg-bg/[0.92] p-4 text-center text-[13px] text-muted text-pretty">
+              <span>
+                The <strong className="font-semibold text-acc2-700">{activePreset.name}</strong>{" "}
+                rulebook will drive this analysis.
+              </span>
+            </div>
+          )}
         </div>
 
-        <p className="text-xs text-muted-foreground">
-          This replaces the current AI suggestions, including any you have already accepted.
-          Filler-word and dead-air edits and your decisions on them are kept.
-        </p>
+        <PresetRadioGroup
+          presets={presets}
+          value={preset}
+          onChange={setPreset}
+          disabled={isSubmitting}
+        />
+      </div>
+
+      <div className="flex items-center gap-3 rounded-lg bg-bg px-4 py-3 text-[13px] text-pretty">
+        <span
+          aria-hidden
+          className="grid size-[30px] flex-none place-items-center rounded-full bg-danger-100 font-bold text-danger-700"
+        >
+          !
+        </span>
+        <span>
+          Re-analysis{" "}
+          <strong className="font-bold">
+            discards every model suggestion
+            {acceptedModelCount > 0 && <> — including the {acceptedModelCount} you&apos;ve already accepted</>}
+          </strong>
+          . Filler-word and dead-air suggestions and your decisions on them are kept.
+        </span>
+      </div>
+
+      <div className="flex justify-end gap-2.5">
+        <Button type="button" variant="outline" onClick={onCancel} disabled={isSubmitting}>
+          Cancel
+        </Button>
+        <Button type="submit" disabled={!canSubmit || isSubmitting}>
+          {isSubmitting ? "Starting…" : "Re-analyze and discard"}
+        </Button>
       </div>
     </form>
   );

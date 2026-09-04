@@ -106,7 +106,31 @@ The CLI is a module, not a script: `analysis/` imports are package-relative, so
     makes FastAPI read them as query params and they silently never arrive.
 - **Frontend**:
   - Functional components, Tailwind CSS v4.
-  - `wavesurfer.js` regions to visualize suggested-edit intervals.
+  - **`src/app/globals.css` is the single owner of colour.** Every value comes from a `var(--…)` or
+    a utility bridged to one; there is no literal hex in any `.tsx` and adding one is wrong. Three
+    token blocks: `:root`, `:root[data-theme="dark"]`, and the dark set again under
+    `@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) }` — the media query
+    alone cannot be overridden by an explicit toggle in both directions.
+  - `--muted` is a text colour, held to 4.5:1; `--faint` is **non-text only**, held to 3:1. Never
+    render words in `--faint`. `app/contrast.test.ts` parses the sheet, checks both bars in every
+    theme, and greps for `text-faint`.
+  - Never dim live text with `opacity` — it multiplies into the token's alpha and lands below the
+    thresholds (`opacity-45` over `--muted` is 1.9:1). Use a different token, a size, or a word.
+    `disabled:opacity-*` is exempt and fine.
+  - The focus ring is global: `:focus-visible { outline: 2px solid var(--acc) }`. Never add
+    `outline-none` — it sits in the utilities layer and silently wins, leaving a control reachable
+    by keyboard and invisible once reached.
+  - Motion is `cc-pulse` and `cc-spin`, both suppressed under `prefers-reduced-motion: reduce`. A
+    new animation joins that block in the same commit.
+  - Fonts are self-hosted via `next/font/local` (Caprasimo display, Figtree body, Geist Mono);
+    `next/font/google` is prohibited so `next build` needs no network.
+  - `wavesurfer.js` regions visualize suggested-edit intervals, keyed off **`action`** — cut is a
+    solid `--acc` band, mute an `--acc2` hatch, with `status` in opacity. Severity is a word in the
+    list and detail panels, not a colour. WaveSurfer takes colours at construction, so a theme flip
+    calls `setOptions` and repaints rather than rebuilding the instance.
+  - The review grid uses the `grid-template` **shorthand**: Lightning CSS folds separate
+    `grid-template-rows` + `grid-template-areas` into it and drops a row size doing so, which left
+    the detail panel under a screen-high gap.
   - Strictly type all API interactions and component props.
   - Read the API base from `NEXT_PUBLIC_API_URL`; never hardcode a host.
   - Memoize a callback only when it closes over nothing reactive (setters, refs, the API client),
@@ -125,6 +149,15 @@ The CLI is a module, not a script: `analysis/` imports are package-relative, so
 4. **Scrubbing**: silence and filler words are detected deterministically, without the LLM.
 5. **Export**: a single FFmpeg `trim`/`atrim` + `concat` filter graph applies mutes then cuts,
    keeping video in sync with its audio.
+
+### Transactions
+Queue admission and edit decisions are each **one** transaction. A route records its task row in
+its own session (`task_store.record_in`), commits job state and task together, and only then
+publishes to the in-memory queue — committing the state first and the row second left jobs active
+forever with nothing on the books to move them. A `UNIQUE (job_id, kind)` constraint on `tasks`
+backs the `has_outstanding()` check, which cannot close the race on its own. Likewise a violation
+update and the export invalidation it causes commit together (`exports.mark_export_invalidated`),
+with the superseded file unlinked *after* the commit.
 
 ### Testing
 - Backend: `cd backend && pytest`.
@@ -146,8 +179,23 @@ The CLI is a module, not a script: `analysis/` imports are package-relative, so
 - **Network binding**: every other route is unauthenticated, so the interface *is* the access
   control. `CLEANCUT_HOST` defaults to `127.0.0.1`; treat exposing it as a deployment decision, and
   add real per-owner auth before hosting this for more than one person.
-- **API routing**: the browser calls a relative `/api` and the Next server rewrites it to
-  `BACKEND_ORIGIN` (`frontend/next.config.ts`), evaluated at run time. `NEXT_PUBLIC_API_URL` is
-  baked in at build time, so it is left unset by default — a published frontend image must not be
-  pinned to the origin that built it. Setting it restores the direct cross-origin call, which needs
-  `CORS_ORIGINS` to name the frontend.
+- **API routing**: the browser calls a relative `/api` and the Next server proxies it to
+  `BACKEND_ORIGIN`. That proxy is a **route handler**
+  (`frontend/src/app/api/[...path]/route.ts`), not a `rewrites()` entry, and the distinction is
+  load-bearing: Next resolves `rewrites()` during `next build` and writes the destination into
+  `.next/routes-manifest.json`, which is what `next start` routes from — so the rewrite this
+  replaced baked in the `http://localhost:8000` default and, inside the Compose frontend container,
+  proxied every API call to the frontend itself. A route handler is evaluated per request, so it
+  reads the running container's environment. Do not move this back into `next.config.ts`;
+  `backend/tests/test_docker_layout.py` fails if you do. `NEXT_PUBLIC_API_URL` is baked in at build
+  time, so it is left unset by default — a published frontend image must not be pinned to the origin
+  that built it. Setting it restores the direct cross-origin call, which needs `CORS_ORIGINS` to
+  name the frontend.
+- **Prompt injection**: the transcript is untrusted input. It is fenced in `<transcript>` tags and
+  both system prompts carry a rule saying that anything inside them is transcribed speech to be
+  audited, never instructions to follow — a recording that talks the model into returning
+  `{"violations": []}` would otherwise be indistinguishable from a clean one. The deterministic
+  detectors have no model in the loop and are unaffected.
+- **Deleting a job** is refused with 409 while it is still being worked on, and the worker checks
+  the job row still exists before publishing a render. Without both, an export could land after
+  deletion had already swept the directory, leaving media with no job to explain it.
