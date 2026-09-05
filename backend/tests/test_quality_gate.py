@@ -32,6 +32,7 @@ GATE_COMMANDS = (
     "ruff format --check",
     "ruff check",
     "run: mypy",
+    "--cov-config=pyproject.toml",
 )
 
 # 3.10 is the floor: it is what the README promises, what the locks compile
@@ -58,8 +59,8 @@ def test_the_backend_job_name_still_describes_what_it_does():
     assert "name: Backend (pytest)" not in ci, (
         "the backend job runs more than pytest now; its name should say so"
     )
-    assert re.search(r"name: Backend \(.*lint.*\)", ci), (
-        "expected the backend job name to mention linting"
+    assert re.search(r"name: Backend \(.*lint.*types.*\)", ci), (
+        "expected the backend job name to mention linting and types"
     )
 
 

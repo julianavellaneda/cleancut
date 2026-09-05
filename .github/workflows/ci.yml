@@ -92,9 +92,17 @@ jobs:
         working-directory: backend
         run: mypy
 
+      # --cov-config is named explicitly because pytest-cov does not reliably
+      # discover coverage settings in a pyproject.toml on its own. The floor
+      # lives in that file rather than on this line, so raising it is a commit
+      # against the configuration and not against the workflow.
+      #
+      # The flags are here rather than in addopts so a bare `pytest` on a laptop
+      # stays the fast thing it is today: coverage roughly doubles the run and
+      # gets in the way of a debugger.
       - name: pytest
         working-directory: backend
-        run: pytest
+        run: pytest --cov=app --cov-config=pyproject.toml --cov-report=term-missing
 
       # Scorer regression, not accuracy: this grades a recorded run, so what it
       # protects is the matching rules and the labels. It prints the scorecard

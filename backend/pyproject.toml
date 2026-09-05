@@ -218,3 +218,43 @@ warn_unused_ignores = true
 strict_equality = true
 extra_checks = true
 implicit_reexport = false
+
+[tool.coverage.run]
+source = ["app"]
+
+# Statement coverage says a line ran. Branch coverage says both sides of the
+# `if` ran - and for detectors whose whole job is deciding what to cut, that is
+# the only one of the two worth a number.
+branch = true
+
+# No `omit` list, deliberately. The two CLIs (app/analysis/analyze.py and
+# app/eval/run.py) are the thin spots and omitting them would raise the headline
+# number by hiding exactly the thing the number is for.
+#
+# One measurement artifact to know about before reading analyze.py's 0%: it is
+# not untested. tests/test_cli_entrypoint.py exercises it nine times, but from a
+# *subprocess* - deliberately, because running it in-process would not catch the
+# sys.path dependency that was the original bug. Coverage does not follow a
+# subprocess without a sitecustomize hook, so those runs are real but invisible
+# here. The floor below is set knowing that, and raising it should not be done
+# by omitting the file.
+
+[tool.coverage.report]
+show_missing = true
+skip_covered = true
+
+# `exclude_also`, not `exclude_lines`: the latter *replaces* coverage's defaults,
+# which would silently drop `# pragma: no cover` and start counting every line
+# anyone had already marked. This appends.
+exclude_also = [
+    "if TYPE_CHECKING:",
+    "raise NotImplementedError",
+    "if __name__ == .__main__.:",
+]
+
+# Measured at 85% with branch coverage on 769 tests, floored two points under.
+# Set at the measured number it would fail on the first unlucky commit; set
+# aspirationally high the first thing anyone does is lower it, and a floor that
+# has been lowered once is not a floor. Two points is room for an ordinary
+# change, not room for a module to arrive untested.
+fail_under = 83
