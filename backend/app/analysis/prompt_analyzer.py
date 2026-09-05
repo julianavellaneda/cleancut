@@ -12,9 +12,10 @@ import math
 import re
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
+from typing import Any
 
-from .providers import ProviderError, configured_model_spec, get_provider
-from .transcriber import Segment, TranscriptResult
+from .providers import Provider, ProviderError, configured_model_spec, get_provider
+from .transcriber import Segment, TranscriptResult, Word
 
 # Built-in rule presets. A preset swaps the free-form user prompt for a curated
 # rulebook plus a stricter, category-aware system prompt.
@@ -153,7 +154,7 @@ def _normalize_words(text: str) -> list[str]:
     return _WORD_RE.findall(text.lower())
 
 
-def _tokenize_words(words) -> tuple[list[str], list[int]]:
+def _tokenize_words(words: list[Word]) -> tuple[list[str], list[int]]:
     """
     Flatten ``Word`` objects into tokens, remembering which Word each came from.
 
@@ -181,7 +182,7 @@ def _find_token_run(haystack: list[str], needle: list[str]) -> list[int]:
     ]
 
 
-def _coerce_time(value) -> float | None:
+def _coerce_time(value: object) -> float | None:
     """
     A timestamp from the model, or ``None`` when it is not a usable one.
 
@@ -230,7 +231,9 @@ def _excerpt(content: str | None) -> str:
     return text
 
 
-def _validate_entries(entries: list, content: str | None) -> list[dict]:
+def _validate_entries(
+    entries: list[object], content: str | None
+) -> list[dict[str, Any]]:
     """
     Check that every entry is something the pipeline can safely act on.
 
@@ -241,6 +244,13 @@ def _validate_entries(entries: list, content: str | None) -> list[dict]:
     cannot read as a suggestion fails the chunk instead, so the span is
     reported as unanalyzed rather than acted on.
     """
+    # Collected rather than returning `entries` itself: the isinstance check
+    # below proves each item is a dict, but it proves it one item at a time and
+    # nothing carries that back to the list as a whole. Building the narrowed
+    # list is what makes the signature's promise true by construction instead of
+    # by reading the loop.
+    validated: list[dict[str, Any]] = []
+
     for index, entry in enumerate(entries):
         position = f"entry {index + 1} of {len(entries)}"
 
@@ -280,10 +290,12 @@ def _validate_entries(entries: list, content: str | None) -> list[dict]:
                 f"Response began: {_excerpt(content)}"
             )
 
-    return entries
+        validated.append(entry)
+
+    return validated
 
 
-def _parse_llm_response(content: str | None) -> list[dict]:
+def _parse_llm_response(content: str | None) -> list[dict[str, Any]]:
     """
     Coerce a raw model response into a list of validated suggestion dicts.
 
@@ -478,7 +490,7 @@ class PromptAnalyzer:
         rules_path: str | None = None,
         chunk_size: int | None = None,
         overlap: int | None = None,
-        provider=None,
+        provider: Provider | None = None,
     ):
         """
         Initialize the analyzer.
@@ -878,7 +890,7 @@ IMPORTANT:
         transcript_text: str,
         user_prompt: str | None,
         preset: str | None = None,
-    ) -> list[dict]:
+    ) -> list[dict[str, Any]]:
         """Ask the configured model to analyze the transcript, under the preset rulebook or the user prompt."""
 
         if preset:
@@ -894,7 +906,7 @@ IMPORTANT:
 
     def _map_to_timestamps(
         self,
-        raw_violations: list[dict],
+        raw_violations: list[dict[str, Any]],
         transcript: TranscriptResult,
         preset: str | None = None,
         prompt: str | None = None,
@@ -988,7 +1000,13 @@ IMPORTANT:
             best_seg = candidates[0][1]
             if best_seg.words:
                 start, end = self._find_words_in_segment(text_lower, best_seg)
-                if start is not None:
+                # Both, not just `start`. The helper returns the pair or
+                # `None, None`, so testing one of them was correct by
+                # convention rather than by construction - and the failure it
+                # allowed was a silent one, since `end=None` would travel out
+                # of here as a measured span. Falling through costs nothing:
+                # the segment's own bounds below are measured too.
+                if start is not None and end is not None:
                     return start, end, True
             # The quote is inside this segment; its bounds are a real, measured
             # span even when the words underneath could not be narrowed down.

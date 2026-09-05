@@ -13,7 +13,7 @@ concurrency:
 
 jobs:
   backend:
-    name: Backend (lint + tests)
+    name: Backend (lint + types + tests)
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -63,11 +63,11 @@ jobs:
           python -m pip install --upgrade pip
           pip install --require-hashes -r requirements-dev.txt
 
-      # Formatting before linting before tests: strictly increasing cost, so the
-      # cheapest signal is the first to fail. This mirrors the frontend job's
-      # lint-then-type-check-then-test order and the reasoning is the same.
+      # Formatting, then linting, then types, then tests: strictly increasing
+      # cost, so the cheapest signal is the first to fail. This mirrors the
+      # frontend job's lint-then-type-check-then-test order, for the same reason.
       #
-      # Both come from requirements-dev.txt, which is why they cannot run before
+      # All three come from requirements-dev.txt, which is why they cannot run before
       # the install - and why neither goes through astral-sh/ruff-action. That
       # action installs a ruff of its own choosing, so CI would enforce one
       # version while `pip install -r requirements-dev.txt` handed a contributor
@@ -82,6 +82,15 @@ jobs:
       - name: Lint (ruff)
         working-directory: backend
         run: ruff check --no-fix --output-format=github app tests conftest.py
+
+      # Scope comes from pyproject.toml's `files`, deliberately not from a path
+      # on this line. A path here would be a second declaration of what gets
+      # checked, and the first package added to only one of the two would be
+      # checked in neither place while the build stayed green. It covers
+      # app/analysis/ today and says in that file what it will take to widen it.
+      - name: Type-check (mypy)
+        working-directory: backend
+        run: mypy
 
       - name: pytest
         working-directory: backend

@@ -31,6 +31,7 @@ PYPROJECT = BACKEND_DIR / "pyproject.toml"
 GATE_COMMANDS = (
     "ruff format --check",
     "ruff check",
+    "run: mypy",
 )
 
 # 3.10 is the floor: it is what the README promises, what the locks compile

@@ -22,7 +22,9 @@ live.
 """
 
 import os
+from collections.abc import Callable
 from dataclasses import dataclass
+from typing import Protocol
 
 # The provider a fresh checkout uses, so nothing about the default path changes
 # when this module is introduced.
@@ -38,6 +40,28 @@ PROVIDER_API_KEYS = {
 
 class ProviderError(RuntimeError):
     """The configured model cannot be reached, or is not configured at all."""
+
+
+class Provider(Protocol):
+    """
+    Everything the analyzer needs from a model vendor.
+
+    A Protocol rather than a base class, because that is what the two
+    implementations below already are - neither inherits from anything, and the
+    module docstring's promise is a *shape* ("one function returns something
+    that can be asked a question"), not a hierarchy. Writing it down changes no
+    behaviour; it moves the contract from prose into something a type checker
+    reads, and it is the thing a third provider should be checked against.
+
+    Note what is not here: parsing, validation, retries, or any notion of the
+    JSON contract. Those live in `prompt_analyzer` and are the same for every
+    vendor, and a provider that started interpreting answers would be a second
+    place for that contract to live.
+    """
+
+    def complete(self, system_prompt: str, user_prompt: str) -> str | None:
+        """Return the model's raw text, or None if it declined to answer."""
+        ...
 
 
 @dataclass(frozen=True)
@@ -157,13 +181,19 @@ class AnthropicProvider:
         return "".join(block.text for block in response.content if block.type == "text")
 
 
-_PROVIDERS = {
+# Annotated as factories rather than left to inference. The two classes share no
+# base - they satisfy `Provider` structurally - so an unannotated dict of them
+# infers its value type as `object`, and `get_provider` would be returning
+# something the type checker knows nothing about. Spelling it out is also what
+# states the registration contract for a third provider: take the model id,
+# return something that answers `complete`.
+_PROVIDERS: dict[str, Callable[[str], Provider]] = {
     "openai": OpenAIProvider,
     "anthropic": AnthropicProvider,
 }
 
 
-def get_provider(spec: ModelSpec | None = None):
+def get_provider(spec: ModelSpec | None = None) -> Provider:
     """
     Build the client for the configured model.
 

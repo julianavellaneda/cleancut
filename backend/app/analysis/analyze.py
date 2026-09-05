@@ -20,7 +20,13 @@ from pathlib import Path
 from dotenv import load_dotenv
 
 from ..config import root_env_path
-from .prompt_analyzer import PRESETS, AnalysisResult, PromptAnalyzer, to_json
+from .prompt_analyzer import (
+    PRESETS,
+    AnalysisResult,
+    PromptAnalyzer,
+    Violation,
+    to_json,
+)
 from .transcriber import (
     Transcriber,
     TranscriptFormatError,
@@ -40,7 +46,7 @@ def print_header(text: str) -> None:
     print("=" * 60)
 
 
-def print_marker(v, index: int) -> None:
+def print_marker(v: Violation, index: int) -> None:
     """
     Print a formatted marker.
 
@@ -93,7 +99,7 @@ def print_partial_warning(result: AnalysisResult) -> None:
         print(f"    - {message}")
 
 
-def main():
+def main() -> None:
     parser = argparse.ArgumentParser(description="Analyze audio based on a prompt.")
     parser.add_argument(
         "audio_file", nargs="?", help="Path to the audio file to analyze"

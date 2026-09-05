@@ -117,3 +117,104 @@ filterwarnings = [
     "ignore::DeprecationWarning",
     "ignore::PendingDeprecationWarning",
 ]
+
+[tool.mypy]
+# `files` here rather than paths in ci.yml, so a bare `mypy` checks exactly what
+# CI checks. A path on the command line would be a second declaration of the
+# scope, and the first package added to only one of the two would be checked in
+# neither place while the build stayed green.
+files = ["app/analysis"]
+
+# Why only `app/analysis` today, and what it will take to widen it.
+#
+# The intended scope was app/services/ as well. Pointed at the whole package,
+# mypy reports 195 errors - and 122 of them are one root cause with nothing to
+# do with the code being checked. models.py declares columns the SQLAlchemy 1.x
+# way (`status = Column(String)`) rather than the 2.0 way
+# (`status: Mapped[str] = mapped_column(String)`), so the inferred attribute
+# type is `Column[str]` and every ordinary `job.status = "completed"` reads as
+# assigning a str to a Column. That fires wherever the ORM is touched, which is
+# most of services/ and routes/, so it is not something the strict block below
+# can be scoped around.
+#
+# Migrating models.py is the real fix and it is deliberately not bundled in
+# here: it is a runtime change to the data layer, and it belongs in a commit
+# whose subject says so and whose tests are about that. Until then, a scope
+# where mypy runs clean is worth more than a wider one that is 122 errors deep
+# and therefore permanently switched off.
+#
+# app/analysis/ is the honest half of the original intent: it is where a wrong
+# type is a silently wrong *answer* rather than a 500, it is the LLM boundary
+# where everything arrives as untyped JSON, and it barely touches the ORM.
+#
+# tests/ is out of scope on its own terms - 9,898 lines of fixtures and
+# monkeypatching, a larger job than the application. ruff covers tests/.
+
+# 3.12, and NOT the 3.10 the locks compile at - which is the opposite of the
+# choice ruff's target-version makes two screens up, so it needs a reason.
+#
+# `python_version` decides which *installed* stubs mypy will accept, not just
+# which syntax. The lock resolves numpy 2.2.6 below 3.11 and 2.4.6 above it, and
+# 2.4.6's stubs use PEP 695 `type` statements, which mypy rejects outright when
+# told to target 3.10 - one syntax error in numpy's .pyi and nothing gets
+# checked at all. Pinning 3.10 here would mean type-checking a combination that
+# exists nowhere: 3.10's rules against the stubs pip only installs on 3.12.
+#
+# Nothing is lost by this. The 3.10 promise is kept by the thing that can
+# actually keep it - `uv pip compile --python-version 3.10`, which fails if a
+# dependency has dropped it - and ruff still rewrites syntax against py310.
+python_version = "3.12"
+
+warn_redundant_casts = true
+
+# Global-only, and the reason it is on: a typo in one of the module patterns
+# below - `app.service.*` for `app.services.*` - would otherwise mean that
+# package is silently checked at the lenient baseline forever, with a green
+# build throughout. This turns the typo into an error.
+warn_unused_configs = true
+
+# The baseline for the rest of app/: routes, models, database, main, eval. Real
+# errors are reported - a wrong attribute, a bad argument count - but an
+# unannotated function is not yet itself an error. Ratcheting a package up means
+# moving its pattern into the strict block below, which is a one-line commit.
+disallow_untyped_defs = false
+check_untyped_defs = true
+
+# Left off globally on purpose: a genuine typo in an import should still be an
+# error, and a blanket ignore is how that quietly stops being true.
+ignore_missing_imports = false
+
+# The only two dependencies in scope that ship no `py.typed` and have no stub
+# package on PyPI. numpy, sqlalchemy, openai, anthropic and python-dotenv are
+# all typed.
+[[tool.mypy.overrides]]
+module = ["faster_whisper.*"]
+ignore_missing_imports = true
+
+# The strict core: the two packages where a type error is a silently wrong
+# answer rather than a 500.
+#
+# `strict = true` cannot be written here. It is a global-only option, and set
+# per-module it is ignored *without a warning* - which is precisely the silent
+# under-checking this gate exists to prevent - so the flags it implies are
+# spelled out instead. This is every flag `mypy --strict` turns on in 2.3 except
+# `warn_redundant_casts`, which is global-only and set above.
+#
+# The cost of enumerating them is that a future mypy adding a flag to --strict
+# will not tighten this gate on its own. That is the intended trade: the same
+# argument as the lockfile, that a build should not change because a bot bumped
+# a version.
+[[tool.mypy.overrides]]
+module = ["app.analysis.*"]
+disallow_untyped_defs = true
+disallow_incomplete_defs = true
+disallow_untyped_calls = true
+disallow_untyped_decorators = true
+disallow_any_generics = true
+disallow_subclassing_any = true
+check_untyped_defs = true
+warn_return_any = true
+warn_unused_ignores = true
+strict_equality = true
+extra_checks = true
+implicit_reexport = false
