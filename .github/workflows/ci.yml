@@ -55,7 +55,9 @@ jobs:
       # cannot be deterministic. Floors, not exact numbers: the run scores
       # 1.00 / 0.92 today, the one miss being "Er," - a filler Whisper dropped
       # from the transcript, which a detector reading that transcript cannot
-      # recover (see test_eval.py).
+      # recover (see test_eval.py). Those two numbers are also hardcoded into a
+      # README badge - no service publishes them - so if this run's score moves,
+      # update the badge in the same commit.
       - name: Detector eval (scrubber, deterministic)
         working-directory: backend
         run: >
@@ -78,6 +80,14 @@ jobs:
       - name: Install dependencies
         working-directory: frontend
         run: npm ci
+
+      # CLAUDE.md states "eslint runs clean". This is the step that makes that
+      # a fact rather than an assertion. It runs before the type-check because
+      # it is the cheapest of the three signals, so it should be the first to
+      # fail.
+      - name: Lint
+        working-directory: frontend
+        run: npm run lint
 
       # tsc runs separately from the build: `next build` type-checks the app
       # graph, this catches a type error in a file nothing imports yet - and

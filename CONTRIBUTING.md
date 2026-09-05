@@ -50,7 +50,7 @@ python -m app.eval.run --detectors ../tests/fixtures/demo/demo_seminar.mp3 \
 
 # Frontend
 cd ../frontend
-npx tsc --noEmit && npm test && npm run build
+npm run lint && npx tsc --noEmit && npm test && npm run build
 ```
 
 `python -m app.eval.run --live MEDIA` grades the whole pipeline instead, transcription and LLM call
@@ -97,6 +97,11 @@ conventional-commit prefixes.
 
 Small PRs. If a change needs a paragraph of justification, put the paragraph in the commit message
 where it will still be there in two years.
+
+Add an entry under `## [Unreleased]` in [`CHANGELOG.md`](CHANGELOG.md) for anything a user would
+notice — a new capability, a changed default, a fixed failure. Not every commit needs one; a
+refactor nobody can observe does not. A changelog nobody is asked to update stops after one
+release.
 
 ## Reporting a security issue
 
