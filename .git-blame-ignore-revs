@@ -1,0 +1,18 @@
+# Commits that changed how the code is laid out and nothing about what it does.
+# `git blame` skips them, so the line it names is the one that last changed the
+# code rather than the one that last rewrapped it.
+#
+# This matters more here than in most repos: the convention is that a commit
+# message explains the reasoning, so `git blame` is how that reasoning is found.
+# A formatting sweep across 62 files points every one of those lines at a commit
+# whose message is "reflowed the files", which loses the trail.
+#
+# Enable it locally - GitHub reads this file automatically, git does not:
+#
+#     git config blame.ignoreRevsFile .git-blame-ignore-revs
+#
+# Only add a commit here that is provably layout-only. The sweep below was
+# checked by comparing the parsed AST of every touched file before and after.
+
+# Reflow every Python file with ruff format (backend, line-length 88)
+0f755936687a5a9db50df52a4583dc9de1e12afb
