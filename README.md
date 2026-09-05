@@ -1,5 +1,11 @@
 # CleanCut
 
+[![CI](https://github.com/julianavellaneda/ai-audio-editing/actions/workflows/ci.yml/badge.svg)](https://github.com/julianavellaneda/ai-audio-editing/actions/workflows/ci.yml)
+[![detector eval: 1.00 precision / 0.92 recall](https://img.shields.io/badge/detector%20eval-1.00%20precision%20%2F%200.92%20recall-brightgreen)](#eval)
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+[![Python 3.10+](https://img.shields.io/badge/python-3.10%2B-blue.svg)](https://www.python.org/downloads/)
+[![GHCR](https://img.shields.io/badge/ghcr.io-cleancut-2496ED?logo=docker&logoColor=white)](https://github.com/julianavellaneda/ai-audio-editing/pkgs/container/cleancut-backend)
+
 Describe what to find in plain English. Review it on a waveform. Export a surgically edited file.
 
 CleanCut transcribes audio or video with word-level timestamps, sends the transcript to an LLM
@@ -9,6 +15,13 @@ You review each suggestion on a waveform, accept or reject it, choose cut or mut
 export a single re-encoded file.
 
 **Copilot, not autopilot.** Nothing is removed without a human accepting it.
+
+![Reviewing suggested edits on the waveform: the playhead crosses the file, a suggestion opens to
+show the model's quoted text against its exact timestamps, the clip replays, and the edit is
+accepted](docs/assets/demo.gif)
+
+*Reviewing a seminar recording. Full-quality captures of the whole flow — upload, pipeline, review,
+cut versus mute, export — are in [`docs/demo/captures/`](docs/demo/captures/).*
 
 ## Key features
 
@@ -86,8 +99,8 @@ Open http://localhost:3000.
 Every `v*` tag publishes both images to GHCR, for running CleanCut without building it:
 
 ```bash
-docker pull ghcr.io/old-owner/cleancut-backend:v0.1.0
-docker pull ghcr.io/old-owner/cleancut-frontend:v0.1.0
+docker pull ghcr.io/julianavellaneda/cleancut-backend:v0.1.0
+docker pull ghcr.io/julianavellaneda/cleancut-frontend:v0.1.0
 ```
 
 The frontend image is not tied to any particular backend: the browser calls the frontend's own
