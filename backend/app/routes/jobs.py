@@ -133,12 +133,12 @@ def create_job(
         save_within_limit(file.file, file_path, max_upload_bytes())
     except UploadTooLarge as e:
         _discard_job(db, job, file_path)
-        raise HTTPException(status_code=413, detail=str(e))
+        raise HTTPException(status_code=413, detail=str(e)) from e
     except Exception as e:
         job.status = "failed"
         job.error_message = f"Failed to save file: {str(e)}"
         db.commit()
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=str(e)) from e
 
     # Duration cap, enforced fail-closed. A duration ffprobe cannot read is not
     # "short enough" - accepting it is how an unbounded stream gets past the cap
@@ -147,10 +147,10 @@ def create_job(
         duration = enforce_duration_limit(file_path, max_duration_seconds())
     except MediaTooLong as e:
         _discard_job(db, job, file_path)
-        raise HTTPException(status_code=413, detail=str(e))
+        raise HTTPException(status_code=413, detail=str(e)) from e
     except MediaDurationUnknown as e:
         _discard_job(db, job, file_path)
-        raise HTTPException(status_code=422, detail=str(e))
+        raise HTTPException(status_code=422, detail=str(e)) from e
 
     # The duration and the task row commit together, and the task is published
     # only once that commit has returned. Both halves matter: this handler used
@@ -381,7 +381,7 @@ def reanalyze_job(
         raise HTTPException(
             status_code=409,
             detail="A re-analysis is already queued for this job.",
-        )
+        ) from None
     db.commit()
     publish(task)
 

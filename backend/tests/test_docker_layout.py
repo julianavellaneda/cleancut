@@ -89,6 +89,13 @@ def test_container_layout_has_no_repo_root_above_package(container_root):
     enough to have triggered the original IndexError.
     """
     main_py = container_root / "app" / "main.py"
+    assert main_py.is_file(), "the copied tree must contain app/main.py"
+    # Exactly two levels below the root - /app/app/main.py in the image. That
+    # shallowness is what made the old fixed-depth `parents[3]` walk raise
+    # IndexError, so it is the precondition the test above is only meaningful
+    # against. `main_py` was computed here and never asserted on, which left
+    # this guard silently guarding nothing.
+    assert main_py.relative_to(container_root).parts == ("app", "main.py")
     assert not (container_root / ".env").exists()
     assert not (container_root / ".git").exists()
 

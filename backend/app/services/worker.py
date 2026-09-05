@@ -709,7 +709,7 @@ def _process_job_sequentially(job_id: str, file_path: str):
                 # Delete original AIFF
                 file_path_obj.unlink()
             except Exception as e:
-                raise Exception(f"AIFF to MP3 conversion failed: {str(e)}")
+                raise Exception(f"AIFF to MP3 conversion failed: {str(e)}") from e
 
         # Step 1: Transcribing
         job.status = "transcribing"

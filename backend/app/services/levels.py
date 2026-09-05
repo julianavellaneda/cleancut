@@ -124,7 +124,11 @@ def find_quiet_regions(
     edges = np.flatnonzero(padded[1:] != padded[:-1])
     starts, ends = edges[0::2], edges[1::2]
 
+    # strict=True asserts what the padding above guarantees: a run that opens
+    # must close, so `edges` has an even length and these two are the same size.
+    # Were that ever untrue, a plain zip would silently drop the last region -
+    # a stretch of dead air that simply never gets suggested.
     return [
         (float(s * hop / sample_rate), float(e * hop / sample_rate))
-        for s, e in zip(starts, ends)
+        for s, e in zip(starts, ends, strict=True)
     ]

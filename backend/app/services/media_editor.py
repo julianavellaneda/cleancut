@@ -121,8 +121,15 @@ class MediaEditor:
                 v_segments.append(v)
 
         if media_type == "video":
+            # strict=True because concat interleaves the pair streams: a video
+            # segment with no audio segment beside it does not raise, it
+            # silently produces a shorter output with the audio slipped against
+            # the picture. Keeping A/V in sync is this module's whole job, so
+            # the mismatch is worth an exception rather than a quiet desync.
             joined = ffmpeg.concat(
-                *[s for pair in zip(v_segments, a_segments) for s in pair], v=1, a=1
+                *[s for pair in zip(v_segments, a_segments, strict=True) for s in pair],
+                v=1,
+                a=1,
             ).node
             out = ffmpeg.output(joined[0], joined[1], output_path)
         else:

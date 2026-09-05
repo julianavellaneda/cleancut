@@ -139,7 +139,7 @@ def get_waveform(job_id: str, db: Session = Depends(get_db)):
             db.expire(job, ["waveform_data"])
             cached = job.waveform_data
         except ObjectDeletedError:
-            raise HTTPException(status_code=404, detail="Job not found")
+            raise HTTPException(status_code=404, detail="Job not found") from None
         if cached:
             return {"peaks": json.loads(cached)}
 
@@ -154,7 +154,7 @@ def get_waveform(job_id: str, db: Session = Depends(get_db)):
         except Exception as e:
             raise HTTPException(
                 status_code=500, detail=f"Failed to generate waveform: {str(e)}"
-            )
+            ) from e
 
 
 @router.post("/{job_id}/export", response_model=ExportResponse, status_code=202)
@@ -221,7 +221,7 @@ def export_media(
         raise HTTPException(
             status_code=409,
             detail="An export is already in progress for this job. Wait for it to finish.",
-        )
+        ) from None
     db.commit()
     publish(task)
 

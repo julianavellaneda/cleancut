@@ -84,7 +84,7 @@ def reset_database(db: Session = Depends(get_db)):
         db.rollback()
         raise HTTPException(
             status_code=500, detail=f"Failed to reset database: {str(e)}"
-        )
+        ) from e
 
 
 @router.post("/clear-storage", dependencies=[Depends(require_admin)])
@@ -105,7 +105,7 @@ def clear_storage():
     except Exception as e:
         raise HTTPException(
             status_code=500, detail=f"Failed to clear storage: {str(e)}"
-        )
+        ) from e
 
 
 # `reset_all` calls reset_database/clear_storage as plain Python functions, not

@@ -412,7 +412,9 @@ def test_level_pass_matches_ffmpeg_silencedetect():
     ]
 
     assert len(regions) == len(GROUND_TRUTH_PAUSES)
-    for (start, end), (truth_start, truth_end) in zip(regions, GROUND_TRUTH_PAUSES):
+    for (start, end), (truth_start, truth_end) in zip(
+        regions, GROUND_TRUTH_PAUSES, strict=True
+    ):
         assert start == pytest.approx(truth_start, abs=BOUNDARY_TOLERANCE)
         assert end == pytest.approx(truth_end, abs=BOUNDARY_TOLERANCE)
 
@@ -429,7 +431,9 @@ def test_planted_pauses_are_flagged_at_amplitude_boundaries():
     )
 
     assert len(found) == len(GROUND_TRUTH_PAUSES)
-    for violation, (truth_start, truth_end) in zip(found, GROUND_TRUTH_PAUSES):
+    for violation, (truth_start, truth_end) in zip(
+        found, GROUND_TRUTH_PAUSES, strict=True
+    ):
         assert violation.start_time == pytest.approx(
             truth_start, abs=BOUNDARY_TOLERANCE
         )
@@ -469,7 +473,7 @@ def test_room_tone_is_not_flagged_as_dead_air(room_tone_mp3):
 
     assert len(found) == 2
     for violation, (truth_start, truth_end) in zip(
-        found, [GROUND_TRUTH_PAUSES[0], GROUND_TRUTH_PAUSES[2]]
+        found, [GROUND_TRUTH_PAUSES[0], GROUND_TRUTH_PAUSES[2]], strict=True
     ):
         assert violation.start_time == pytest.approx(
             truth_start, abs=BOUNDARY_TOLERANCE
