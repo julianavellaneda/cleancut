@@ -3,14 +3,10 @@ Media editing service using FFmpeg.
 Handles cutting/muting segments from both audio and video files.
 """
 
-import os
-import json
 import logging
+
 import ffmpeg
-import subprocess
 import numpy as np
-from pathlib import Path
-from typing import List, Tuple
 
 logger = logging.getLogger(__name__)
 
@@ -34,8 +30,8 @@ class MediaEditor:
         self,
         input_path: str,
         output_path: str,
-        segments_to_cut: List[Tuple[float, float]] | None = None,
-        segments_to_mute: List[Tuple[float, float]] | None = None,
+        segments_to_cut: list[tuple[float, float]] | None = None,
+        segments_to_mute: list[tuple[float, float]] | None = None,
         media_type: str = "audio"
     ):
         """
@@ -125,7 +121,7 @@ class MediaEditor:
         self,
         input_path: str,
         output_path: str,
-        segments_to_remove: List[Tuple[float, float]],
+        segments_to_remove: list[tuple[float, float]],
         media_type: str = "audio"
     ):
         """Cut (remove) specified segments from media while maintaining sync."""
@@ -139,7 +135,7 @@ class MediaEditor:
         self,
         input_path: str,
         output_path: str,
-        segments_to_mute: List[Tuple[float, float]],
+        segments_to_mute: list[tuple[float, float]],
         media_type: str = "audio"
     ):
         """Mute (silence) specified segments in media."""
@@ -149,7 +145,7 @@ class MediaEditor:
             media_type=media_type
         )
 
-    def _merge_segments(self, segments: List[Tuple[float, float]]) -> List[Tuple[float, float]]:
+    def _merge_segments(self, segments: list[tuple[float, float]]) -> list[tuple[float, float]]:
         """Sort and merge overlapping segments."""
         if not segments:
             return []

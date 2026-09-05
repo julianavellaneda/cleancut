@@ -9,15 +9,12 @@ Which model answers is configuration, not code - see `providers.py` and
 import difflib
 import json
 import math
-import os
 import re
-from dataclasses import dataclass, asdict, field
+from dataclasses import asdict, dataclass, field
 from pathlib import Path
-from typing import List, Optional
 
 from .providers import ProviderError, configured_model_spec, get_provider
-from .transcriber import TranscriptResult, Segment
-
+from .transcriber import Segment, TranscriptResult
 
 # Built-in rule presets. A preset swaps the free-form user prompt for a curated
 # rulebook plus a stricter, category-aware system prompt.
@@ -495,7 +492,7 @@ class PromptAnalyzer:
     def analyze(
         self,
         transcript: TranscriptResult,
-        prompt: Optional[str] = None,
+        prompt: str | None = None,
         preset: str | None = None,
     ) -> AnalysisResult:
         """
@@ -744,7 +741,7 @@ class PromptAnalyzer:
             lines.append(f"[{seg.start:.1f}s - {seg.end:.1f}s] {seg.text}")
         return "\n".join(lines)
 
-    def _prompt_system_prompt(self, user_prompt: Optional[str]) -> str:
+    def _prompt_system_prompt(self, user_prompt: str | None) -> str:
         """Generic prompt-driven system prompt (default mode)."""
         instructions = user_prompt if user_prompt else "Identify all segments that should be removed or muted for clarity and compliance."
         baseline = (
@@ -843,7 +840,7 @@ IMPORTANT:
     def _call_llm(
         self,
         transcript_text: str,
-        user_prompt: Optional[str],
+        user_prompt: str | None,
         preset: str | None = None,
     ) -> list[dict]:
         """Ask the configured model to analyze the transcript, under the preset rulebook or the user prompt."""

@@ -12,14 +12,27 @@ _ROOT_ENV = root_env_path(__file__)
 if _ROOT_ENV:
     load_dotenv(_ROOT_ENV)
 
-from ..analysis.transcriber import Transcriber, TranscriptResult
-from ..analysis.prompt_analyzer import (
-    PromptAnalyzer,
-    AnalysisResult,
-    Violation,
+# PRESETS, Violation and is_valid_preset are re-exports, not leftovers: this
+# module is the seam the rest of the backend reaches the analyzer through, and
+# `routes/jobs.py` imports the first and third from here by name. The middle one
+# is load-bearing in a stranger way - `tests/test_cli_entrypoint.py` imports
+# `Violation` through both this path and the analyzer's own to assert they are
+# the *same class*, which is the check that catches a sys.path hack quietly
+# creating two of them. Deleting these as unused would break an import and a
+# guard at once, so ruff is told once rather than argued with per line.
+#
+# Both import blocks also sit below load_dotenv on purpose, so E402 is silenced
+# rather than obeyed: the analyzer resolves the configured provider's key at
+# import time, and hoisting these would read an environment the .env had not
+# been loaded into yet.
+from ..analysis.prompt_analyzer import (  # noqa: E402, F401  (see above)
     PRESETS,
+    AnalysisResult,
+    PromptAnalyzer,
+    Violation,
     is_valid_preset,
 )
+from ..analysis.transcriber import Transcriber, TranscriptResult  # noqa: E402
 
 
 class AudioProcessor:

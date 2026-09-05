@@ -13,7 +13,6 @@ import pytest
 
 from app.analysis.prompt_analyzer import AnalysisError, _parse_llm_response
 
-
 # --- genuinely empty results must stay empty, not raise -------------------
 
 @pytest.mark.parametrize("content", [

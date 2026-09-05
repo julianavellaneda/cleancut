@@ -20,7 +20,6 @@ from app.limits import (
     save_within_limit,
 )
 
-
 # --- configuration ---------------------------------------------------------
 
 def test_size_default():

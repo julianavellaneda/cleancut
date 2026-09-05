@@ -3,6 +3,7 @@ Pydantic schemas for request/response validation.
 """
 
 from datetime import datetime
+
 from pydantic import BaseModel, field_validator
 
 #: What an edit can do to its span. The single owner of the pair - the PATCH,

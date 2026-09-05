@@ -2,9 +2,10 @@
 Deterministic scrubber service for silence and filler word detection.
 """
 
-from typing import List, Sequence, Tuple
-from ..analysis.transcriber import TranscriptResult, Word
+from collections.abc import Sequence
+
 from ..analysis.prompt_analyzer import Violation
+from ..analysis.transcriber import TranscriptResult, Word
 from . import levels
 
 
@@ -73,9 +74,9 @@ class Scrubber:
     @staticmethod
     def detect_silence(
         transcript: TranscriptResult,
-        quiet_regions: Sequence[Tuple[float, float]] | None = None,
+        quiet_regions: Sequence[tuple[float, float]] | None = None,
         min_silence_len: float | None = None,
-    ) -> List[Violation]:
+    ) -> list[Violation]:
         """
         Identify spans that are both un-transcribed and acoustically quiet.
 
@@ -121,7 +122,7 @@ class Scrubber:
         # Candidates: where the transcript has nothing to say. Each is a
         # (start, end, text, description) tuple; the description becomes the
         # human-readable half of the reasoning string.
-        candidates: List[Tuple[float, float, str, str]] = []
+        candidates: list[tuple[float, float, str, str]] = []
 
         if not transcript.segments:
             # No speech anywhere. The whole file is a candidate - but still only
@@ -220,7 +221,7 @@ class Scrubber:
         return opened and closed
 
     @staticmethod
-    def detect_filler_words(transcript: TranscriptResult) -> List[Violation]:
+    def detect_filler_words(transcript: TranscriptResult) -> list[Violation]:
         """
         Identify common filler words using word-level timestamps.
 

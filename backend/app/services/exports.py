@@ -17,8 +17,8 @@ kept a copy.
 """
 
 import logging
+from collections.abc import Iterable, Sequence
 from pathlib import Path
-from typing import Iterable, Sequence
 
 import ffmpeg
 

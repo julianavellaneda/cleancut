@@ -3,9 +3,9 @@ Transcription module using faster-whisper for local audio transcription.
 Optimized for Apple Silicon (M4).
 """
 
-from faster_whisper import WhisperModel
 from dataclasses import dataclass
-from typing import Generator
+
+from faster_whisper import WhisperModel
 
 
 @dataclass
@@ -171,7 +171,7 @@ def load_transcript(file_path: str) -> TranscriptResult:
     max_end = 0.0
     skipped: list[str] = []
 
-    with open(file_path, 'r', encoding='utf-8') as f:
+    with open(file_path, encoding='utf-8') as f:
         for line in f:
             line = line.strip()
             if not line:

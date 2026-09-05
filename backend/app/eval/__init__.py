@@ -16,8 +16,8 @@ Three pieces:
                 detectors, or a live pipeline run.
 """
 
-from .spec import EvalSpec, Expectation, Control, Suite, load_spec
 from .scoring import Prediction, RunResult, Scorecard, load_predictions, load_run, score
+from .spec import Control, EvalSpec, Expectation, Suite, load_spec
 
 __all__ = [
     "EvalSpec",

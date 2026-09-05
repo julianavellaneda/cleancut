@@ -19,7 +19,7 @@ numpy arrays in tests, with no media file anywhere.
 
 import math
 import os
-from typing import Mapping, Sequence
+from collections.abc import Mapping, Sequence
 
 import numpy as np
 

@@ -4,6 +4,7 @@ SQLAlchemy models for Job and Violation.
 
 import uuid
 from datetime import datetime
+
 from sqlalchemy import (
     Boolean,
     Column,

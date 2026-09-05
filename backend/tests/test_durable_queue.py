@@ -32,7 +32,8 @@ import app.services.task_store as task_store
 import app.services.worker as worker
 from app.analysis.prompt_analyzer import AnalysisResult, Violation
 from app.analysis.transcriber import Segment, TranscriptResult
-from app.models import Job, Task, Violation as ViolationRow
+from app.models import Job, Task
+from app.models import Violation as ViolationRow
 from app.services import transcripts
 from app.services.task_store import QueuedTask
 

@@ -13,10 +13,10 @@ Kept free of FastAPI imports so a sweep can be exercised directly in tests.
 import logging
 import os
 import threading
+from collections.abc import Iterator, Mapping
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
-from typing import Iterator, Mapping
 
 from ..database import SessionLocal
 from ..models import Job

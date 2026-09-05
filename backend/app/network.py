@@ -26,7 +26,7 @@ No third-party imports, so it can be tested with a literal env mapping the way
 
 import ipaddress
 import os
-from typing import Mapping
+from collections.abc import Mapping
 
 HOST_VAR = "CLEANCUT_HOST"
 

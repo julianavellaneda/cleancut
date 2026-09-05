@@ -26,7 +26,7 @@ matter how that import order shifts.
 
 import os
 import secrets
-from typing import Mapping
+from collections.abc import Mapping
 
 from fastapi import Header, HTTPException
 

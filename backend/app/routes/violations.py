@@ -2,7 +2,6 @@
 Violation routes - list and update violation status.
 """
 
-from typing import List
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
@@ -25,7 +24,7 @@ STATUSES = ("pending", "accepted", "rejected")
 ACTIONS = EDIT_ACTIONS
 
 
-@router.get("/{job_id}/violations", response_model=List[ViolationResponse])
+@router.get("/{job_id}/violations", response_model=list[ViolationResponse])
 def list_violations(job_id: str, db: Session = Depends(get_db)):
     """List all violations for a job."""
     job = db.query(Job).filter(Job.id == job_id).first()
@@ -125,8 +124,8 @@ def update_violation(
 def bulk_update_violations(
     job_id: str,
     update: BulkViolationUpdate,
-    labels: List[str] | None = Query(None),
-    from_status: List[str] | None = Query(
+    labels: list[str] | None = Query(None),
+    from_status: list[str] | None = Query(
         None,
         description=(
             "Which statuses to move. Defaults to pending only, so 'Clean All' "

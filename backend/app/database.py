@@ -3,9 +3,10 @@ SQLite database setup with SQLAlchemy.
 """
 
 import os
-from sqlalchemy import create_engine, inspect, text
-from sqlalchemy.orm import sessionmaker, declarative_base
 from pathlib import Path
+
+from sqlalchemy import create_engine, inspect, text
+from sqlalchemy.orm import declarative_base, sessionmaker
 
 # Database file location (override with DATABASE_PATH env var for Docker/custom setups)
 _env_path = os.environ.get("DATABASE_PATH", "").strip()
@@ -37,7 +38,11 @@ def get_db():
 
 def init_db():
     """Initialize database tables and apply lightweight migrations."""
-    from . import models  # Import models to register them
+    # Imported for the side effect, not the name: importing the module is what
+    # registers every model on Base.metadata, and create_all below builds only
+    # the tables it finds there. Dropping this as an unused import would leave
+    # a fresh database with no tables and no error.
+    from . import models  # noqa: F401
     Base.metadata.create_all(bind=engine)
     _apply_migrations()
 

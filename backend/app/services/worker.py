@@ -2,10 +2,9 @@
 Job worker - sequential processing of media jobs using a queue.
 """
 
+import logging
 import queue
 import threading
-import shutil
-import logging
 import uuid
 from dataclasses import dataclass
 from pathlib import Path
@@ -15,13 +14,11 @@ from sqlalchemy import or_
 
 from ..database import SessionLocal
 from ..models import Job, Violation
-from ..services.processor import get_processor
-from ..services.media_editor import DECODE_SAMPLE_RATE, decode_pcm_mono
-from ..services.scrubber import Scrubber
-from ..services import transcripts
+from ..services import exports, task_store, transcripts
 from ..services.levels import find_quiet_regions
-from ..services import exports
-from ..services import task_store
+from ..services.media_editor import DECODE_SAMPLE_RATE, decode_pcm_mono
+from ..services.processor import get_processor
+from ..services.scrubber import Scrubber
 from ..services.task_store import MAX_ATTEMPTS, QueuedTask
 
 # Logging

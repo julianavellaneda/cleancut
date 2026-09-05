@@ -15,7 +15,7 @@ rule, so importing it here does not break that.
 
 import os
 import shutil
-from typing import Callable, Mapping
+from collections.abc import Callable, Mapping
 
 from .analysis.providers import DEFAULT_MODEL_SPEC, ProviderError, parse_model_spec
 

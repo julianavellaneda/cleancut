@@ -4,7 +4,6 @@ Job routes - upload, list, and status endpoints.
 
 import uuid
 from pathlib import Path
-from typing import List
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, UploadFile
 from sqlalchemy import func, or_
@@ -23,18 +22,17 @@ from ..limits import (
 from ..models import Job, Violation
 from ..schemas import (
     ActiveJobResponse,
-    JobResponse,
     JobListResponse,
+    JobResponse,
     PresetResponse,
     ReanalyzeRequest,
     ReanalyzeResponse,
     TranscriptResponse,
     TranscriptSegment,
 )
+from ..services import task_store, transcripts
 from ..services.processor import PRESETS, is_valid_preset
 from ..services.retention import delete_job_files, is_in_flight
-from ..services import transcripts
-from ..services import task_store
 from ..services.worker import enqueue_job, enqueue_reanalysis, publish
 
 router = APIRouter()
@@ -166,7 +164,7 @@ DEFAULT_JOB_PAGE = 50
 MAX_JOB_PAGE = 200
 
 
-@router.get("", response_model=List[JobListResponse])
+@router.get("", response_model=list[JobListResponse])
 def list_jobs(
     limit: int = Query(DEFAULT_JOB_PAGE, ge=1, le=MAX_JOB_PAGE),
     offset: int = Query(0, ge=0),
@@ -219,7 +217,7 @@ def list_jobs(
     ]
 
 
-def _violation_counts(db: Session, job_ids: List[str]) -> dict:
+def _violation_counts(db: Session, job_ids: list[str]) -> dict:
     """
     How many suggestions each of these jobs has, in one grouped COUNT.
 
@@ -245,7 +243,7 @@ ACTIVE_JOB_STATUSES = ("pending", "converting", "transcribing", "analyzing", "ex
 ACTIVE_EXPORT_STATUSES = ("queued", "exporting")
 
 
-@router.get("/active", response_model=List[ActiveJobResponse])
+@router.get("/active", response_model=list[ActiveJobResponse])
 def list_active_jobs(db: Session = Depends(get_db)):
     """
     The jobs still being worked on, and nothing else.
@@ -288,7 +286,7 @@ def list_active_jobs(db: Session = Depends(get_db)):
     ]
 
 
-@router.get("/presets", response_model=List[PresetResponse])
+@router.get("/presets", response_model=list[PresetResponse])
 def list_presets():
     """List the built-in rule presets. Declared before /{job_id} so it isn't shadowed."""
     return [

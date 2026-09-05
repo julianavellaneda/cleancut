@@ -2,9 +2,7 @@
 Admin routes for system management and maintenance.
 """
 
-import os
 from pathlib import Path
-from typing import Dict
 
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import func

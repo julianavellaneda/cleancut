@@ -14,20 +14,18 @@ transcript was only partially analyzed, 1 on a usage or input error.
 """
 
 import argparse
-import json
 import sys
 from pathlib import Path
 
 from dotenv import load_dotenv
 
 from ..config import root_env_path
+from .prompt_analyzer import PRESETS, AnalysisResult, PromptAnalyzer, to_json
 from .transcriber import (
     Transcriber,
     TranscriptFormatError,
-    TranscriptResult,
     load_transcript,
 )
-from .prompt_analyzer import PromptAnalyzer, AnalysisResult, PRESETS, to_json
 
 # Load environment variables from the .env at the repo root, when there is one.
 _ROOT_ENV = root_env_path(__file__)

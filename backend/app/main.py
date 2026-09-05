@@ -18,12 +18,18 @@ _ROOT_ENV = root_env_path(__file__)
 if _ROOT_ENV:
     load_dotenv(_ROOT_ENV)
 
-from .database import init_db
-from .network import exposure_warning
-from .preflight import verify_environment
-from .routes import jobs, violations, audio, admin
-from .services.retention import start_retention_sweeper
-from .services.worker import recover_interrupted_work, start_worker
+# Below load_dotenv on purpose, so E402 is silenced rather than obeyed: these
+# modules read the environment at *import* time (DATABASE_PATH in database.py,
+# CLEANCUT_HOST in network.py, the configured provider's key in preflight.py).
+# Hoisted to the top of the file they would resolve against an empty
+# environment, and a developer's database path and CORS origins would be
+# silently ignored while the server still started.
+from .database import init_db  # noqa: E402
+from .network import exposure_warning  # noqa: E402
+from .preflight import verify_environment  # noqa: E402
+from .routes import admin, audio, jobs, violations  # noqa: E402
+from .services.retention import start_retention_sweeper  # noqa: E402
+from .services.worker import recover_interrupted_work, start_worker  # noqa: E402
 
 
 @asynccontextmanager

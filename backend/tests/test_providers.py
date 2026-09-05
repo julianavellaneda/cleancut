@@ -19,7 +19,6 @@ No network: both SDK clients are stubbed.
 
 import pytest
 
-from app.analysis import providers
 from app.analysis.providers import (
     DEFAULT_MODEL_SPEC,
     AnthropicProvider,
@@ -28,7 +27,6 @@ from app.analysis.providers import (
     get_provider,
     parse_model_spec,
 )
-
 
 # --- the spec ---------------------------------------------------------------
 

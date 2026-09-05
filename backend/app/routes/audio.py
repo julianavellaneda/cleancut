@@ -7,16 +7,15 @@ import threading
 from pathlib import Path
 
 from fastapi import APIRouter, Depends, HTTPException
-from fastapi.responses import FileResponse, StreamingResponse
+from fastapi.responses import FileResponse
 from sqlalchemy.orm import Session
 from sqlalchemy.orm.exc import ObjectDeletedError
 
 from ..database import get_db
 from ..models import Job, Violation
 from ..schemas import ExportRequest, ExportResponse
-from ..services import exports
+from ..services import exports, task_store
 from ..services.media_editor import generate_waveform_peaks
-from ..services import task_store
 from ..services.worker import enqueue_export, publish
 
 router = APIRouter()

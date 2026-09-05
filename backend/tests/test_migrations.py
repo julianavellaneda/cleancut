@@ -29,7 +29,6 @@ from sqlalchemy import create_engine, inspect, text
 
 import app.database as database
 
-
 LEGACY_JOBS_TABLE = """
 CREATE TABLE jobs (
     id TEXT PRIMARY KEY,

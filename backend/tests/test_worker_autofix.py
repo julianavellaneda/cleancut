@@ -20,7 +20,8 @@ import app.services.worker as worker
 from app.analysis.prompt_analyzer import AnalysisResult, Violation
 from app.analysis.transcriber import TranscriptResult
 from app.database import SessionLocal, init_db
-from app.models import Job, Violation as ViolationRow
+from app.models import Job
+from app.models import Violation as ViolationRow
 
 
 @pytest.fixture(autouse=True)

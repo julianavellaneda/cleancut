@@ -11,8 +11,9 @@ Kept free of FastAPI imports so the limits can be exercised directly in tests.
 
 import os
 import subprocess
+from collections.abc import Mapping
 from pathlib import Path
-from typing import BinaryIO, Mapping
+from typing import BinaryIO
 
 # Read in 1 MB blocks: big enough that the syscall overhead is irrelevant, small
 # enough that an oversized upload is caught long before it is fully buffered.
