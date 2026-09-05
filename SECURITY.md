@@ -17,7 +17,7 @@ such:
 - There is no per-user auth, no sessions and no ownership model. CleanCut assumes one operator.
 
 See the README's [Privacy](README.md#privacy) section, and the "Network binding" and "Admin auth"
-notes in [`CLAUDE.md`](CLAUDE.md), for the reasoning in full.
+notes in [`AGENTS.md`](AGENTS.md), for the reasoning in full.
 
 ## If you are deploying past localhost
 

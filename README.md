@@ -404,7 +404,8 @@ deleting them by surprise is the worse failure.
 ## Contributing
 
 [CONTRIBUTING.md](CONTRIBUTING.md) covers setup, the checks CI runs and the conventions that are
-load-bearing; [`CLAUDE.md`](CLAUDE.md) is the full architecture reference.
+load-bearing; [`AGENTS.md`](AGENTS.md) is the full architecture reference — and the file AI coding
+agents read, in the [agents.md](https://agents.md) open format.
 
 Security reports go through [SECURITY.md](SECURITY.md), not a public issue — and note that the
 unauthenticated routes described under [Privacy](#privacy) are a design decision, documented there.

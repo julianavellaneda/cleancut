@@ -18,6 +18,6 @@
 
 **Docs**
 
-- [ ] `CLAUDE.md` updated if the architecture moved — **and `GEMINI.md` with it.** They mirror each
-      other, and have drifted far enough apart before to state opposite things about admin auth.
+- [ ] `AGENTS.md` updated if the architecture moved. It is the single source of truth and the file
+      every agent tool reads; `CLAUDE.md` is a one-line import of it, so there is nothing to mirror.
 - [ ] README updated if a command, an endpoint, or an environment variable changed

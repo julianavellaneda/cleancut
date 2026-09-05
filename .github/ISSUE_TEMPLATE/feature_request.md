@@ -22,4 +22,4 @@ assignees: ''
 
 <!-- Analysis is prompt-driven, and a rule preset is a markdown rulebook in
      backend/app/analysis/presets/ plus one entry in PRESETS - so a recurring review job may already
-     be a preset rather than a code change. See "Adding a preset" in CLAUDE.md. -->
+     be a preset rather than a code change. See "Adding a preset" in AGENTS.md. -->

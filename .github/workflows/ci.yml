@@ -81,7 +81,7 @@ jobs:
         working-directory: frontend
         run: npm ci
 
-      # CLAUDE.md states "eslint runs clean". This is the step that makes that
+      # AGENTS.md states "eslint runs clean". This is the step that makes that
       # a fact rather than an assertion. It runs before the type-check because
       # it is the cheapest of the three signals, so it should be the first to
       # fail.

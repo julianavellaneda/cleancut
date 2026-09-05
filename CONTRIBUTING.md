@@ -1,7 +1,7 @@
 # Contributing to CleanCut
 
 Thanks for looking. This is a short guide to getting the thing running and to the handful of
-conventions that are load-bearing. [`CLAUDE.md`](CLAUDE.md) is the full architecture reference —
+conventions that are load-bearing. [`AGENTS.md`](AGENTS.md) is the full architecture reference —
 what every module owns and why it owns it — and it is kept current. Read it before a change that
 moves anything structural.
 
@@ -79,15 +79,19 @@ comment saying why.
 
 Memoization is a decision, not a dependency-array reflex. `useCallback` is for callbacks that close
 over nothing reactive; anything reading component state stays un-memoized, and a callback that must
-stay current inside a long-lived effect goes through a ref. `CLAUDE.md` has the bullet, with the
+stay current inside a long-lived effect goes through a ref. `AGENTS.md` has the bullet, with the
 three places in this codebase where getting it wrong caused a real bug.
 
 **Fixtures must be synthetic.** Never commit a real recording, a real transcript, or anything
 identifying a real person. `tests/fixtures/demo/` is a generated two-speaker clip precisely so this
 project never has to hold anyone's audio.
 
-**Docs.** If you change the architecture, update `CLAUDE.md` — and `GEMINI.md` with it. They mirror
-each other and have drifted far enough apart in the past to state opposite things about admin auth.
+**Docs.** If you change the architecture, update [`AGENTS.md`](AGENTS.md). It is the single source
+of truth, in the [agents.md](https://agents.md) format that Codex, Cursor, Copilot, Gemini CLI, Aider
+and others read natively; the root `CLAUDE.md` is a one-line `@AGENTS.md` import, so there is one
+file to edit and nothing to keep in sync. It used to be two — a hand-maintained `GEMINI.md` mirror,
+which drifted far enough to state the opposite of the truth about admin auth. Do not reintroduce a
+per-tool copy.
 
 ## Commits and pull requests
 

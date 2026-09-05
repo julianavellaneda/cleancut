@@ -4,8 +4,9 @@ How CleanCut is built **today**, on this commit. Where this file and the code di
 right and this file is a bug — an earlier version of it described a Celery worker, Zustand state and
 VAD-based silence detection, none of which were ever true.
 
-`CLAUDE.md` at the repo root is the deeper reference and carries the reasoning behind each decision;
-this is the map. `GEMINI.md` mirrors `CLAUDE.md`, so an architectural change is a three-file change.
+[`AGENTS.md`](../AGENTS.md) at the repo root is the deeper reference and carries the reasoning
+behind each decision; this is the map. An architectural change is a two-file change — that file and
+this one — and they may differ in depth but never in fact.
 
 ---
 

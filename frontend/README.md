@@ -10,12 +10,12 @@ npm install && npm run dev    # needs the backend on :8000 — see ../README.md
 
 The browser calls a relative `/api`, which `src/app/api/[...path]/route.ts` proxies to
 `BACKEND_ORIGIN` at request time. That indirection is deliberate and load-bearing; it is explained
-in [`../CLAUDE.md`](../CLAUDE.md).
+in [`../AGENTS.md`](../AGENTS.md).
 
 Colour, type, motion and focus all come from the design system — four rules, each of which has
 already been broken once, plus a contrast audit (`src/app/contrast.test.ts`) that fails the build if
 a token pairing drops below its threshold. Read
-[the design system notes](../CLAUDE.md#design-system) before styling anything.
+[the design system notes](../AGENTS.md#design-system) before styling anything.
 
 ```bash
 npm run lint && npx tsc --noEmit && npm test && npm run build   # what CI runs
