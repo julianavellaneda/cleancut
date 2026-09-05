@@ -7,6 +7,39 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **The backend has a quality gate.** It ran `pytest` and two evals and nothing else — 770 tests
+  over 7,600 lines of application code, with no linter, no type checker and no coverage number,
+  while the frontend had four gates in CI. Now: `ruff check`, `ruff format --check`, `mypy` and a
+  coverage floor of 83% (measured at 85, branch coverage included), all configured in a single
+  `backend/pyproject.toml` and all running in CI. `pytest.ini` moved into that file and was deleted;
+  the two cannot coexist, since `pytest.ini` outranks `pyproject.toml` silently.
+
+  mypy covers `app/analysis/` — the LLM boundary, where everything arrives as untyped JSON and a
+  wrong type is a silently wrong answer rather than a 500. Widening it to `app/services/` is blocked
+  on migrating the SQLAlchemy models to `Mapped[...]`, which is a change to the data layer and is
+  documented as such rather than bundled in.
+
+### Fixed
+
+- **Exceptions that caused a 500 now say so.** Eleven `raise HTTPException(...)` sites inside an
+  `except` discarded the original exception, so a failed waveform render reached the log with its
+  traceback gone.
+- **`zip()` calls that could silently truncate.** `media_editor` interleaves video and audio
+  segments into one concat filter, where a length mismatch does not raise — it produces a shorter
+  file with the audio slipped against the picture. It and the dead-air pass now use `strict=True`.
+- **Every bodyless export request shared one object.** `POST /{job_id}/export` declared
+  `request: ExportRequest = ExportRequest()`, a single instance built at import and reused for the
+  life of the process. Nothing mutated it, so nothing was broken; it is now built per request, and
+  a test bans model instances as route defaults anywhere.
+- **A quote could be placed with a measured start and an unmeasured end.** `_find_text_timestamps`
+  returned its span after checking only one of the two values its helper returns as a pair.
+- **`app/analysis/` was not a package.** It alone had no `__init__.py`, making it reachable under
+  two module names — the condition that produces two distinct `Violation` classes.
+- **A test that guarded nothing.** `test_container_layout_has_no_repo_root_above_package` computed
+  the path its docstring describes and never asserted on it.
+
 ### Changed
 
 - **Python dependencies are locked.** `backend/requirements.txt` was nine `>=` floors installed

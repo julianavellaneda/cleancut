@@ -67,7 +67,7 @@ first.
 
 ## Running what CI runs
 
-CI is `.github/workflows/ci.yml`. Five checks, all reproducible locally, none of which need an API
+CI is `.github/workflows/ci.yml`. Nine checks, all reproducible locally, none of which need an API
 key:
 
 ```bash
@@ -78,7 +78,14 @@ cd backend && source .venv/bin/activate
 # "Adding a Python dependency" above, then:
 git diff --exit-code -- requirements.txt requirements-dev.txt
 
-pytest
+# Formatting, linting, types. Every flag lives in backend/pyproject.toml, so
+# these stay bare commands here and in CI - a flag on the call site would be a
+# second place the behaviour is defined.
+ruff format --check app tests conftest.py
+ruff check app tests conftest.py
+mypy
+
+pytest --cov=app --cov-config=pyproject.toml --cov-report=term-missing
 
 # The scorer and the labels, graded against a recorded run. Deterministic:
 # no model, no media, no key.
@@ -95,6 +102,16 @@ cd ../frontend
 npm run lint && npx tsc --noEmit && npm test && npm run build
 ```
 
+`pytest` on its own is the fast thing and stays that way — the coverage flags are not in `addopts`,
+because they roughly double the run and get in a debugger's way. Run the full line above before
+pushing; the floor is in `pyproject.toml`, not on the command.
+
+A note on the two backend tools: they are pinned in `requirements-dev.txt` like everything else, so
+Dependabot will bump them. A ruff release can change what `ruff format` produces, and a mypy release
+can find something new. Both are legitimate reasons for a follow-up commit *inside the bot's PR* —
+neither is a reason to pin the tools outside the lock, which is where they would quietly stop being
+updated at all.
+
 `python -m app.eval.run --live MEDIA` grades the whole pipeline instead, transcription and LLM call
 included. It is opt-in because it costs money and cannot be deterministic — run it if you touched
 the analyzer, but CI will not.
@@ -110,6 +127,15 @@ PR and say why.
 `exports.py` owns `EXPORT_DIR` and the cut/mute partition, and how `worker._is_pre_accepted` is the
 single answer to "may this be applied unreviewed". `tests/test_export_dir_owner.py` enforces the
 first of those with an AST pass, which should tell you how seriously it is meant.
+
+`ruff check`, `ruff format --check` and `mypy` all run clean; a suppression needs a comment saying
+why, the same rule the frontend has. `backend/pyproject.toml` configures all three and holds no
+`[project]` table — it is configuration, not a package manifest, because `conftest.py` at the
+backend root is what puts that directory on `sys.path` and lets tests import `app.*` by the path
+uvicorn uses. There is no blanket per-file ignore list and there should not be one: that is how a
+lint gate becomes decoration. The one place a rule is switched off wholesale is B008 for FastAPI's
+`Depends`/`Form`/`File` parameters, because there the rule is wrong — see the comment in that file,
+and the `Form(...)` note below.
 
 **Database.** A new column goes in `database._apply_migrations()` — a hand-rolled additive
 migration run at every startup — with a case in `backend/tests/test_migrations.py`. A new *table*

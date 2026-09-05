@@ -31,9 +31,11 @@ Still open, verified by inspection today:
   (Phase A).** `requirements.in` declares, `requirements.txt` is a `uv pip compile --universal
   --python-version 3.10 --generate-hashes` lock, and the Dockerfile, CI, `start.sh` and the
   documented setup all install it with `--require-hashes`. CI re-compiles and fails on drift.
-- **No `pyproject.toml`, no `ruff.toml`, no `setup.cfg`, no `mypy.ini`** anywhere under `backend/`.
-  The only Python config is `pytest.ini` (`testpaths`, `-q`, two warning filters).
-- **No coverage measurement.** 585 test functions, no number.
+- ~~**No `pyproject.toml`, no `ruff.toml`, no `setup.cfg`, no `mypy.ini`** anywhere under
+  `backend/`.~~ **Resolved 2026-09-05 (Phase B).** One `backend/pyproject.toml` owns ruff, mypy,
+  pytest and coverage; `pytest.ini` was folded into it and deleted.
+- ~~**No coverage measurement.** 585 test functions, no number.~~ **Resolved 2026-09-05 (Phase B).**
+  85% with branch coverage over 770 tests, floored at 83 in CI.
 - **No `.devcontainer/`, no `Makefile`, no `justfile`.**
 - **No mock provider.** `_PROVIDERS` in `analysis/providers.py` is `{"openai", "anthropic"}`, and
   `get_provider` hard-fails on a missing key — so a reviewer with no API key can run the tests and
@@ -141,10 +143,46 @@ say in the lock header why hashes are absent so nobody "fixes" it back.
 
 ---
 
-## Phase B — Backend quality gate (1–2 sessions)
+## Phase B — Backend quality gate (1–2 sessions) — ✅ **DONE 2026-09-05**
 
 **Audit reference:** §5.2.2. The frontend has lint + types + tests + build in CI. The backend has
 pytest and two eval runs and nothing else. This closes the asymmetry.
+
+> **As built, with four deviations from B1–B6 below. What shipped is authoritative; the spec that
+> follows is kept for the reasoning.**
+>
+> 1. **`pytest.ini` was deleted, not left alone.** B1 did not anticipate that `pytest.ini`
+>    **outranks** `pyproject.toml` and wins *silently* — no conflict, no warning. Coverage settings
+>    added to the new file while that one survived would have been a no-op that looked exactly like
+>    a working gate. Its contents moved verbatim; `configfile: pyproject.toml` and the rootdir were
+>    verified afterwards.
+> 2. **mypy covers `app/analysis/` only** — B3's stated fallback, taken for a reason B3 did not
+>    predict. Over the whole package mypy reports 195 errors and **122 are one root cause**:
+>    `models.py` declares columns the SQLAlchemy 1.x way, so `job.status = "completed"` reads as
+>    assigning `str` to `Column[str]`. That fires wherever the ORM is touched — most of `services/`
+>    *and* `routes/* — so it is not something a per-module scope can route around, and it is not the
+>    `numpy` typing B3 expected to be the hard part. **Migrating the models to `Mapped[...]` is what
+>    unblocks widening this**, and it is a runtime change to the data layer that needs its own
+>    commit. Also: `strict = true` cannot be scoped per-module at all (it is global-only and ignored
+>    without warning), so the twelve flags it implies are spelled out instead.
+> 3. **Line length 88, measured not chosen.** `ruff format --diff` added 3634 / 2398 / 1675 lines at
+>    79 / 88 / 100. The raw count is the wrong metric — a wider setting buys its smaller diff by
+>    *joining* lines a human split — so 88 won as the width where the reflow is overwhelmingly
+>    splitting genuinely over-long lines. The sweep was verified semantically inert by comparing
+>    every touched file's parsed AST, and `.git-blame-ignore-revs` was added so 62 files of reflow do
+>    not bury the commit messages this repo uses as documentation.
+> 4. **B6 pre-commit was skipped.** Judged the least valuable item in the phase, and CI already
+>    enforces everything it would have.
+>
+> Also, unplanned: `app/analysis/` had **no `__init__.py`** — the only subpackage without one, which
+> made it reachable under two module names and would have stopped mypy before it checked anything.
+> Ruff found five real defects on the way through (exception chaining, two `zip()`s that could
+> silently truncate, a shared `ExportRequest()` instance, a test asserting nothing), each fixed in
+> its own commit. Coverage measured **85%** with branch coverage; floored at 83.
+>
+> The B4 instruction to record per-module numbers in the commit message was followed — the thin
+> spots are `processor` 44 and `transcriber` 67, and `analyze.py` reads 0% only because its nine
+> tests run it in a subprocess.
 
 ### B1. `pyproject.toml` at `backend/`
 
@@ -429,8 +467,8 @@ the unauthenticated-by-default local-first design.
 | # | Phase | Scope | Done when |
 |---|---|---|---|
 | ~~1~~ | ~~A~~ | **Done 2026-09-05.** `uv` locks, Dockerfile, CI drift guard, CONTRIBUTING, `tests/test_dependency_locks.py` | ✅ Re-compile byte-identical; 755 tests and both evals green on a fresh lock install; detector eval still 1.00 / 0.92 |
-| 2 | B | `pyproject.toml`, ruff + format sweep, CI step | `ruff check` and `--check` green in CI |
-| 3 | B | mypy at agreed scope, coverage floor, pre-commit | Backend gate matches the frontend's |
+| ~~2~~ | ~~B~~ | **Done 2026-09-05.** `pyproject.toml`, ruff + format sweep at 88, CI steps | ✅ `ruff check` and `format --check` green in CI; 5 real defects fixed on the way |
+| ~~3~~ | ~~B~~ | **Done 2026-09-05.** mypy over `app/analysis/`, coverage floor 83 (measured 85). Pre-commit skipped | ✅ Backend gate is format → lint → types → cov; widening mypy is blocked on the SQLAlchemy `Mapped[...]` migration |
 | 4 | C | Mock provider + preflight + tests | App runs end to end with no API key |
 | 5 | C | Devcontainer, Makefile, README quickstart | Codespaces boot runs a job |
 | 6 | D | README split, `aria-live`, jsx-a11y, CLI help | README ≤ ~130 lines, all links live |

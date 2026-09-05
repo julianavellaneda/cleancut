@@ -108,6 +108,13 @@ uvicorn app.main:app --reload
 pip install --require-hashes -r requirements-dev.txt
 pytest
 
+# The backend gate. Every flag is in backend/pyproject.toml, so these stay bare
+# commands here and in CI.
+ruff format --check app tests conftest.py
+ruff check app tests conftest.py
+mypy                      # scope comes from pyproject's `files`, not the CLI
+pytest --cov=app --cov-config=pyproject.toml --cov-report=term-missing
+
 # Re-compile the locks after editing requirements.in / requirements-dev.in.
 # Both, in the same commit; CI fails on a diff. uv version must match ci.yml.
 uv pip compile requirements.in \
@@ -711,6 +718,42 @@ below the fold with no sign it had opened.
 ## Conventions
 
 - Backend: Pydantic for validation (`schemas.py`), logic in `services/`, routing in `routes/`.
+- **The backend gate is `ruff` + `mypy` + a coverage floor, all configured in one file.**
+  `backend/pyproject.toml` owns ruff, mypy, pytest and coverage, and holds **no `[project]` and no
+  `[build-system]` table** — it is configuration, not a package manifest. `conftest.py` at the
+  backend root is what puts that directory on `sys.path`, so tests import `app.*` by exactly the
+  path `uvicorn app.main:app` uses; declaring a project makes `pip install -e .` possible and the
+  first person to run it gets a second importable copy through site-packages — two `Violation`
+  classes, and a suite passing against a layout the container does not have.
+  `tests/test_dependency_locks.py` fails on either table, and `tests/test_quality_gate.py` fails if
+  CI stops invoking any of the gates, since a config nothing runs leaves no trace when it stops
+  running. The tools are declared in `requirements-dev.in`, not here, so they stay inside the lock,
+  `--require-hashes`, the drift check and Dependabot.
+  Three decisions in that file are load-bearing and are not to be re-litigated by tidying:
+  - **`select` is explicit** (`E, W, F, I, UP, B`), never `extend-select`. Ruff 0.16 moved its
+    default set from 59 rules to 413; a repo inheriting the default has a gate that means something
+    different after every bump. `E501` is off because `ruff format` owns width. The `FAST` ruleset
+    is deliberately unselected — FAST002 would rewrite every route signature as `Annotated[...]`.
+  - **`flake8-bugbear.extend-immutable-calls` exempts FastAPI's parameter API**, because B008 is
+    wrong about it — see the `Form(...)` bullet below, which is the bug a "fix" would reintroduce.
+    Listed once rather than as 29 `# noqa: B008`, which would read as 29 acknowledged smells and
+    would have to be remembered on every new route. It exempts the API, not anything that resembles
+    it: a Pydantic instance as a default is the genuine version of that bug and
+    `tests/test_route_defaults.py` bans it outright.
+  - **mypy covers `app/analysis/` only, at every flag `--strict` implies, spelled out.**
+    `strict = true` is global-only and is ignored *without warning* per-module, which is the silent
+    under-checking the gate exists to prevent, so the flags are listed; `warn_unused_configs` turns
+    a typo'd module pattern into an error rather than a package silently checked at the lenient
+    baseline forever. The scope is not wider because `models.py` declares columns the SQLAlchemy 1.x
+    way, so `job.status = "completed"` reads as assigning `str` to `Column[str]` — 122 errors
+    wherever the ORM is touched, which no per-module scope can route around. Migrating the models to
+    `Mapped[...]` is what widens this to `services/` and `routes/`, and it is a runtime change to
+    the data layer that belongs in its own commit. `python_version` is **3.12** there, not the 3.10
+    ruff targets: it decides which installed stubs are accepted, and numpy's above 3.11 use PEP 695
+    syntax mypy rejects under 3.10 — one syntax error in a `.pyi` and nothing is checked at all.
+  - Formatting is `ruff format` at **line-length 88**, chosen by measuring `--diff` at 79/88/100.
+    `.git-blame-ignore-revs` holds the sweep commit; only ever add a commit there that is provably
+    layout-only (that one was checked by comparing every touched file's parsed AST).
 - **Multipart fields are declared `Form(...)`, never as bare defaults.** A bare default makes
   FastAPI read the field as a *query* parameter, so it silently never arrives from the upload form
   and the job runs with `prompt=None` as though nobody had typed one. `POST /api/jobs` declares

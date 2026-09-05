@@ -155,8 +155,9 @@ cd ../frontend
 npm test          # vitest + Testing Library, in jsdom - no browser needed
 ```
 
-GitHub Actions runs both suites on every push and pull request, alongside `tsc --noEmit`, the
-detector eval below, and a production frontend build — see `.github/workflows/ci.yml`.
+GitHub Actions runs both suites on every push and pull request, alongside `ruff`, `mypy`, a coverage
+floor, `eslint`, `tsc --noEmit`, the detector eval below, and a production frontend build — see
+`.github/workflows/ci.yml`. Nothing in that list needs an API key.
 
 ## Eval
 
