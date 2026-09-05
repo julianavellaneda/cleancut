@@ -6,7 +6,7 @@ import json
 import threading
 from pathlib import Path
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Body, Depends, HTTPException
 from fastapi.responses import FileResponse
 from sqlalchemy.orm import Session
 from sqlalchemy.orm.exc import ObjectDeletedError
@@ -159,7 +159,17 @@ def get_waveform(job_id: str, db: Session = Depends(get_db)):
 
 @router.post("/{job_id}/export", response_model=ExportResponse, status_code=202)
 def export_media(
-    job_id: str, request: ExportRequest = ExportRequest(), db: Session = Depends(get_db)
+    job_id: str,
+    # A body is optional here - POST /export with nothing in it means "honour
+    # each violation's own action" - but the default has to be built per
+    # request, not once at import. `= ExportRequest()` created a single instance
+    # that every bodyless request to this route then shared for the life of the
+    # process. Nothing mutates it today, so nothing is broken today; it is one
+    # line of somebody else's code away from being a cross-request data leak,
+    # which is exactly what B008 is for. `default_factory` leaves the endpoint's
+    # contract identical and builds a fresh one each time.
+    request: ExportRequest = Body(default_factory=ExportRequest),
+    db: Session = Depends(get_db),
 ):
     """
     Queue an edited render of the accepted suggestions.
