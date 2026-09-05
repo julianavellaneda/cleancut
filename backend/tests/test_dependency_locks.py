@@ -196,6 +196,13 @@ def test_every_consumer_installs_with_require_hashes():
     Three places install these files independently. One of them drifting back
     to a bare `pip install -r` is invisible: it still resolves, still boots,
     and quietly stops being the build the other two produce.
+
+    Comment lines are skipped, the same way `test_dockerfile_installs_the_lock`
+    strips them: all three of these files explain themselves in prose, and a
+    comment that *names* an install command is not running one. ci.yml's ruff
+    steps say why they do not use astral-sh/ruff-action - because it would
+    install a ruff other than the one `pip install -r requirements-dev.txt`
+    does - and quoting the command there is the clearest way to say it.
     """
     consumers = {
         "start.sh": REPO_ROOT / "start.sh",
@@ -209,7 +216,7 @@ def test_every_consumer_installs_with_require_hashes():
         offenders = [
             line.strip()
             for line in path.read_text().splitlines()
-            if bare_install.search(line)
+            if not line.lstrip().startswith("#") and bare_install.search(line)
         ]
         assert not offenders, (
             f"{label} installs a requirements file without --require-hashes: {offenders}"

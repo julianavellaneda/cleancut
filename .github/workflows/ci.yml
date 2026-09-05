@@ -13,7 +13,7 @@ concurrency:
 
 jobs:
   backend:
-    name: Backend (pytest)
+    name: Backend (lint + tests)
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -62,6 +62,26 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           pip install --require-hashes -r requirements-dev.txt
+
+      # Formatting before linting before tests: strictly increasing cost, so the
+      # cheapest signal is the first to fail. This mirrors the frontend job's
+      # lint-then-type-check-then-test order and the reasoning is the same.
+      #
+      # Both come from requirements-dev.txt, which is why they cannot run before
+      # the install - and why neither goes through astral-sh/ruff-action. That
+      # action installs a ruff of its own choosing, so CI would enforce one
+      # version while `pip install -r requirements-dev.txt` handed a contributor
+      # another. A formatter two machines disagree about is worse than none.
+      - name: Format check (ruff)
+        working-directory: backend
+        run: ruff format --check app tests conftest.py
+
+      # --no-fix because CI reports, it does not edit: a finding that happens to
+      # be auto-fixable is still a finding. --output-format=github annotates the
+      # offending line in the PR diff rather than only in the log.
+      - name: Lint (ruff)
+        working-directory: backend
+        run: ruff check --no-fix --output-format=github app tests conftest.py
 
       - name: pytest
         working-directory: backend
