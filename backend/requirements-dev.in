@@ -3,4 +3,18 @@
 -r requirements.in
 
 pytest>=8.0.0
+pytest-cov>=7.0.0
 httpx>=0.27.0   # required by fastapi.testclient
+
+# The backend quality gate. These live here rather than in a pyproject
+# `[project]` table so they stay inside the machinery Phase A built: the
+# compiled lock, --require-hashes, CI's drift check, and Dependabot's /backend
+# pip entry. Pinned in a pyproject instead, the tools that police the build
+# would be the one thing in it still floating.
+#
+# The ruff floor is not cosmetic. 0.16 is where the default rule set jumped from
+# 59 rules to 413, so an unpinned ruff changes what "lint passes" means between
+# two runs. pyproject.toml selects its rules explicitly, which makes the repo
+# immune; this floor records that the immunity is deliberate.
+ruff>=0.16.0
+mypy>=2.3.0

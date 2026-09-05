@@ -1,0 +1,119 @@
+# Tool configuration for the backend. Config only, by design.
+#
+# There is deliberately no `[project]` table and no `[build-system]` table, and
+# adding either is the change to reject. `conftest.py` lives at this directory
+# root, which is what puts the directory on `sys.path`, which is what lets tests
+# `import app.*` by exactly the path `uvicorn app.main:app` uses. Turning this
+# into an installed package would route imports through site-packages instead
+# and the tests would stop exercising the layout the application actually runs
+# in - silently, while still passing. `tests/test_dependency_locks.py` fails if
+# either table appears here.
+#
+# The tools themselves are pinned in requirements-dev.in / requirements-dev.txt,
+# not here, so they stay inside the lock, the hash enforcement, CI's drift check
+# and Dependabot's /backend pip entry.
+
+[tool.ruff]
+# 3.10 is the floor the locks compile at and the version the README promises,
+# even though CI and the image both run 3.12. Saying 3.12 here would let 3.11+
+# syntax merge and quietly break the Python the docs commit to.
+target-version = "py310"
+
+# The code was hand-wrapped to 79/80 (p95 is exactly 80). 88 is ruff's default
+# and was chosen from a measurement, not a preference: `ruff format --diff` at
+# 79 / 88 / 100 produced 3634 / 2398 / 1675 added lines, and 88 is where the
+# reflow is mostly splitting genuinely over-long lines rather than joining pairs
+# the authors wrapped on purpose. See the sweep commit for the numbers.
+line-length = 88
+
+# backend/ is the import root - the same one conftest.py establishes by sitting
+# here. Without it, isort classifies `app` as a third-party package that happens
+# to share the name and reorders every file's imports into a shape that
+# contradicts how they actually resolve.
+src = ["."]
+
+[tool.ruff.lint]
+# Explicit `select`, never `extend-select`. Ruff 0.16 changed its default rule
+# set from 59 rules to 413; a repo that inherits the default has a lint gate
+# that means something different after every bump. Listing the families makes
+# the ruleset a decision that lives in version control.
+#
+#   E, W  pycodestyle       F   pyflakes
+#   I     import sorting    UP  pyupgrade
+#   B     bugbear
+select = ["E", "W", "F", "I", "UP", "B"]
+
+# E501 is line-too-long, and it is off because the formatter owns width now.
+# `ruff format` is best-effort: it will not split a long string literal or a URL,
+# so leaving E501 on means the two tools disagree about files neither can fix.
+# Astral's own guidance is to disable it whenever the formatter is in use.
+ignore = ["E501"]
+
+# No per-file-ignores, and none should be added. The frontend's eslint config
+# carries no ignore list either, and that is the precedent: a blanket per-file
+# ignore is how a lint gate becomes decoration. A rule that is wrong about one
+# line gets a `# noqa: XXX` on that line with a reason next to it.
+
+[tool.ruff.lint.isort]
+# `app` is this repo, not a PyPI package that happens to share the name.
+known-first-party = ["app"]
+
+[tool.ruff.lint.flake8-bugbear]
+# B008 forbids a function call in a default argument, and it is wrong about
+# every FastAPI route in this codebase - 28 of them. `prompt: str = Form(None)`
+# is not a mutable-default bug; it is the only way to declare a multipart field.
+# A bare default makes FastAPI read the field as a *query* parameter, so the
+# upload form's value silently never arrives and the job runs with prompt=None
+# as though nobody had typed one. That failure is documented in AGENTS.md
+# ("Multipart fields are declared Form(...), never as bare defaults").
+#
+# Listing them here rather than scattering 28 `# noqa: B008` matters: a noqa on
+# each line reads as 28 acknowledged smells, the next person to tidy one up
+# reintroduces the bug, and every new route has to remember to add one. This
+# says the rule does not apply, once.
+#
+# Note what is deliberately NOT exempted: `ExportRequest()` as a default in
+# app/routes/audio.py is a genuine instance of what B008 is about - one Pydantic
+# object built at import time and shared by every request - and it is fixed
+# rather than allowed. The allowlist is for FastAPI's parameter API, not for
+# anything that merely looks like it.
+extend-immutable-calls = [
+    "fastapi.Body",
+    "fastapi.Cookie",
+    "fastapi.Depends",
+    "fastapi.File",
+    "fastapi.Form",
+    "fastapi.Header",
+    "fastapi.Path",
+    "fastapi.Query",
+    "fastapi.Security",
+]
+
+# Deliberately NOT selected: the FAST (FastAPI) ruleset. FAST002 wants every
+# dependency rewritten as `Annotated[...]`, which is a large refactor of
+# app/routes/ dressed up as a lint finding. If that migration is ever wanted it
+# should be its own commit with its own reasoning, not a side effect of turning
+# a linter on.
+
+[tool.ruff.format]
+# Ruff's defaults (double quotes, magic trailing comma respected). Named here so
+# a future `ruff format` version change is visible as a config edit rather than
+# arriving silently in a dependency bump.
+quote-style = "double"
+skip-magic-trailing-comma = false
+
+[tool.pytest.ini_options]
+# Moved here from pytest.ini, which was deleted. The two cannot coexist: pytest
+# reads pytest.ini and ignores [tool.pytest.ini_options] entirely when both are
+# present, so coverage settings added here while that file survived would have
+# been a no-op that looked exactly like a working gate.
+#
+# conftest.py at the backend root is what puts this directory on sys.path, so
+# tests import `app.*` the same way `uvicorn app.main:app` does. That is a
+# layout decision, not an accident - see the header of this file.
+testpaths = ["tests"]
+addopts = "-q"
+filterwarnings = [
+    "ignore::DeprecationWarning",
+    "ignore::PendingDeprecationWarning",
+]
