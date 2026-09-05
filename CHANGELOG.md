@@ -9,7 +9,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [0.1.0] - 2026-09-05
 
-First tagged release. Publishes `cleancut-backend` and `cleancut-frontend` to GHCR.
+First tagged release. Publishes `cleancut-backend` and `cleancut-frontend` to GHCR as `0.1.0`,
+`0.1` and `latest` — the image tag drops the git tag's leading `v`. `linux/amd64` only.
 
 ### Added
 

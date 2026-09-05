@@ -48,6 +48,13 @@ jobs:
             type=semver,pattern={{version}}
             type=semver,pattern={{major}}.{{minor}}
 
+      # Single-platform (linux/amd64, whatever the runner is). Adding
+      # `platforms: linux/amd64,linux/arm64` here would cover Apple Silicon
+      # natively, but the arm64 half builds under QEMU and the backend's wheels
+      # - faster-whisper, its CTranslate2 dependency - are the expensive kind to
+      # emulate. Left off deliberately; the README tells Apple Silicon users to
+      # pass --platform or just build locally.
+      #
       # No build-args. The frontend used to bake NEXT_PUBLIC_API_URL at build
       # time, which would have pinned every published image to whatever backend
       # this runner imagined; it now proxies to BACKEND_ORIGIN, read when the

@@ -96,12 +96,17 @@ Open http://localhost:3000.
 
 ### Published images
 
-Every `v*` tag publishes both images to GHCR, for running CleanCut without building it:
+Every `v*` git tag publishes both images to GHCR, for running CleanCut without building it. The
+image tag drops the leading `v` — a `v0.1.0` tag publishes `0.1.0`, a moving `0.1`, and `latest`:
 
 ```bash
-docker pull ghcr.io/julianavellaneda/cleancut-backend:v0.1.0
-docker pull ghcr.io/julianavellaneda/cleancut-frontend:v0.1.0
+docker pull ghcr.io/julianavellaneda/cleancut-backend:0.1.0
+docker pull ghcr.io/julianavellaneda/cleancut-frontend:0.1.0
 ```
+
+These are **`linux/amd64` only**. On Apple Silicon, add `--platform linux/amd64` and Docker Desktop
+runs them emulated — which is slow enough for Whisper that building locally, or `docker compose up
+--build`, is the better trade on an M-series Mac.
 
 The frontend image is not tied to any particular backend: the browser calls the frontend's own
 `/api` and its server proxies to `BACKEND_ORIGIN`, which is read at startup, so pointing it
