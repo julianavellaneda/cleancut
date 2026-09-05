@@ -7,6 +7,35 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- **Python dependencies are locked.** `backend/requirements.txt` was nine `>=` floors installed
+  straight from PyPI, so two builds a month apart were two different applications. The declaration
+  now lives in `requirements.in` / `requirements-dev.in` (floors and the reasoning comments on
+  them); `requirements.txt` / `requirements-dev.txt` are compiled by `uv pip compile` — every
+  version pinned, every artifact hashed — and are what the Dockerfile, CI, `start.sh` and the
+  documented setup all install, with `--require-hashes`.
+
+  Compiled `--universal` so one file serves macOS-arm64 development, `ubuntu-latest` CI and
+  `python:3.12-slim` through environment markers rather than baking in whichever machine ran the
+  compile, at a `--python-version 3.10` lower bound to match the Python version the README promises.
+  Consumer filenames are unchanged, so nothing outside `backend/` had to learn a new one.
+
+  CI gained a step that re-compiles both locks and fails on any diff: a dependency added to a `.in`
+  without a re-compile installs nothing, and would otherwise merge silently. `uv` is pinned to the
+  same version in `ci.yml` and `CONTRIBUTING.md`.
+
+### Removed
+
+- `backend/app/analysis/requirements.txt` — unreferenced, contradicted the real declaration
+  (`faster-whisper>=1.0.0` against `>=0.10.0`), listed `pydub` which is not a dependency, and shipped
+  into the image via `COPY app/ ./app/`.
+
+### Fixed
+
+- Dependabot can now actually update Python dependencies. The pip entry previously watched a floors
+  file nothing pinned, so a routine week produced no useful PR.
+
 ## [0.1.0] - 2026-09-05
 
 First tagged release. Publishes `cleancut-backend` and `cleancut-frontend` to GHCR as `0.1.0`,

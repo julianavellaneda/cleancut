@@ -27,7 +27,8 @@ if [ ! -d ".venv" ]; then
     python3 -m venv .venv
 fi
 source .venv/bin/activate
-pip install -q -r requirements.txt
+# The compiled lock, hashes enforced - same install CI and the image do.
+pip install -q --require-hashes -r requirements.txt
 
 # Frontend setup
 echo "=== Setting up frontend ==="

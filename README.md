@@ -128,7 +128,7 @@ cp .env.example .env      # then add your model API key
 cd backend
 python3 -m venv .venv
 source .venv/bin/activate
-pip install -r requirements.txt
+pip install --require-hashes -r requirements.txt   # pinned + hashed lock
 uvicorn app.main:app --reload
 
 # 3. Frontend (port 3000), in a second terminal
@@ -148,7 +148,7 @@ proxy that authenticates in front of it. See [Privacy](#privacy).
 
 ```bash
 cd backend
-pip install -r requirements-dev.txt
+pip install --require-hashes -r requirements-dev.txt
 pytest
 
 cd ../frontend

@@ -27,8 +27,10 @@ So this plan starts from §5.2 and does not revisit any of the above.
 
 Still open, verified by inspection today:
 
-- `backend/requirements.txt` is **nine `>=` floors and no lockfile**. `backend/Dockerfile` installs
-  straight from it. `docker compose up --build` in three months is a different application.
+- ~~`backend/requirements.txt` is **nine `>=` floors and no lockfile**.~~ **Resolved 2026-09-05
+  (Phase A).** `requirements.in` declares, `requirements.txt` is a `uv pip compile --universal
+  --python-version 3.10 --generate-hashes` lock, and the Dockerfile, CI, `start.sh` and the
+  documented setup all install it with `--require-hashes`. CI re-compiles and fails on drift.
 - **No `pyproject.toml`, no `ruff.toml`, no `setup.cfg`, no `mypy.ini`** anywhere under `backend/`.
   The only Python config is `pytest.ini` (`testpaths`, `-q`, two warning filters).
 - **No coverage measurement.** 585 test functions, no number.
@@ -63,10 +65,33 @@ F is the "if this becomes a product" tier and is explicitly *not* committed to h
 
 ---
 
-## Phase A — Reproducible builds (1 session)
+## Phase A — Reproducible builds (1 session) — ✅ **DONE 2026-09-05**
 
 **Audit reference:** §5.2.1. **Why first:** everything downstream measures something, and a
 measurement over a floating dependency set is not a measurement.
+
+> **As built, with two deviations from A1–A3 below. What shipped is authoritative; the spec that
+> follows is kept for the reasoning.**
+>
+> 1. **Naming inverted.** Not `requirements.txt` (floors) + `requirements.lock` (compiled), but
+>    `requirements.in` (floors) + `requirements.txt` (compiled). Dependabot's
+>    `pip_compile_file_matcher.rb` recognises a pip-compile lockfile only when the name ends in
+>    `.txt` **and** either the content matches `--output-file <name>` or a sibling `<name>.in`
+>    exists. A `.lock` matches neither, so Dependabot would have fallen back to reading the floors
+>    and never touched the lock — exactly the "runs green and changes nothing" failure A2 warns
+>    about, caused by A1's own naming. Side benefit: every consumer filename is unchanged.
+> 2. **`--universal`, lower bound 3.10.** A2 did not say what to resolve *for*. A host resolution on
+>    macOS does not install on linux. `--universal` emits environment markers instead, so one file
+>    serves dev, CI and the image; `--python-version 3.10` is a lower bound under it and keeps the
+>    README's promise honest. Packages that dropped 3.10 appear twice with markers.
+>
+> Also: the A1 "hand-written header comment" is **not** possible — `uv` rewrites the header on every
+> compile and `--custom-compile-command` is single-line only (a newline emits an uncommented line
+> and corrupts the file). uv's own header already records the exact regenerating command; the
+> warning lives in the `.in` headers, `CONTRIBUTING.md` and `backend/tests/test_dependency_locks.py`.
+>
+> The A3 CI drift guard **was** cheap and did survive: re-compiles are byte-identical on uv 0.12.10.
+> The A4 hash risk did not materialise — `onnxruntime`/`ctranslate2` hashed and installed fine.
 
 ### A1. Compile a lockfile
 
@@ -403,7 +428,7 @@ the unauthenticated-by-default local-first design.
 
 | # | Phase | Scope | Done when |
 |---|---|---|---|
-| 1 | A | `uv` locks, Dockerfile, CI, CONTRIBUTING | Two cold builds install identical versions |
+| ~~1~~ | ~~A~~ | **Done 2026-09-05.** `uv` locks, Dockerfile, CI drift guard, CONTRIBUTING, `tests/test_dependency_locks.py` | ✅ Re-compile byte-identical; 755 tests and both evals green on a fresh lock install; detector eval still 1.00 / 0.92 |
 | 2 | B | `pyproject.toml`, ruff + format sweep, CI step | `ruff check` and `--check` green in CI |
 | 3 | B | mypy at agreed scope, coverage floor, pre-commit | Backend gate matches the frontend's |
 | 4 | C | Mock provider + preflight + tests | App runs end to end with no API key |

@@ -101,12 +101,19 @@ ai-audio-editing/
 cd backend
 python3 -m venv .venv
 source .venv/bin/activate
-pip install -r requirements.txt
+pip install --require-hashes -r requirements.txt   # the compiled lock
 uvicorn app.main:app --reload
 
 # Backend tests
-pip install -r requirements-dev.txt
+pip install --require-hashes -r requirements-dev.txt
 pytest
+
+# Re-compile the locks after editing requirements.in / requirements-dev.in.
+# Both, in the same commit; CI fails on a diff. uv version must match ci.yml.
+uv pip compile requirements.in \
+  --universal --python-version 3.10 --generate-hashes --output-file requirements.txt
+uv pip compile requirements-dev.in \
+  --universal --python-version 3.10 --generate-hashes --output-file requirements-dev.txt
 
 # Frontend (port 3000)
 cd frontend
@@ -391,6 +398,29 @@ System dependency: `brew install ffmpeg`.
   Linux container macOS native binaries. Fonts are self-hosted from `frontend/src/app/fonts/`
   through `next/font/local`; `next/font/google` downloaded the face during `next build`, so a build
   needed working DNS and a reachable Google CDN. `tests/test_docker_layout.py` pins all three.
+- **Python dependencies: `.in` declares, `.txt` resolves** (`backend/`). `requirements.in` and
+  `requirements-dev.in` are hand-edited and hold the `>=` floors *and the reasoning comments on
+  them*; `requirements.txt` and `requirements-dev.txt` are compiled by `uv pip compile` and are what
+  every consumer installs — the Dockerfile, `ci.yml`, `start.sh` and `CONTRIBUTING.md`'s setup
+  block, all with `--require-hashes`. The Dockerfile only ever COPYs the runtime lock; the `.in`
+  files are `.dockerignore`d, since they matter only to whoever re-compiles.
+  The **names are load-bearing and must not be tidied to `requirements.lock`**, which is the obvious
+  choice and the wrong one. Dependabot's `pip_compile_file_matcher.rb` recognises a pip-compile
+  lockfile only when the name ends in `.txt` *and* either the content matches
+  `--output-file <name>` or a sibling `<name>.in` exists. A `.lock` matches neither, so Dependabot
+  would silently downgrade to reading `requirements.txt` as plain floors and open PRs bumping
+  numbers nothing installs — the lock never updated, the automation permanently green. Compiled
+  `--universal` (one file for macOS-arm64 dev, `ubuntu-latest` CI and `python:3.12-slim`, via
+  environment markers rather than the compiling machine's platform) with `--python-version 3.10` as
+  a *lower* bound, because 3.10 is what the README promises; a package that dropped it appears
+  twice with markers, which is the mechanism working rather than a defect.
+  A hand-written banner cannot live at the top of a lock — `uv` rewrites the header on every
+  compile and `--custom-compile-command` is single-line only (a newline in it emits an uncommented
+  line and corrupts the file), so the warning lives in the `.in` headers, `CONTRIBUTING.md` and
+  `tests/test_dependency_locks.py`, which fails on a `>=` or an unhashed line in a `.txt`, on a
+  consumer that drops `--require-hashes`, and on a second requirements file inside `app/`. CI
+  re-compiles and diffs, so a `.in` edited without a re-compile cannot merge; the pinned `uv`
+  version in `ci.yml` and `CONTRIBUTING.md` must move together.
 - **MediaEditor**: FFmpeg `trim`/`atrim` + `concat`, single pass, A/V sync preserved. Mutes are
   applied before cuts, since cutting shifts the timeline under the mute timestamps.
 - **Edit actions**: `schemas.EDIT_ACTIONS` is the single owner of `("cut", "mute")`;

@@ -17,7 +17,7 @@ cp .env.example .env      # then add your model API key
 cd backend
 python3 -m venv .venv
 source .venv/bin/activate
-pip install -r requirements-dev.txt   # includes requirements.txt
+pip install --require-hashes -r requirements-dev.txt   # the compiled lock
 uvicorn app.main:app --reload
 
 cd ../frontend
@@ -28,14 +28,56 @@ npm run dev
 Or `./start.sh` for both. Both bind `127.0.0.1`; see the README's Privacy section for why that is
 the default and what changing it means.
 
+## Adding a Python dependency
+
+`backend/` keeps the declaration and the resolution in separate files, and only one of them is
+hand-edited:
+
+| File | Hand-edited? | What it is |
+|---|---|---|
+| `requirements.in` | **yes** | What CleanCut depends on, and the oldest version of each that works |
+| `requirements.txt` | no | The compiled resolution — every version, pinned, with hashes. This is what installs |
+| `requirements-dev.in` | **yes** | `-r requirements.in` plus the test-only dependencies |
+| `requirements-dev.txt` | no | Same, compiled |
+
+Add the floor to the `.in`, then re-compile **both** locks in the same commit. `uv` is pinned to the
+version CI uses; a different one can format the header differently and fail the drift check on an
+otherwise correct commit.
+
+```bash
+# uv 0.12.10 — the version .github/workflows/ci.yml pins
+cd backend
+uv pip compile requirements.in \
+  --universal --python-version 3.10 --generate-hashes --output-file requirements.txt
+uv pip compile requirements-dev.in \
+  --universal --python-version 3.10 --generate-hashes --output-file requirements-dev.txt
+```
+
+`--universal` is what makes one file serve macOS-arm64 development, `ubuntu-latest` CI and
+`python:3.12-slim` at once: it resolves for every platform and emits environment markers instead of
+baking in the machine that ran the compile. `--python-version 3.10` is a *lower* bound under
+`--universal`, and it is 3.10 because that is the version the README promises — expect packages that
+dropped it to appear twice with markers, which is the mechanism working. `--generate-hashes` pairs
+with the `--require-hashes` every consumer installs with; without both, the hashes are decoration.
+
+CI re-runs those two commands and fails on any diff, so a `.in` edited without a re-compile cannot
+merge. The locks' first two lines record the exact command that produced them — never hand-edit a
+`.txt`; a re-compile silently overwrites the edit, and `tests/test_dependency_locks.py` fails it
+first.
+
 ## Running what CI runs
 
-CI is `.github/workflows/ci.yml`. Four checks, all reproducible locally, none of which need an API
+CI is `.github/workflows/ci.yml`. Five checks, all reproducible locally, none of which need an API
 key:
 
 ```bash
 # Backend
 cd backend && source .venv/bin/activate
+
+# The locks match their .in files. Re-run the two compile commands from
+# "Adding a Python dependency" above, then:
+git diff --exit-code -- requirements.txt requirements-dev.txt
+
 pytest
 
 # The scorer and the labels, graded against a recorded run. Deterministic:

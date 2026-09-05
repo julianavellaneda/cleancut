@@ -59,7 +59,7 @@ a weekend.
 | Frontend type-check + vitest + prod build | PASS | `tsc --noEmit` run separately from `next build` on purpose |
 | **ESLint in CI** | **FAIL** | `npm run lint` exists in `package.json`; `ci.yml` never calls it. `CLAUDE.md` asserts "eslint runs clean" — unenforced |
 | **Python lint / format / type-check** | **FAIL** | No ruff, no black, no mypy, no config of any kind |
-| **Backend dependency pinning** | **FAIL** | `requirements.txt` is all `>=` floors, no lockfile. `faster-whisper>=0.10.0` + `openai>=1.0.0` means today's build ≠ next month's build. Frontend has `package-lock.json`; backend has nothing |
+| ~~**Backend dependency pinning**~~ | ~~**FAIL**~~ → **PASS** (2026-09-05) | ~~`requirements.txt` is all `>=` floors, no lockfile.~~ Resolved in Phase A: `requirements.in` declares, `requirements.txt` is a `uv pip compile --universal --generate-hashes` lock, and every consumer installs it with `--require-hashes`. CI re-compiles and fails on drift |
 | **Dependabot / Renovate** | **FAIL** | Missing. You already ate a "pinned to a Next.js with 28 advisories" incident (commit `0d0343c`) — this is the automation that prevents the sequel |
 | Pre-commit hooks | FAIL | Missing |
 | Automated releases | WEAK | `release.yml` publishes both GHCR images on `v*` tags — but **zero tags exist**, so it has never run |
@@ -316,9 +316,11 @@ a measured precision and recall for a given rulebook, which nobody else in that 
 
 ### 5.2 Strategic next steps (1–2 weeks)
 
-1. **Reproducible backend builds.** Compile a `requirements.lock` from the `>=` floors with
-   `pip-compile` or `uv`, and have `backend/Dockerfile` install from the lock. Today
-   `docker compose up --build` in three months installs a different `faster-whisper`.
+1. ~~**Reproducible backend builds.**~~ **Done 2026-09-05.** Compiled with `uv pip compile
+   --universal --generate-hashes`. Note the naming deviation from this item's wording: the lock is
+   `requirements.txt` and the floors moved to `requirements.in`, *not* a `requirements.lock` —
+   Dependabot only recognises a pip-compile lockfile ending in `.txt`, so `.lock` would have left
+   the automation permanently green and permanently useless. See `.github/dependabot.yml`.
 2. **Backend quality gate.** `ruff` (lint + format) and `mypy --strict` over `app/services/` and
    `app/analysis/`, both in CI. Add `pytest --cov` with a floor — 585 tests and no idea what they
    cover.

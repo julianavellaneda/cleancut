@@ -26,9 +26,13 @@ data/
 *.db-journal
 *.sqlite3
 
-# Not needed to run the service.
+# Not needed to run the service. The image installs the runtime lock
+# (requirements.txt) and nothing else: the .in files are the hand-edited
+# declarations, which only ever matter to whoever re-compiles the locks.
 tests/
 requirements-dev.txt
+requirements.in
+requirements-dev.in
 
 .env
 .env.*

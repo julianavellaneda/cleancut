@@ -1,0 +1,24 @@
+# The declaration: what CleanCut depends on and the oldest version of each that
+# works. This file is hand-edited; `requirements.txt` next to it is the compiled
+# resolution and is what every consumer actually installs. Add a dependency here
+# and re-compile both locks in the same commit - see CONTRIBUTING.md.
+
+fastapi>=0.109.0
+uvicorn[standard]>=0.27.0
+python-multipart>=0.0.6
+sqlalchemy>=2.0.25
+pydantic>=2.5.3
+python-dotenv>=1.0.0
+ffmpeg-python>=0.2.0
+# The two model providers `CLEANCUT_MODEL` can name. Both are installed rather
+# than made optional: the choice is one line of .env, and a deployment that
+# discovers its provider is not installed only when the first job reaches the
+# analysis stage has learned it too late.
+openai>=1.0.0
+anthropic>=1.0.0
+# Brings onnxruntime and a bundled Silero VAD model (assets/silero_vad_v6.onnx)
+# with it - transcriber.py already runs that VAD via vad_filter=True. Do not add
+# silero-vad/torch/torchaudio back: that installs a second copy of the same
+# model under a different runtime for ~2GB and no new capability.
+faster-whisper>=0.10.0
+numpy>=1.24.0

@@ -1,0 +1,6 @@
+# Declaration, not resolution. `requirements-dev.txt` next to this file is the
+# compiled lock and is what actually gets installed; see the header there.
+-r requirements.in
+
+pytest>=8.0.0
+httpx>=0.27.0   # required by fastapi.testclient

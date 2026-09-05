@@ -7,9 +7,18 @@
 # the grouping - that is Dependabot's behaviour, and it is the one worth
 # interrupting for.
 #
-# Note on pip: backend/requirements.txt is all `>=` floors with no lockfile, so
-# there is nothing here for Dependabot to bump on a routine release. Until a
-# requirements.lock exists, treat the pip entry as advisory-driven only.
+# Note on pip: backend/ carries a compiled lock, so the entry below is a real
+# routine-update source and no longer advisory-only.
+#
+# The file names are load-bearing and must not be "tidied". Dependabot decides a
+# file is a pip-compile lockfile in `pip_compile_file_matcher.rb`: the name must
+# end in `.txt`, and either the content matches `--output-file <name>` or a
+# sibling `<name>.in` exists. backend/requirements.txt satisfies both, so
+# Dependabot re-runs the compile and updates the lock. Naming the lock
+# `requirements.lock` instead - the obvious choice, and the one this repo's own
+# plan originally specified - matches neither test: Dependabot would fall back
+# to reading requirements.txt as plain floors, open PRs bumping numbers nothing
+# installs, and never touch the lock. Green automation that changes nothing.
 version: 2
 updates:
   - package-ecosystem: pip

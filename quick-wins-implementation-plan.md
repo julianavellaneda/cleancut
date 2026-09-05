@@ -146,6 +146,11 @@ Note in the file's own comment that `backend/requirements.txt` is all `>=` floor
 so pip updates will be advisory-driven only — the real fix is the `requirements.lock` in the audit's
 §5.2, out of scope here.
 
+> **Superseded 2026-09-05 (Phase A).** The lock landed, so the pip entry is no longer
+> advisory-only and that comment has been rewritten. It is `requirements.txt` compiled from
+> `requirements.in`, not a `requirements.lock` — Dependabot only recognises a pip-compile lockfile
+> ending in `.txt`.
+
 ### 6. Replace `frontend/README.md`
 
 Delete all 36 lines of boilerplate (which point at `app/page.tsx`; the code is under `src/`) and
@@ -233,7 +238,7 @@ nobody is told to update stops after one release.
 
 ## Explicitly out of scope
 
-Audit §5.2 strategic items — `requirements.lock`, ruff/mypy, `pytest --cov`, the `mock:` provider,
+Audit §5.2 strategic items — ~~`requirements.lock`~~ (landed 2026-09-05 as Phase A), ruff/mypy, `pytest --cov`, the `mock:` provider,
 devcontainer, word-level transcript editing, detector plugin protocol, and the README split into
 `docs/CONFIGURATION.md` / `docs/API.md` / `docs/FAILURE_MODES.md`. The README stays 396 lines plus
 the additions here; splitting it is a separate pass.
