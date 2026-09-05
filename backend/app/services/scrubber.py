@@ -13,7 +13,7 @@ class Scrubber:
     """
     Provides deterministic editing suggestions like silence removal and filler word detection.
     """
-    
+
     # Common fillers, spelled the way Whisper actually writes them. "Hmm" and
     # "umm" are the same sound as "hm" and "um" and Whisper picks between the
     # spellings freely, so every variant it emits has to be listed rather than
@@ -22,11 +22,17 @@ class Scrubber:
     # These are sounds, not words: there is no sentence in which "umm" is
     # carrying meaning, so finding one is the whole of the evidence needed.
     UNAMBIGUOUS_FILLERS = {
-        "um", "umm", "uhm",
-        "uh", "uhh",
-        "ah", "ahh",
-        "er", "erm",
-        "hm", "hmm",
+        "um",
+        "umm",
+        "uhm",
+        "uh",
+        "uhh",
+        "ah",
+        "ahh",
+        "er",
+        "erm",
+        "hm",
+        "hmm",
     }
 
     # Words that are a filler *sometimes*. "I like this", "a car like that",
@@ -69,7 +75,7 @@ class Scrubber:
     @staticmethod
     def _normalize(text: str) -> str:
         """Lowercase a word and drop the punctuation Whisper hangs off it."""
-        return text.strip().lower().strip(".,?!:;\u2026\u201c\u201d\"")
+        return text.strip().lower().strip('.,?!:;\u2026\u201c\u201d"')
 
     @staticmethod
     def detect_silence(
@@ -127,32 +133,48 @@ class Scrubber:
         if not transcript.segments:
             # No speech anywhere. The whole file is a candidate - but still only
             # a candidate: 74 minutes of music transcribes to nothing at all.
-            candidates.append((
-                0.0, transcript.duration, "[Total Silence]",
-                f"no speech detected in {transcript.duration:.1f}s of audio",
-            ))
+            candidates.append(
+                (
+                    0.0,
+                    transcript.duration,
+                    "[Total Silence]",
+                    f"no speech detected in {transcript.duration:.1f}s of audio",
+                )
+            )
         else:
             # 1. Silence at the very beginning
-            candidates.append((
-                0.0, transcript.segments[0].start, "[Initial Silence]",
-                f"a {transcript.segments[0].start:.1f}s lead-in before the first line",
-            ))
+            candidates.append(
+                (
+                    0.0,
+                    transcript.segments[0].start,
+                    "[Initial Silence]",
+                    f"a {transcript.segments[0].start:.1f}s lead-in before the first line",
+                )
+            )
 
             # 2. Silence between segments
             for i in range(len(transcript.segments) - 1):
                 curr_end = transcript.segments[i].end
                 next_start = transcript.segments[i + 1].start
-                candidates.append((
-                    curr_end, next_start, "[Gap]",
-                    f"a {next_start - curr_end:.1f}s gap between transcript segments",
-                ))
+                candidates.append(
+                    (
+                        curr_end,
+                        next_start,
+                        "[Gap]",
+                        f"a {next_start - curr_end:.1f}s gap between transcript segments",
+                    )
+                )
 
             # 3. Silence at the very end
             trailing = transcript.duration - transcript.segments[-1].end
-            candidates.append((
-                transcript.segments[-1].end, transcript.duration, "[Final Silence]",
-                f"a {trailing:.1f}s tail after the last line",
-            ))
+            candidates.append(
+                (
+                    transcript.segments[-1].end,
+                    transcript.duration,
+                    "[Final Silence]",
+                    f"a {trailing:.1f}s tail after the last line",
+                )
+            )
 
         floor = levels.floor_db()
         silences = []
@@ -175,17 +197,19 @@ class Scrubber:
                 # A cough or a door in the middle of a pause splits it in two,
                 # and the right edit is to cut around the noise rather than
                 # through it - or to leave one half and take the other.
-                silences.append(Violation(
-                    text=text,
-                    start_time=start,
-                    end_time=end,
-                    label="Dead Air",
-                    action="cut",
-                    reasoning=(
-                        f"{length:.1f}s below {floor:.0f} dBFS with no speech "
-                        f"transcribed - {description}."
-                    ),
-                ))
+                silences.append(
+                    Violation(
+                        text=text,
+                        start_time=start,
+                        end_time=end,
+                        label="Dead Air",
+                        action="cut",
+                        reasoning=(
+                            f"{length:.1f}s below {floor:.0f} dBFS with no speech "
+                            f"transcribed - {description}."
+                        ),
+                    )
+                )
 
         return silences
 
@@ -209,13 +233,15 @@ class Scrubber:
         """
         before = Scrubber._normalize(words[start - 1].text) if start > 0 else None
         after = Scrubber._normalize(words[end].text) if end < len(words) else None
-        if before in Scrubber.UNAMBIGUOUS_FILLERS or after in Scrubber.UNAMBIGUOUS_FILLERS:
+        if (
+            before in Scrubber.UNAMBIGUOUS_FILLERS
+            or after in Scrubber.UNAMBIGUOUS_FILLERS
+        ):
             return True
 
         # Segment start counts as an opening: the line before it ended.
-        opened = (
-            start == 0
-            or words[start - 1].text.rstrip().endswith(Scrubber._OPENS_A_GAP)
+        opened = start == 0 or words[start - 1].text.rstrip().endswith(
+            Scrubber._OPENS_A_GAP
         )
         closed = words[end - 1].text.rstrip().endswith(Scrubber._CLOSES_AN_ASIDE)
         return opened and closed
@@ -253,9 +279,9 @@ class Scrubber:
                 matched = ""
                 ambiguous = False
                 for size in range(min(max_phrase, len(words) - i), 1, -1):
-                    if tuple(cleaned[i:i + size]) in Scrubber.FILLER_PHRASES:
+                    if tuple(cleaned[i : i + size]) in Scrubber.FILLER_PHRASES:
                         match_len = size
-                        matched = " ".join(cleaned[i:i + size])
+                        matched = " ".join(cleaned[i : i + size])
                         ambiguous = True
                         break
 
@@ -278,25 +304,27 @@ class Scrubber:
                 # that is `is_ambiguous`, which each surface renders itself.
                 reasoning = f"Detected common filler word '{matched}'."
 
-                run = words[i:i + match_len]
-                fillers.append(Violation(
-                    text=" ".join(w.text.strip() for w in run),
-                    start_time=run[0].start,
-                    end_time=run[-1].end,
-                    label="Filler Word",
-                    action="cut",
-                    reasoning=reasoning,
-                    is_ambiguous=ambiguous,
-                ))
+                run = words[i : i + match_len]
+                fillers.append(
+                    Violation(
+                        text=" ".join(w.text.strip() for w in run),
+                        start_time=run[0].start,
+                        end_time=run[-1].end,
+                        label="Filler Word",
+                        action="cut",
+                        reasoning=reasoning,
+                        is_ambiguous=ambiguous,
+                    )
+                )
                 i += match_len
-        
+
         if not fillers:
             return []
-            
+
         # Merge consecutive filler words into a single violation if they are close
         merged = []
         current = fillers[0]
-        
+
         for next_v in fillers[1:]:
             # If gap between words is less than 0.5 seconds, merge them
             if next_v.start_time - current.end_time < 0.5:
@@ -310,6 +338,6 @@ class Scrubber:
             else:
                 merged.append(current)
                 current = next_v
-                
+
         merged.append(current)
         return merged

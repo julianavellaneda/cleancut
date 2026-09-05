@@ -38,7 +38,9 @@ def _transcript(words, gap=0.0):
 
 
 def test_a_two_word_filler_is_found_as_one_suggestion():
-    found = Scrubber.detect_filler_words(_transcript([" you", " know,", " the", " thing"]))
+    found = Scrubber.detect_filler_words(
+        _transcript([" you", " know,", " the", " thing"])
+    )
 
     assert len(found) == 1
     assert found[0].text == "you know,"
@@ -47,7 +49,10 @@ def test_a_two_word_filler_is_found_as_one_suggestion():
 
 def test_a_bare_you_is_not_a_filler():
     """The phrase is the filler; the pronoun on its own is the sentence."""
-    assert Scrubber.detect_filler_words(_transcript([" what", " changed", " for", " you"])) == []
+    assert (
+        Scrubber.detect_filler_words(_transcript([" what", " changed", " for", " you"]))
+        == []
+    )
 
 
 def test_the_phrase_wins_over_the_words_inside_it():
@@ -62,7 +67,9 @@ def test_the_phrase_wins_over_the_words_inside_it():
 
 @pytest.mark.parametrize("spelling", ["Hmm.", "Um,", "Umm", "uhh", "Er,", "Ah,"])
 def test_whisper_spelling_variants_all_count(spelling):
-    found = Scrubber.detect_filler_words(_transcript([" So,", f" {spelling}", " right"]))
+    found = Scrubber.detect_filler_words(
+        _transcript([" So,", f" {spelling}", " right"])
+    )
 
     assert [v.text for v in found] == [spelling]
 
@@ -76,7 +83,9 @@ def test_agreement_noises_are_left_alone():
 
 
 def test_adjacent_fillers_merge_into_one_edit():
-    found = Scrubber.detect_filler_words(_transcript([" So,", " um,", " you", " know,", " yes"]))
+    found = Scrubber.detect_filler_words(
+        _transcript([" So,", " um,", " you", " know,", " yes"])
+    )
 
     assert len(found) == 1
     assert found[0].text == "um, you know,"
@@ -84,7 +93,9 @@ def test_adjacent_fillers_merge_into_one_edit():
 
 
 def test_fillers_far_apart_stay_separate():
-    found = Scrubber.detect_filler_words(_transcript([" um,", " a", " b", " c", " uh"], gap=0.6))
+    found = Scrubber.detect_filler_words(
+        _transcript([" um,", " a", " b", " c", " uh"], gap=0.6)
+    )
 
     assert len(found) == 2
 
@@ -106,14 +117,16 @@ def test_an_unevidenced_like_is_suggested_but_not_trusted():
 
 def test_a_comma_wrapped_like_is_evidenced():
     """Whisper punctuated it as an aside, which is the cue."""
-    found = Scrubber.detect_filler_words(_transcript([" it", " was,", " like,", " huge"]))
+    found = Scrubber.detect_filler_words(
+        _transcript([" it", " was,", " like,", " huge"])
+    )
 
     assert [v.text for v in found] == ["like,"]
     assert found[0].is_ambiguous is False
 
 
 def test_a_like_leaning_on_a_hesitation_is_evidenced():
-    """"um like" is a stumble however it was punctuated."""
+    """ "um like" is a stumble however it was punctuated."""
     found = Scrubber.detect_filler_words(_transcript([" so", " um", " like", " yeah"]))
 
     assert found[-1].is_ambiguous is False
@@ -129,13 +142,16 @@ def test_a_sentence_final_like_is_not_evidenced_by_its_full_stop():
     assert [v.is_ambiguous for v in found] == [True]
 
 
-@pytest.mark.parametrize("words,expected", [
-    ([" and,", " you", " know,", " let's", " dive"], False),
-    ([" do", " you", " know", " the", " number"], True),
-    # Half a bracket is not a bracket: "do you know," is a real question with a
-    # comma after it, not an aside dropped into the middle of one.
-    ([" do", " you", " know,", " the", " number"], True),
-])
+@pytest.mark.parametrize(
+    "words,expected",
+    [
+        ([" and,", " you", " know,", " let's", " dive"], False),
+        ([" do", " you", " know", " the", " number"], True),
+        # Half a bracket is not a bracket: "do you know," is a real question with a
+        # comma after it, not an aside dropped into the middle of one.
+        ([" do", " you", " know,", " the", " number"], True),
+    ],
+)
 def test_the_phrases_are_judged_the_same_way(words, expected):
     """Both phrases are ambiguous entries; the punctuation is what decides."""
     found = Scrubber.detect_filler_words(_transcript(words))

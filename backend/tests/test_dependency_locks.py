@@ -202,7 +202,9 @@ def test_every_consumer_installs_with_require_hashes():
         "ci.yml": REPO_ROOT / ".github" / "workflows" / "ci.yml",
         "Dockerfile": BACKEND_DIR / "Dockerfile",
     }
-    bare_install = re.compile(r"pip install\s+(?![^\n]*--require-hashes)[^\n]*-r\s+requirements")
+    bare_install = re.compile(
+        r"pip install\s+(?![^\n]*--require-hashes)[^\n]*-r\s+requirements"
+    )
     for label, path in consumers.items():
         offenders = [
             line.strip()

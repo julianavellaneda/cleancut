@@ -53,7 +53,9 @@ DEMO_MP3 = DEMO_DIR / "demo_seminar.mp3"
 DEMO_TRANSCRIPT = DEMO_DIR / "transcript_words.json"
 
 needs_media = pytest.mark.skipif(
-    shutil.which("ffmpeg") is None or not DEMO_MP3.exists() or not DEMO_TRANSCRIPT.exists(),
+    shutil.which("ffmpeg") is None
+    or not DEMO_MP3.exists()
+    or not DEMO_TRANSCRIPT.exists(),
     reason="needs ffmpeg, the demo clip and the committed transcript",
 )
 
@@ -61,6 +63,7 @@ needs_media = pytest.mark.skipif(
 # --------------------------------------------------------------------------
 # The spec: authored labels joined onto generated offsets
 # --------------------------------------------------------------------------
+
 
 def _labels(**overrides) -> dict:
     base = {
@@ -75,10 +78,14 @@ def _labels(**overrides) -> dict:
 
 
 def _write_spec(tmp_path: Path, labels: dict) -> Path:
-    (tmp_path / "timings.json").write_text(json.dumps({
-        "lines": [{"start": 0.0, "end": 5.0}, {"start": 5.0, "end": 10.0}],
-        "pauses": [{"start": 10.0, "end": 12.0}],
-    }))
+    (tmp_path / "timings.json").write_text(
+        json.dumps(
+            {
+                "lines": [{"start": 0.0, "end": 5.0}, {"start": 5.0, "end": 10.0}],
+                "pauses": [{"start": 10.0, "end": 12.0}],
+            }
+        )
+    )
     path = tmp_path / "eval_labels.json"
     path.write_text(json.dumps(labels))
     return path
@@ -94,19 +101,41 @@ def test_labels_take_their_timing_from_the_generated_file(tmp_path):
 
 
 def test_a_pause_expectation_resolves_against_the_pause_list(tmp_path):
-    spec = load_spec(_write_spec(tmp_path, _labels(
-        expectations=[{"id": "gap", "category": "claim", "match": "span", "pause": 0}],
-    )))
+    spec = load_spec(
+        _write_spec(
+            tmp_path,
+            _labels(
+                expectations=[
+                    {"id": "gap", "category": "claim", "match": "span", "pause": 0}
+                ],
+            ),
+        )
+    )
     assert (spec.expectations[0].start, spec.expectations[0].end) == (10.0, 12.0)
 
 
-@pytest.mark.parametrize("broken, message", [
-    ({"id": "a", "category": "nope", "match": "span", "line": 0}, "unknown category"),
-    ({"id": "a", "category": "claim", "match": "vibes", "line": 0}, "unknown match mode"),
-    ({"id": "a", "category": "claim", "match": "token", "line": 0}, "no text"),
-    ({"id": "a", "category": "claim", "match": "span", "line": 99}, "does not have"),
-    ({"id": "a", "category": "claim", "match": "span"}, "neither a line nor a pause"),
-])
+@pytest.mark.parametrize(
+    "broken, message",
+    [
+        (
+            {"id": "a", "category": "nope", "match": "span", "line": 0},
+            "unknown category",
+        ),
+        (
+            {"id": "a", "category": "claim", "match": "vibes", "line": 0},
+            "unknown match mode",
+        ),
+        ({"id": "a", "category": "claim", "match": "token", "line": 0}, "no text"),
+        (
+            {"id": "a", "category": "claim", "match": "span", "line": 99},
+            "does not have",
+        ),
+        (
+            {"id": "a", "category": "claim", "match": "span"},
+            "neither a line nor a pause",
+        ),
+    ],
+)
 def test_an_unusable_label_is_an_error_not_a_skipped_row(tmp_path, broken, message):
     """
     A label the loader cannot resolve has to stop the run. Dropping it quietly
@@ -125,9 +154,14 @@ def test_duplicate_expectation_ids_are_rejected(tmp_path):
 
 def test_a_suite_naming_an_unknown_category_is_rejected(tmp_path):
     with pytest.raises(SpecError, match="unknown categories"):
-        load_spec(_write_spec(tmp_path, _labels(
-            suites={"only": {"description": "", "categories": ["ghost"]}},
-        )))
+        load_spec(
+            _write_spec(
+                tmp_path,
+                _labels(
+                    suites={"only": {"description": "", "categories": ["ghost"]}},
+                ),
+            )
+        )
 
 
 def test_unknown_suite_lists_the_ones_that_exist(tmp_path):
@@ -139,6 +173,7 @@ def test_unknown_suite_lists_the_ones_that_exist(tmp_path):
 # --------------------------------------------------------------------------
 # Matching: free-form labels, loose spans
 # --------------------------------------------------------------------------
+
 
 def _spec(**kwargs) -> EvalSpec:
     return EvalSpec(
@@ -174,15 +209,21 @@ def test_a_tighter_span_inside_the_label_still_counts():
     it cuts less. Measuring coverage against the shorter span is what stops the
     scorer punishing it; IoU would score this at 0.2.
     """
-    card = score(_spec(expectations=[CLAIM]), _suite("claim"),
-                 [Prediction("...", 14.0, 16.0, "Income Claim")])
+    card = score(
+        _spec(expectations=[CLAIM]),
+        _suite("claim"),
+        [Prediction("...", 14.0, 16.0, "Income Claim")],
+    )
     assert len(card.hits) == 1
     assert card.recall == 1.0
 
 
 def test_a_span_that_barely_grazes_the_label_does_not_count():
-    card = score(_spec(expectations=[CLAIM]), _suite("claim"),
-                 [Prediction("...", 19.0, 30.0, "Income Claim")])
+    card = score(
+        _spec(expectations=[CLAIM]),
+        _suite("claim"),
+        [Prediction("...", 19.0, 30.0, "Income Claim")],
+    )
     assert card.hits == ()
     assert card.false_positives == (0,)
     assert MIN_COVERAGE == 0.5
@@ -193,10 +234,14 @@ def test_a_second_suggestion_on_the_same_label_is_a_duplicate_not_a_false_positi
     A model splitting one claim across two sentences found the claim twice. It
     should not cost precision, and it should not earn recall either.
     """
-    card = score(_spec(expectations=[CLAIM]), _suite("claim"), [
-        Prediction("first half", 10.0, 15.0, "Income Claim"),
-        Prediction("second half", 15.0, 20.0, "Income Claim"),
-    ])
+    card = score(
+        _spec(expectations=[CLAIM]),
+        _suite("claim"),
+        [
+            Prediction("first half", 10.0, 15.0, "Income Claim"),
+            Prediction("second half", 15.0, 20.0, "Income Claim"),
+        ],
+    )
     assert len(card.hits) == 1
     assert card.duplicates == ((1, "claim-1"),)
     assert card.precision == 1.0
@@ -209,14 +254,18 @@ def test_a_filler_is_matched_by_the_word_not_by_the_window():
     cannot be graded on overlap. It is graded on being the right word, near
     enough to the right line.
     """
-    um = Expectation(id="um", category="filler", match="token", start=0.0, end=5.0, text="um")
+    um = Expectation(
+        id="um", category="filler", match="token", start=0.0, end=5.0, text="um"
+    )
     spec = _spec(expectations=[um], label_patterns={"filler": ("filler",)})
     card = score(spec, _suite("filler"), [Prediction("um,", 4.6, 4.9, "Filler Word")])
     assert len(card.hits) == 1
 
 
 def test_a_filler_from_the_next_line_over_does_not_count():
-    um = Expectation(id="um", category="filler", match="token", start=0.0, end=5.0, text="um")
+    um = Expectation(
+        id="um", category="filler", match="token", start=0.0, end=5.0, text="um"
+    )
     spec = _spec(expectations=[um], label_patterns={"filler": ("filler",)})
     card = score(spec, _suite("filler"), [Prediction("um,", 30.0, 30.4, "Filler Word")])
     assert card.hits == ()
@@ -235,7 +284,9 @@ def test_one_merged_suggestion_can_answer_two_filler_labels():
         ],
         label_patterns={"filler": ("filler",)},
     )
-    card = score(spec, _suite("filler"), [Prediction("um, you know", 1.0, 2.2, "Filler Word")])
+    card = score(
+        spec, _suite("filler"), [Prediction("um, you know", 1.0, 2.2, "Filler Word")]
+    )
     assert {h.expectation_id for h in card.hits} == {"um", "you-know"}
     assert card.recall == 1.0
 
@@ -253,10 +304,14 @@ def test_a_finding_the_suite_did_not_ask_for_is_set_aside_not_penalized():
         ],
         label_patterns={"claim": ("claim",), "email": ("email",)},
     )
-    card = score(spec, _suite("claim"), [
-        Prediction("...", 10.0, 20.0, "Income Claim"),
-        Prediction("...", 60.0, 70.0, "Email Address"),
-    ])
+    card = score(
+        spec,
+        _suite("claim"),
+        [
+            Prediction("...", 10.0, 20.0, "Income Claim"),
+            Prediction("...", 60.0, 70.0, "Email Address"),
+        ],
+    )
     assert card.out_of_scope == ((1, "email-1"),)
     assert card.counted == 1
     assert card.precision == 1.0
@@ -271,8 +326,11 @@ def test_flagging_a_control_is_a_false_positive_and_is_named():
     reading.
     """
     control = Control(id="disclaimer", start=54.0, end=60.0, reason="honest disclaimer")
-    card = score(_spec(expectations=[CLAIM], controls=[control]), _suite("claim"),
-                 [Prediction("some people earn nothing", 54.5, 59.5, "Income Claim")])
+    card = score(
+        _spec(expectations=[CLAIM], controls=[control]),
+        _suite("claim"),
+        [Prediction("some people earn nothing", 54.5, 59.5, "Income Claim")],
+    )
     assert [c.id for _, c in card.control_hits] == ["disclaimer"]
     assert card.false_positives == (0,)
 
@@ -286,10 +344,18 @@ def test_a_run_that_finds_nothing_scores_zero_rather_than_dividing_by_zero():
 # Reading a run
 # --------------------------------------------------------------------------
 
-@pytest.mark.parametrize("payload", [
-    {"violations": [{"text": "x", "start_time": 1.0, "end_time": 2.0, "label": "L"}]},
-    [{"text": "x", "start_time": 1.0, "end_time": 2.0, "label": "L"}],
-])
+
+@pytest.mark.parametrize(
+    "payload",
+    [
+        {
+            "violations": [
+                {"text": "x", "start_time": 1.0, "end_time": 2.0, "label": "L"}
+            ]
+        },
+        [{"text": "x", "start_time": 1.0, "end_time": 2.0, "label": "L"}],
+    ],
+)
 def test_both_saved_shapes_read_the_same(payload):
     """The seeded job wraps its list; the API returns a bare one. Same fields."""
     assert load_predictions(payload) == [Prediction("x", 1.0, 2.0, "L")]
@@ -303,6 +369,7 @@ def test_a_malformed_run_is_an_error():
 # --------------------------------------------------------------------------
 # The recorded demo run, scored against the fixture
 # --------------------------------------------------------------------------
+
 
 @pytest.fixture(scope="module")
 def demo_card():
@@ -398,8 +465,11 @@ def test_the_silent_line_is_excluded_rather_than_counted_as_a_miss(demo_card):
     assert "phone-number-1" in absent
     assert absent.isdisjoint({e.id for e in card.scorable})
     assert absent.isdisjoint({e.id for e in card.misses})
-    assert all(spec.expectations[i].note for i in range(len(spec.expectations))
-               if not spec.expectations[i].present)
+    assert all(
+        spec.expectations[i].note
+        for i in range(len(spec.expectations))
+        if not spec.expectations[i].present
+    )
 
 
 def test_the_pii_suite_grades_a_different_set_of_labels():
@@ -418,6 +488,7 @@ def test_the_pii_suite_grades_a_different_set_of_labels():
 # The CLI
 # --------------------------------------------------------------------------
 
+
 def test_the_report_names_what_was_missed_and_what_was_excluded(demo_card):
     spec, suite, card = demo_card
     report = format_report(spec, suite, card)
@@ -430,22 +501,41 @@ def test_the_report_names_what_was_missed_and_what_was_excluded(demo_card):
 
 
 def test_the_cli_scores_a_saved_run(capsys):
-    assert main(["--suite", "claims-and-scrub", str(SEED_JOB), "--labels", str(LABELS)]) == 0
+    assert (
+        main(["--suite", "claims-and-scrub", str(SEED_JOB), "--labels", str(LABELS)])
+        == 0
+    )
     assert "precision" in capsys.readouterr().out
 
 
 def test_the_cli_fails_the_run_when_a_floor_is_not_met(capsys):
     """The hook CI hangs a regression on: a threshold miss is a non-zero exit."""
-    code = main([
-        "--suite", "claims-and-scrub", str(SEED_JOB), "--labels", str(LABELS),
-        "--min-recall", "0.99",
-    ])
+    code = main(
+        [
+            "--suite",
+            "claims-and-scrub",
+            str(SEED_JOB),
+            "--labels",
+            str(LABELS),
+            "--min-recall",
+            "0.99",
+        ]
+    )
     capsys.readouterr()
     assert code == 1
 
 
 def test_the_cli_emits_json_for_a_machine(capsys):
-    main(["--suite", "claims-and-scrub", str(SEED_JOB), "--labels", str(LABELS), "--json"])
+    main(
+        [
+            "--suite",
+            "claims-and-scrub",
+            str(SEED_JOB),
+            "--labels",
+            str(LABELS),
+            "--json",
+        ]
+    )
     payload = json.loads(capsys.readouterr().out)
     assert payload["suite"] == "claims-and-scrub"
     assert payload["per_category"]["dead-air"] == {"found": 4, "expected": 4}
@@ -466,6 +556,7 @@ def test_as_dict_round_trips_through_json(demo_card):
 # Out of scope is not the same as absent
 # --------------------------------------------------------------------------
 
+
 def test_a_finding_on_a_label_the_clip_does_not_contain_is_a_false_positive():
     """
     The failure this closes: `present: false` labels used to sit in the same
@@ -474,16 +565,26 @@ def test_a_finding_on_a_label_the_clip_does_not_contain_is_a_false_positive():
     and hallucinating one other scored a flawless 1.00.
     """
     absent = Expectation(
-        "phone-1", "phone", "span", 60.0, 70.0, present=False, note="silent line",
+        "phone-1",
+        "phone",
+        "span",
+        60.0,
+        70.0,
+        present=False,
+        note="silent line",
     )
     spec = _spec(
         expectations=[CLAIM, absent],
         label_patterns={"claim": ("claim",), "phone": ("phone",)},
     )
-    card = score(spec, _suite("claim", "phone"), [
-        Prediction("...", 10.0, 20.0, "Income Claim"),
-        Prediction("call 555-0133", 60.0, 70.0, "Phone Number"),
-    ])
+    card = score(
+        spec,
+        _suite("claim", "phone"),
+        [
+            Prediction("...", 10.0, 20.0, "Income Claim"),
+            Prediction("call 555-0133", 60.0, 70.0, "Phone Number"),
+        ],
+    )
     assert card.out_of_scope == ()
     assert card.false_positives == (1,)
     assert card.counted == 2
@@ -506,24 +607,44 @@ def test_an_absent_label_in_another_suite_is_still_a_false_positive():
 # A window with no slot of its own
 # --------------------------------------------------------------------------
 
+
 def test_a_label_can_span_two_lines(tmp_path):
     """
     Silence at a seam falls in the tail of one clip and the lead-in of the next,
     and the generated file records slots rather than acoustics - so the label
     names both lines and the window is their union.
     """
-    spec = load_spec(_write_spec(tmp_path, _labels(
-        expectations=[{"id": "seam", "category": "claim", "match": "span", "line": [0, 1]}],
-    )))
+    spec = load_spec(
+        _write_spec(
+            tmp_path,
+            _labels(
+                expectations=[
+                    {"id": "seam", "category": "claim", "match": "span", "line": [0, 1]}
+                ],
+            ),
+        )
+    )
     assert (spec.expectations[0].start, spec.expectations[0].end) == (0.0, 10.0)
     assert spec.expectations[0].timed is False
 
 
-@pytest.mark.parametrize("broken, message", [
-    ({"id": "a", "category": "claim", "match": "span", "line": [1, 0]}, "runs backwards"),
-    ({"id": "a", "category": "claim", "match": "span", "line": [0, 1, 2]}, "exactly two"),
-    ({"id": "a", "category": "claim", "match": "span", "line": [0, 9]}, "does not have"),
-])
+@pytest.mark.parametrize(
+    "broken, message",
+    [
+        (
+            {"id": "a", "category": "claim", "match": "span", "line": [1, 0]},
+            "runs backwards",
+        ),
+        (
+            {"id": "a", "category": "claim", "match": "span", "line": [0, 1, 2]},
+            "exactly two",
+        ),
+        (
+            {"id": "a", "category": "claim", "match": "span", "line": [0, 9]},
+            "does not have",
+        ),
+    ],
+)
 def test_an_unusable_line_span_is_an_error(tmp_path, broken, message):
     with pytest.raises(SpecError, match=message):
         load_spec(_write_spec(tmp_path, _labels(expectations=[broken])))
@@ -536,8 +657,11 @@ def test_a_stand_in_window_is_not_counted_as_boundary_error():
     nothing.
     """
     seam = Expectation("seam", "claim", "span", 0.0, 10.0, timed=False)
-    card = score(_spec(expectations=[seam]), _suite("claim"),
-                 [Prediction("...", 4.0, 5.0, "Income Claim")])
+    card = score(
+        _spec(expectations=[seam]),
+        _suite("claim"),
+        [Prediction("...", 4.0, 5.0, "Income Claim")],
+    )
     assert len(card.hits) == 1
     assert card.timing["n"] == 0
 
@@ -546,16 +670,21 @@ def test_a_stand_in_window_is_not_counted_as_boundary_error():
 # Reading a run: completeness, and refusing to guess
 # --------------------------------------------------------------------------
 
+
 def test_a_partial_analysis_stays_partial_through_the_loader():
     """
     `to_json` records that a chunk failed. Dropping it on load is how an
     incomplete run comes to look like a complete one that found less.
     """
-    run = load_run({
-        "violations": [{"text": "x", "start_time": 1.0, "end_time": 2.0, "label": "L"}],
-        "is_partial": True,
-        "failed_chunks": ["chunk 2/3 [40.0-80.0s]: unreadable response"],
-    })
+    run = load_run(
+        {
+            "violations": [
+                {"text": "x", "start_time": 1.0, "end_time": 2.0, "label": "L"}
+            ],
+            "is_partial": True,
+            "failed_chunks": ["chunk 2/3 [40.0-80.0s]: unreadable response"],
+        }
+    )
     assert run.is_partial
     assert run.failed_chunks == ("chunk 2/3 [40.0-80.0s]: unreadable response",)
 
@@ -574,14 +703,17 @@ def test_an_object_without_a_violations_list_is_an_error_not_an_empty_run():
         load_predictions({"results": [], "total_segments": 12})
 
 
-@pytest.mark.parametrize("row, message", [
-    ({"text": "x", "end_time": 2.0}, "no 'start_time'"),
-    ({"text": "x", "start_time": 1.0}, "no 'end_time'"),
-    ({"text": "x", "start_time": "soon", "end_time": 2.0}, "non-numeric"),
-    ({"text": "x", "start_time": float("nan"), "end_time": 2.0}, "non-finite"),
-    ({"text": "x", "start_time": 1.0, "end_time": float("inf")}, "non-finite"),
-    ({"text": "x", "start_time": 5.0, "end_time": 2.0}, "ends before it starts"),
-])
+@pytest.mark.parametrize(
+    "row, message",
+    [
+        ({"text": "x", "end_time": 2.0}, "no 'start_time'"),
+        ({"text": "x", "start_time": 1.0}, "no 'end_time'"),
+        ({"text": "x", "start_time": "soon", "end_time": 2.0}, "non-numeric"),
+        ({"text": "x", "start_time": float("nan"), "end_time": 2.0}, "non-finite"),
+        ({"text": "x", "start_time": 1.0, "end_time": float("inf")}, "non-finite"),
+        ({"text": "x", "start_time": 5.0, "end_time": 2.0}, "ends before it starts"),
+    ],
+)
 def test_an_unusable_timestamp_is_an_error(row, message):
     with pytest.raises(ValueError, match=message):
         load_predictions({"violations": [row]})
@@ -597,6 +729,7 @@ def test_a_zero_length_suggestion_is_still_read():
 # --------------------------------------------------------------------------
 # An incomplete run cannot exit 0
 # --------------------------------------------------------------------------
+
 
 def _partial_run(tmp_path: Path) -> Path:
     """The recorded run, relabelled as one where a chunk failed."""
@@ -614,28 +747,46 @@ def test_a_partial_run_exits_two_even_when_it_clears_every_floor(tmp_path, capsy
     so the numbers can look fine. Automation has to be able to tell the
     difference, and a warning on stderr is not something a CI step notices.
     """
-    code = main([str(_partial_run(tmp_path)), "--labels", str(LABELS), "--min-recall", "0.5"])
+    code = main(
+        [str(_partial_run(tmp_path)), "--labels", str(LABELS), "--min-recall", "0.5"]
+    )
     assert code == 2
     assert "INCOMPLETE RUN" in capsys.readouterr().out
 
 
 def test_allow_partial_grades_it_anyway(tmp_path, capsys):
-    code = main([str(_partial_run(tmp_path)), "--labels", str(LABELS), "--allow-partial"])
+    code = main(
+        [str(_partial_run(tmp_path)), "--labels", str(LABELS), "--allow-partial"]
+    )
     capsys.readouterr()
     assert code == 0
 
 
 def test_a_partial_run_that_also_misses_a_floor_fails_as_a_failure(tmp_path, capsys):
     """1 outranks 2: the run is bad, not merely unfinished."""
-    code = main([
-        str(_partial_run(tmp_path)), "--labels", str(LABELS), "--min-recall", "0.99",
-    ])
+    code = main(
+        [
+            str(_partial_run(tmp_path)),
+            "--labels",
+            str(LABELS),
+            "--min-recall",
+            "0.99",
+        ]
+    )
     capsys.readouterr()
     assert code == 1
 
 
 def test_the_json_output_carries_completeness(tmp_path, capsys):
-    main([str(_partial_run(tmp_path)), "--labels", str(LABELS), "--json", "--allow-partial"])
+    main(
+        [
+            str(_partial_run(tmp_path)),
+            "--labels",
+            str(LABELS),
+            "--json",
+            "--allow-partial",
+        ]
+    )
     payload = json.loads(capsys.readouterr().out)
     assert payload["is_partial"] is True
     assert payload["failed_chunks"] == ["chunk 2/2 [50-74s]: unreadable response"]
@@ -644,6 +795,7 @@ def test_the_json_output_carries_completeness(tmp_path, capsys):
 # --------------------------------------------------------------------------
 # The detectors themselves, scored - what CI actually gates on
 # --------------------------------------------------------------------------
+
 
 @needs_media
 def test_the_scrubber_as_it_stands_today_is_scored_against_the_clip():
@@ -657,7 +809,9 @@ def test_the_scrubber_as_it_stands_today_is_scored_against_the_clip():
 
     spec = load_spec(LABELS)
     suite = spec.suite("scrub")
-    card = score(spec, suite, list(run_detectors(DEMO_MP3, DEMO_TRANSCRIPT).predictions))
+    card = score(
+        spec, suite, list(run_detectors(DEMO_MP3, DEMO_TRANSCRIPT).predictions)
+    )
 
     assert card.control_hits == ()
     assert card.false_positives == ()
@@ -668,11 +822,22 @@ def test_the_scrubber_as_it_stands_today_is_scored_against_the_clip():
 
 @needs_media
 def test_the_cli_runs_the_detectors(capsys):
-    code = main([
-        "--detectors", str(DEMO_MP3), "--transcript", str(DEMO_TRANSCRIPT),
-        "--suite", "scrub", "--labels", str(LABELS),
-        "--min-precision", "0.95", "--min-recall", "0.85",
-    ])
+    code = main(
+        [
+            "--detectors",
+            str(DEMO_MP3),
+            "--transcript",
+            str(DEMO_TRANSCRIPT),
+            "--suite",
+            "scrub",
+            "--labels",
+            str(LABELS),
+            "--min-precision",
+            "0.95",
+            "--min-recall",
+            "0.85",
+        ]
+    )
     assert code == 0
     assert "dead-air" in capsys.readouterr().out
 

@@ -37,9 +37,19 @@ def tone(tmp_path_factory):
     """10s of continuous 1kHz tone - any silence in the output is our doing."""
     path = tmp_path_factory.mktemp("media") / "tone.wav"
     subprocess.run(
-        ["ffmpeg", "-y", "-f", "lavfi", "-i",
-         f"sine=frequency=1000:duration={TONE_SECONDS}", "-ar", str(SR), str(path)],
-        capture_output=True, check=True,
+        [
+            "ffmpeg",
+            "-y",
+            "-f",
+            "lavfi",
+            "-i",
+            f"sine=frequency=1000:duration={TONE_SECONDS}",
+            "-ar",
+            str(SR),
+            str(path),
+        ],
+        capture_output=True,
+        check=True,
     )
     return path
 
@@ -61,7 +71,9 @@ def _rms_windows(path, window_ms=10):
     """RMS per window. Windowing avoids mistaking a sine's zero crossings for silence."""
     s = _samples(path)
     w = SR * window_ms // 1000
-    return np.array([np.sqrt(np.mean(s[i * w:(i + 1) * w] ** 2)) for i in range(len(s) // w)])
+    return np.array(
+        [np.sqrt(np.mean(s[i * w : (i + 1) * w] ** 2)) for i in range(len(s) // w)]
+    )
 
 
 def _silent_span(path, window_ms=10):
@@ -80,6 +92,7 @@ def out(tmp_path):
 
 
 # --- cut only ---------------------------------------------------------------
+
 
 def test_cut_only_shortens_by_removed_duration(tone, out):
     MediaEditor().apply_edits(str(tone), str(out), segments_to_cut=[(2.0, 3.0)])
@@ -113,7 +126,9 @@ def test_cut_at_start_of_file(tone, out):
 
 
 def test_cut_to_end_of_file(tone, out):
-    MediaEditor().apply_edits(str(tone), str(out), segments_to_cut=[(8.0, TONE_SECONDS)])
+    MediaEditor().apply_edits(
+        str(tone), str(out), segments_to_cut=[(8.0, TONE_SECONDS)]
+    )
     assert _duration(out) == pytest.approx(8.0, abs=0.05)
 
 
@@ -125,6 +140,7 @@ def test_cutting_everything_raises(tone, out):
 
 
 # --- mute only --------------------------------------------------------------
+
 
 def test_mute_only_preserves_duration(tone, out):
     MediaEditor().apply_edits(str(tone), str(out), segments_to_mute=[(5.0, 6.0)])
@@ -143,11 +159,12 @@ def test_mute_actually_silences_the_segment(tone, out):
 def test_mute_leaves_surrounding_audio_intact(tone, out):
     MediaEditor().apply_edits(str(tone), str(out), segments_to_mute=[(5.0, 6.0)])
     rms = _rms_windows(out)
-    assert rms[0] > SILENT_RMS       # before
-    assert rms[-1] > SILENT_RMS      # after
+    assert rms[0] > SILENT_RMS  # before
+    assert rms[-1] > SILENT_RMS  # after
 
 
 # --- mixed ------------------------------------------------------------------
+
 
 def test_mixed_cut_and_mute_duration(tone, out):
     MediaEditor().apply_edits(
@@ -187,7 +204,8 @@ def test_many_cuts_with_mute_does_not_break_the_graph(tone, out):
     Without an explicit asplit, FFmpeg rejects the graph outright.
     """
     MediaEditor().apply_edits(
-        str(tone), str(out),
+        str(tone),
+        str(out),
         segments_to_cut=[(1.0, 1.5), (3.0, 3.5), (6.0, 6.5), (8.0, 8.5)],
         segments_to_mute=[(4.5, 5.0)],
     )
@@ -203,6 +221,7 @@ def test_no_edits_still_produces_output(tone, out):
 
 # --- legacy wrappers --------------------------------------------------------
 
+
 def test_cut_segments_wrapper(tone, out):
     MediaEditor().cut_segments(str(tone), str(out), [(2.0, 3.0)])
     assert _duration(out) == pytest.approx(TONE_SECONDS - 1.0, abs=0.05)
@@ -216,14 +235,18 @@ def test_mute_segments_wrapper(tone, out):
 
 # --- segment merging (pure) -------------------------------------------------
 
-@pytest.mark.parametrize("segments,expected", [
-    ([], []),
-    ([(1.0, 2.0)], [(1.0, 2.0)]),
-    ([(3.0, 4.0), (1.0, 2.0)], [(1.0, 2.0), (3.0, 4.0)]),          # sorted
-    ([(1.0, 3.0), (2.0, 4.0)], [(1.0, 4.0)]),                       # overlapping
-    ([(1.0, 2.0), (2.0, 3.0)], [(1.0, 3.0)]),                       # touching
-    ([(1.0, 5.0), (2.0, 3.0)], [(1.0, 5.0)]),                       # contained
-    ([(1.0, 2.0), (3.0, 4.0)], [(1.0, 2.0), (3.0, 4.0)]),           # disjoint
-])
+
+@pytest.mark.parametrize(
+    "segments,expected",
+    [
+        ([], []),
+        ([(1.0, 2.0)], [(1.0, 2.0)]),
+        ([(3.0, 4.0), (1.0, 2.0)], [(1.0, 2.0), (3.0, 4.0)]),  # sorted
+        ([(1.0, 3.0), (2.0, 4.0)], [(1.0, 4.0)]),  # overlapping
+        ([(1.0, 2.0), (2.0, 3.0)], [(1.0, 3.0)]),  # touching
+        ([(1.0, 5.0), (2.0, 3.0)], [(1.0, 5.0)]),  # contained
+        ([(1.0, 2.0), (3.0, 4.0)], [(1.0, 2.0), (3.0, 4.0)]),  # disjoint
+    ],
+)
 def test_merge_segments(segments, expected):
     assert MediaEditor()._merge_segments(segments) == expected

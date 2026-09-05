@@ -88,8 +88,13 @@ _VALID_SEVERITIES = ("high", "medium", "low")
 # Fields that must be strings when the model bothers to send them. `null` is
 # treated as "not sent" - the models routinely pad objects with nulls.
 _STRING_FIELDS = (
-    "text", "label", "action", "reasoning",
-    "rule_violated", "severity", "approximate_time",
+    "text",
+    "label",
+    "action",
+    "reasoning",
+    "rule_violated",
+    "severity",
+    "approximate_time",
 )
 
 
@@ -115,14 +120,31 @@ _DUPLICATE_TEXT_RATIO = 0.75
 # Words in an editing instruction that mean "leave it in place and silence it"
 # rather than "take it out".
 _REDACTION_HINTS = (
-    "redact", "mute", "silence", "silenced", "bleep", "beep out", "censor",
-    "anonymize", "anonymise", "obscure", "pii", "personally identifiable",
+    "redact",
+    "mute",
+    "silence",
+    "silenced",
+    "bleep",
+    "beep out",
+    "censor",
+    "anonymize",
+    "anonymise",
+    "obscure",
+    "pii",
+    "personally identifiable",
 )
 
 # Words that mean "take it out". An instruction carrying both kinds is a mixed
 # brief, and mixed briefs default to the more common edit.
 _REMOVAL_HINTS = (
-    "cut", "remove", "delete", "trim", "strip", "take out", "excise", "drop",
+    "cut",
+    "remove",
+    "delete",
+    "trim",
+    "strip",
+    "take out",
+    "excise",
+    "drop",
 )
 
 
@@ -155,7 +177,7 @@ def _find_token_run(haystack: list[str], needle: list[str]) -> list[int]:
     return [
         i
         for i in range(len(haystack) - len(needle) + 1)
-        if haystack[i:i + len(needle)] == needle
+        if haystack[i : i + len(needle)] == needle
     ]
 
 
@@ -315,6 +337,7 @@ def _parse_llm_response(content: str | None) -> list[dict]:
 @dataclass
 class Violation:
     """Represents a detected marker/edit suggestion."""
+
     text: str
     start_time: float
     end_time: float
@@ -339,6 +362,7 @@ class Violation:
 @dataclass
 class AnalysisResult:
     """Complete analysis result."""
+
     violations: list[Violation]
     # Segments that a chunk actually returned an answer for - NOT the size of
     # the transcript. On a partial run this is smaller than `total_segments`,
@@ -369,7 +393,9 @@ def _validated_chunk_size(value: int | None) -> int | None:
     if value is None:
         return None
     if isinstance(value, bool) or not isinstance(value, int):
-        raise ValueError(f"chunk_size must be a whole number of segments, got {value!r}")
+        raise ValueError(
+            f"chunk_size must be a whole number of segments, got {value!r}"
+        )
     if value < 1:
         raise ValueError(f"chunk_size must be at least 1 segment, got {value}")
     return value
@@ -436,7 +462,6 @@ def _wrap_transcript(transcript_text: str) -> str:
     )
 
 
-
 class PromptAnalyzer:
     """
     Analyzes transcripts for suggested edits using an LLM, based on a user prompt.
@@ -475,7 +500,9 @@ class PromptAnalyzer:
                 must not be reachable by a typo on the CLI.
         """
         self.model_spec = configured_model_spec()
-        self.provider = provider if provider is not None else get_provider(self.model_spec)
+        self.provider = (
+            provider if provider is not None else get_provider(self.model_spec)
+        )
         self.chunk_size = _validated_chunk_size(chunk_size)
         self.overlap = _validated_overlap(
             self.DEFAULT_OVERLAP if overlap is None else overlap
@@ -528,7 +555,9 @@ class PromptAnalyzer:
         # Determine if we should chunk
         chunk_size = self.chunk_size
         if chunk_size is None:
-            chunk_size = self.DEFAULT_CHUNK_SIZE if total_segments > 100 else total_segments
+            chunk_size = (
+                self.DEFAULT_CHUNK_SIZE if total_segments > 100 else total_segments
+            )
 
         # Split into chunks with overlap
         overlap = self.overlap if total_segments > 100 else 0
@@ -545,7 +574,9 @@ class PromptAnalyzer:
             print(f"Analyzing transcript with {mode_label}...")
         else:
             overlap_info = f", {overlap} segment overlap" if overlap > 0 else ""
-            print(f"Analyzing transcript in {num_chunks} chunks ({chunk_size} segments each{overlap_info}) with {mode_label}...")
+            print(
+                f"Analyzing transcript in {num_chunks} chunks ({chunk_size} segments each{overlap_info}) with {mode_label}..."
+            )
 
         # Kept grouped by chunk: deduplication only collapses a finding that two
         # overlapping chunks both reported, and that decision needs to know
@@ -562,7 +593,9 @@ class PromptAnalyzer:
             if num_chunks > 1:
                 chunk_start = chunk_segments[0].start
                 chunk_end = chunk_segments[-1].end
-                print(f"\n  Chunk {i+1}/{num_chunks} [{chunk_start:.0f}s - {chunk_end:.0f}s] ({len(chunk_segments)} segments)...")
+                print(
+                    f"\n  Chunk {i + 1}/{num_chunks} [{chunk_start:.0f}s - {chunk_end:.0f}s] ({len(chunk_segments)} segments)..."
+                )
 
             # Create a temporary TranscriptResult for this chunk
             chunk_transcript = TranscriptResult(
@@ -574,7 +607,9 @@ class PromptAnalyzer:
             # Format and analyze this chunk
             transcript_text = self._format_transcript_for_analysis(chunk_transcript)
             try:
-                chunk_violations = self._call_llm(transcript_text, prompt, preset=preset)
+                chunk_violations = self._call_llm(
+                    transcript_text, prompt, preset=preset
+                )
             except (AnalysisError, ProviderError) as e:
                 # Keep going: the other chunks still produce reviewable
                 # suggestions, and the caller is told exactly which span of
@@ -621,10 +656,7 @@ class PromptAnalyzer:
         )
 
     def _chunk_ranges(
-        self,
-        total: int,
-        chunk_size: int,
-        overlap: int = 0
+        self, total: int, chunk_size: int, overlap: int = 0
     ) -> list[tuple[int, int]]:
         """
         Half-open ``[start, end)`` index ranges for the sliding window.
@@ -658,10 +690,7 @@ class PromptAnalyzer:
         return ranges
 
     def _chunk_segments_with_overlap(
-        self,
-        segments: list[Segment],
-        chunk_size: int,
-        overlap: int = 0
+        self, segments: list[Segment], chunk_size: int, overlap: int = 0
     ) -> list[list[Segment]]:
         """Split segments into chunks with sliding window overlap."""
         return [
@@ -732,7 +761,10 @@ class PromptAnalyzer:
         shorter, longer = sorted((first, second), key=len)
         if _find_token_run(longer, shorter):
             return True
-        return difflib.SequenceMatcher(None, first, second).ratio() >= _DUPLICATE_TEXT_RATIO
+        return (
+            difflib.SequenceMatcher(None, first, second).ratio()
+            >= _DUPLICATE_TEXT_RATIO
+        )
 
     def _format_transcript_for_analysis(self, transcript: TranscriptResult) -> str:
         """Format transcript for LLM analysis."""
@@ -743,7 +775,11 @@ class PromptAnalyzer:
 
     def _prompt_system_prompt(self, user_prompt: str | None) -> str:
         """Generic prompt-driven system prompt (default mode)."""
-        instructions = user_prompt if user_prompt else "Identify all segments that should be removed or muted for clarity and compliance."
+        instructions = (
+            user_prompt
+            if user_prompt
+            else "Identify all segments that should be removed or muted for clarity and compliance."
+        )
         baseline = (
             f"\n## BASELINE COMPLIANCE CONTEXT (If relevant):\n{self.default_rules}\n"
             if self.default_rules
@@ -815,7 +851,7 @@ entry per violation:
     {{
       "text": "exact quote from transcript",
       "approximate_time": "57.1s",
-      "rule_violated": "{meta['example_category']}",
+      "rule_violated": "{meta["example_category"]}",
       "severity": "high",
       "reasoning": "brief explanation"
     }}
@@ -831,7 +867,7 @@ IMPORTANT:
 - Quote the EXACT text that violates guidelines
 - Include the approximate timestamp (e.g. "57.1s")
 - severity must be "high", "medium", or "low"
-- rule_violated must be one of the categories in the guidelines above (e.g. {meta['categories']})
+- rule_violated must be one of the categories in the guidelines above (e.g. {meta["categories"]})
 - Be EXHAUSTIVE - scan every sentence for potential violations
 - Flag actual violations, not borderline cases
 - Do NOT summarize or combine multiple violations into one entry
@@ -850,7 +886,9 @@ IMPORTANT:
         else:
             system_prompt = self._prompt_system_prompt(user_prompt)
 
-        content = self.provider.complete(system_prompt, _wrap_transcript(transcript_text))
+        content = self.provider.complete(
+            system_prompt, _wrap_transcript(transcript_text)
+        )
 
         return _parse_llm_response(content)
 
@@ -897,21 +935,23 @@ IMPORTANT:
                 action = v.get("action") or prompt_default_action
             action = action.strip().lower()
 
-            violations.append(Violation(
-                text=text,
-                start_time=start_time,
-                end_time=end_time,
-                label=label,
-                action=action,
-                # The model's own words only. That an unplaced quote is a guess
-                # is carried by `is_approximate`, which every surface renders
-                # for itself; prepending it here made the warning impossible to
-                # tell apart from the reasoning it was glued to.
-                reasoning=v.get("reasoning", ""),
-                rule_violated=rule_violated,
-                severity=severity,
-                is_approximate=not aligned,
-            ))
+            violations.append(
+                Violation(
+                    text=text,
+                    start_time=start_time,
+                    end_time=end_time,
+                    label=label,
+                    action=action,
+                    # The model's own words only. That an unplaced quote is a guess
+                    # is carried by `is_approximate`, which every surface renders
+                    # for itself; prepending it here made the warning impossible to
+                    # tell apart from the reasoning it was glued to.
+                    reasoning=v.get("reasoning", ""),
+                    rule_violated=rule_violated,
+                    severity=severity,
+                    is_approximate=not aligned,
+                )
+            )
 
         return violations
 
@@ -936,7 +976,11 @@ IMPORTANT:
             if text_lower in seg.text.lower():
                 # With no usable hint from the model, prefer the first
                 # occurrence rather than pretending 0s was a real answer.
-                distance = abs(seg.start - approx_time) if approx_time is not None else seg.start
+                distance = (
+                    abs(seg.start - approx_time)
+                    if approx_time is not None
+                    else seg.start
+                )
                 candidates.append((distance, seg))
 
         if candidates:
@@ -1015,7 +1059,10 @@ IMPORTANT:
         # from its own segment text. Find the region of the transcript that best
         # accounts for the quote and take its outer bounds.
         blocks = [
-            b for b in difflib.SequenceMatcher(None, haystack, needle).get_matching_blocks()
+            b
+            for b in difflib.SequenceMatcher(
+                None, haystack, needle
+            ).get_matching_blocks()
             if b.size > 0
         ]
         if not blocks:
@@ -1033,9 +1080,7 @@ IMPORTANT:
         return span_for(start_idx, end_idx)
 
     def _find_words_in_segment(
-        self,
-        text: str,
-        segment: Segment
+        self, text: str, segment: Segment
     ) -> tuple[float | None, float | None]:
         """
         Word-level timestamps for a quote known to sit inside one segment.
@@ -1060,7 +1105,9 @@ IMPORTANT:
 
         start_idx = matches[0]
         end_idx = start_idx + len(needle) - 1
-        return segment.words[owners[start_idx]].start, segment.words[owners[end_idx]].end
+        return segment.words[owners[start_idx]].start, segment.words[
+            owners[end_idx]
+        ].end
 
 
 def to_json(result: AnalysisResult, indent: int = 2) -> str:

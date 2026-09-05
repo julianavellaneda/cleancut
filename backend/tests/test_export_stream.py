@@ -35,6 +35,7 @@ def client(monkeypatch, tmp_path):
 @pytest.fixture
 def make_job(monkeypatch, tmp_path):
     """Create a completed job with a stand-in source file, and optionally an export."""
+
     def _make(media_type="audio", source_ext=".mp3", export_ext=None):
         job_id = str(uuid.uuid4())
         source = tmp_path / f"{job_id}{source_ext}"
@@ -46,12 +47,19 @@ def make_job(monkeypatch, tmp_path):
 
         db = SessionLocal()
         try:
-            db.add(Job(id=job_id, filename=f"seminar{source_ext}", status="completed",
-                       media_type=media_type))
+            db.add(
+                Job(
+                    id=job_id,
+                    filename=f"seminar{source_ext}",
+                    status="completed",
+                    media_type=media_type,
+                )
+            )
             db.commit()
         finally:
             db.close()
         return job_id
+
     return _make
 
 

@@ -56,7 +56,9 @@ def _segment(start, end, text, with_words=True):
 
 
 def _transcript(*segments, language="en", duration=60.0):
-    return TranscriptResult(segments=list(segments), language=language, duration=duration)
+    return TranscriptResult(
+        segments=list(segments), language=language, duration=duration
+    )
 
 
 def _stored(job_id):
@@ -91,10 +93,16 @@ def test_word_timing_is_stored():
     re-run that produced coarser markers than the first pass would put two
     kinds of precision on one review screen.
     """
-    payload = json.loads(transcripts.to_json(_transcript(_segment(0.0, 1.0, "one two three"))))
+    payload = json.loads(
+        transcripts.to_json(_transcript(_segment(0.0, 1.0, "one two three")))
+    )
 
     assert payload["version"] == 2
-    assert [w["text"] for w in payload["segments"][0]["words"]] == ["one", "two", "three"]
+    assert [w["text"] for w in payload["segments"][0]["words"]] == [
+        "one",
+        "two",
+        "three",
+    ]
 
 
 def test_a_line_with_no_word_timing_stores_no_words_key():
@@ -103,7 +111,9 @@ def test_a_line_with_no_word_timing_stores_no_words_key():
     like a line from a version 1 row - one absence, not two.
     """
     payload = json.loads(
-        transcripts.to_json(_transcript(_segment(0.0, 1.0, "one two", with_words=False)))
+        transcripts.to_json(
+            _transcript(_segment(0.0, 1.0, "one two", with_words=False))
+        )
     )
 
     assert payload["segments"] == [{"start": 0.0, "end": 1.0, "text": "one two"}]
@@ -111,10 +121,14 @@ def test_a_line_with_no_word_timing_stores_no_words_key():
 
 def test_a_version_1_row_still_reads():
     """The rows already in the database, which have no words at all."""
-    raw = json.dumps({
-        "version": 1, "language": "en", "duration": 12.0,
-        "segments": [{"start": 0.0, "end": 2.0, "text": "no words here"}],
-    })
+    raw = json.dumps(
+        {
+            "version": 1,
+            "language": "en",
+            "duration": 12.0,
+            "segments": [{"start": 0.0, "end": 2.0, "text": "no words here"}],
+        }
+    )
 
     restored = transcripts.from_json(raw)
 
@@ -127,15 +141,26 @@ def test_malformed_words_are_dropped_and_the_line_survives():
     One unparseable word costs the precision of one quote. Refusing the whole
     transcript over it would cost the panel and every other line's timing.
     """
-    raw = json.dumps({
-        "version": 2, "language": "en", "duration": 12.0,
-        "segments": [{"start": 0.0, "end": 2.0, "text": "a b", "words": [
-            {"start": 0.0, "end": 0.5, "text": "a"},
-            {"start": "nope", "end": 1.0, "text": "b"},
-            {"start": 1.0, "end": 1.5},
-            "not a word at all",
-        ]}],
-    })
+    raw = json.dumps(
+        {
+            "version": 2,
+            "language": "en",
+            "duration": 12.0,
+            "segments": [
+                {
+                    "start": 0.0,
+                    "end": 2.0,
+                    "text": "a b",
+                    "words": [
+                        {"start": 0.0, "end": 0.5, "text": "a"},
+                        {"start": "nope", "end": 1.0, "text": "b"},
+                        {"start": 1.0, "end": 1.5},
+                        "not a word at all",
+                    ],
+                }
+            ],
+        }
+    )
 
     restored = transcripts.from_json(raw)
 
@@ -157,7 +182,9 @@ def test_a_stored_transcript_rebuilds_into_something_the_analyzer_can_read():
 
 def test_segment_text_is_trimmed():
     """Whisper hands back leading spaces; they would show up in the panel."""
-    payload = json.loads(transcripts.to_json(_transcript(_segment(0.0, 1.0, "  padded  "))))
+    payload = json.loads(
+        transcripts.to_json(_transcript(_segment(0.0, 1.0, "  padded  ")))
+    )
     assert payload["segments"][0]["text"] == "padded"
 
 
@@ -205,7 +232,9 @@ def run_job(monkeypatch, tmp_path):
         monkeypatch.setattr(worker, "get_processor", lambda: StubProcessor())
         monkeypatch.setattr(exports, "EXPORT_DIR", tmp_path)
         monkeypatch.setattr(
-            worker, "decode_pcm_mono", lambda path, sr=8000: np.zeros(sr, dtype=np.float32)
+            worker,
+            "decode_pcm_mono",
+            lambda path, sr=8000: np.zeros(sr, dtype=np.float32),
         )
         monkeypatch.setattr(
             worker.Scrubber, "detect_silence", staticmethod(lambda t, *a, **k: [])
@@ -319,7 +348,9 @@ def test_transcript_route_is_not_shadowed_by_the_job_route(client):
     /{job_id} is declared first; a path with an extra segment must still reach
     the transcript handler rather than being swallowed as a job id.
     """
-    job_id = _make_job(transcript=transcripts.to_json(_transcript(_segment(0.0, 1.0, "hi"))))
+    job_id = _make_job(
+        transcript=transcripts.to_json(_transcript(_segment(0.0, 1.0, "hi")))
+    )
 
     body = client.get(f"/api/jobs/{job_id}/transcript").json()
     assert "segments" in body

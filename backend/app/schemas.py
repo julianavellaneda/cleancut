@@ -137,6 +137,7 @@ class ActiveJobResponse(BaseModel):
 
 class PresetResponse(BaseModel):
     """A selectable rule preset the analyzer can run instead of a free-form prompt."""
+
     id: str
     name: str
     description: str
@@ -191,6 +192,7 @@ class ReanalyzeResponse(BaseModel):
 
 class TranscriptSegment(BaseModel):
     """One line of the transcript, with the timing the review UI seeks to."""
+
     start: float
     end: float
     text: str

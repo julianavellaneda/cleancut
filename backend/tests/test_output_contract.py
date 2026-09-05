@@ -50,7 +50,7 @@ def test_prompt_asks_for_an_object_wrapping_a_list(analyzer, mode):
             "API call pins response_format=json_object. The model cannot satisfy both."
         )
         assert isinstance(parsed.get("violations"), list), (
-            f"{mode}: the example response has no \"violations\" array; "
+            f'{mode}: the example response has no "violations" array; '
             f"keys were {sorted(parsed)}"
         )
 

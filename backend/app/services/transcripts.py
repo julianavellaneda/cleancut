@@ -133,16 +133,23 @@ def from_json(raw: str | None) -> StoredTranscript | None:
         text = item.get("text")
         if not isinstance(text, str):
             continue
-        segments.append(StoredSegment(
-            start=start, end=end, text=text, words=_words_from(item.get("words")),
-        ))
+        segments.append(
+            StoredSegment(
+                start=start,
+                end=end,
+                text=text,
+                words=_words_from(item.get("words")),
+            )
+        )
 
     if not segments:
         return None
 
     duration = payload.get("duration")
     return StoredTranscript(
-        language=payload.get("language") if isinstance(payload.get("language"), str) else None,
+        language=payload.get("language")
+        if isinstance(payload.get("language"), str)
+        else None,
         duration=float(duration) if isinstance(duration, (int, float)) else None,
         segments=segments,
     )
@@ -163,9 +170,13 @@ def _words_from(raw) -> tuple[StoredWord, ...]:
         if not isinstance(item, dict) or not isinstance(item.get("text"), str):
             continue
         try:
-            words.append(StoredWord(
-                start=float(item["start"]), end=float(item["end"]), text=item["text"],
-            ))
+            words.append(
+                StoredWord(
+                    start=float(item["start"]),
+                    end=float(item["end"]),
+                    text=item["text"],
+                )
+            )
         except (KeyError, TypeError, ValueError):
             continue
     return tuple(words)
@@ -197,5 +208,6 @@ def to_transcript_result(stored: StoredTranscript):
             for seg in stored.segments
         ],
         language=stored.language or "unknown",
-        duration=stored.duration or (stored.segments[-1].end if stored.segments else 0.0),
+        duration=stored.duration
+        or (stored.segments[-1].end if stored.segments else 0.0),
     )

@@ -42,7 +42,9 @@ def publish(task: QueuedTask) -> QueuedTask:
     must never hold work the database has not promised to keep.
     """
     job_queue.put(task)
-    logger.info(f"{task.kind} task for job {task.job_id} published. Queue size: {job_queue.qsize()}")
+    logger.info(
+        f"{task.kind} task for job {task.job_id} published. Queue size: {job_queue.qsize()}"
+    )
     return task
 
 
@@ -81,7 +83,9 @@ def enqueue_export(job_id: str, edit_action: str | None = None, db=None) -> Queu
     task row is what makes "never two" true when two requests arrive together,
     rather than merely likely.
     """
-    return _enqueue(QueuedTask(kind="export", job_id=job_id, edit_action=edit_action), db)
+    return _enqueue(
+        QueuedTask(kind="export", job_id=job_id, edit_action=edit_action), db
+    )
 
 
 def enqueue_reanalysis(
@@ -118,7 +122,9 @@ class RecoveryReport:
 # The statuses that mean the analysis pipeline still owes this job an answer.
 # Mirrors `retention.TERMINAL_STATUSES` from the other side: a job in one of
 # these was mid-flight when the process ended.
-UNFINISHED_STATUSES = frozenset({"pending", "converting", "transcribing", "analyzing", "exporting"})
+UNFINISHED_STATUSES = frozenset(
+    {"pending", "converting", "transcribing", "analyzing", "exporting"}
+)
 ACTIVE_EXPORT_STATUSES = frozenset({"queued", "exporting"})
 
 
@@ -195,22 +201,32 @@ def recover_interrupted_work() -> RecoveryReport:
         db.commit()
 
         kinds_by_job = task_store.outstanding_kinds_by_job(db)
-        stranded = db.query(Job).filter(
-            or_(
-                Job.status.in_(UNFINISHED_STATUSES),
-                Job.export_status.in_(ACTIVE_EXPORT_STATUSES),
+        stranded = (
+            db.query(Job)
+            .filter(
+                or_(
+                    Job.status.in_(UNFINISHED_STATUSES),
+                    Job.export_status.in_(ACTIVE_EXPORT_STATUSES),
+                )
             )
-        ).all()
+            .all()
+        )
 
         for job in stranded:
             kinds = kinds_by_job.get(job.id, set())
 
-            if job.status in UNFINISHED_STATUSES and not (kinds & {"process", "reanalyze"}):
+            if job.status in UNFINISHED_STATUSES and not (
+                kinds & {"process", "reanalyze"}
+            ):
                 source = _find_source_file(job.id)
                 if transcripts.from_json(job.transcript) is None and source is not None:
                     job.status = "pending"
-                    _enqueue(QueuedTask(kind="process", job_id=job.id, file_path=str(source)))
-                    logger.info(f"Job {job.id} was interrupted before it ran; re-queued.")
+                    _enqueue(
+                        QueuedTask(kind="process", job_id=job.id, file_path=str(source))
+                    )
+                    logger.info(
+                        f"Job {job.id} was interrupted before it ran; re-queued."
+                    )
                 else:
                     job.status = "failed"
                     job.error_message = (
@@ -219,8 +235,9 @@ def recover_interrupted_work() -> RecoveryReport:
                     )
                 reconciled += 1
 
-            if ((job.export_status or "none") in ACTIVE_EXPORT_STATUSES
-                    and not (kinds & {"export", "process"})):
+            if (job.export_status or "none") in ACTIVE_EXPORT_STATUSES and not (
+                kinds & {"export", "process"}
+            ):
                 # `process` counts here too: an `auto_fix` job renders inside its
                 # own task, so a replayed process task is already going to
                 # produce the export this status is waiting on.
@@ -339,7 +356,9 @@ def _append_job_warning(db, job, message: str):
     partial analysis and a skipped level pass have to be able to coexist there -
     overwriting would mean the second problem silently erased the first.
     """
-    job.error_message = f"{job.error_message} | {message}" if job.error_message else message
+    job.error_message = (
+        f"{job.error_message} | {message}" if job.error_message else message
+    )
     db.commit()
 
 
@@ -356,7 +375,9 @@ def _mark_failed(db, job_id: str, message: str):
         db.rollback()
         job = db.query(Job).filter(Job.id == job_id).first()
         if job is None:
-            logger.error(f"Job {job_id} failed and its row is gone; cannot record: {message}")
+            logger.error(
+                f"Job {job_id} failed and its row is gone; cannot record: {message}"
+            )
             return
         job.status = "failed"
         job.error_message = message
@@ -377,7 +398,9 @@ def _mark_export_failed(db, job_id: str, message: str):
         db.rollback()
         job = db.query(Job).filter(Job.id == job_id).first()
         if job is None:
-            logger.error(f"Export for job {job_id} failed and its row is gone: {message}")
+            logger.error(
+                f"Export for job {job_id} failed and its row is gone: {message}"
+            )
             return
         job.export_status = "failed"
         job.export_error = message
@@ -420,7 +443,9 @@ def _process_export(job_id: str, edit_action: str | None = None):
         exports.ensure_export_dir()
         export_path = exports.export_path_for(job, source_path)
 
-        exports.render_export(str(source_path), export_path, cuts, mutes, job.media_type)
+        exports.render_export(
+            str(source_path), export_path, cuts, mutes, job.media_type
+        )
 
         # Two questions on the way back, in this order: does the job still
         # exist, and do its edits still match. The first is the tombstone. A
@@ -462,7 +487,9 @@ def _process_export(job_id: str, edit_action: str | None = None):
         job.export_error = None
         job.export_revision = rendered_revision
         db.commit()
-        logger.info(f"Export for job {job_id} finished: {exports.describe_edits(cuts, mutes)}")
+        logger.info(
+            f"Export for job {job_id} finished: {exports.describe_edits(cuts, mutes)}"
+        )
 
     except Exception as e:
         logger.error(f"Export for job {job_id} failed: {e}", exc_info=True)
@@ -471,7 +498,9 @@ def _process_export(job_id: str, edit_action: str | None = None):
         db.close()
 
 
-def _process_reanalysis(job_id: str, prompt: str | None = None, preset: str | None = None):
+def _process_reanalysis(
+    job_id: str, prompt: str | None = None, preset: str | None = None
+):
     """
     Re-run the LLM analysis over a job's stored transcript.
 
@@ -504,7 +533,9 @@ def _process_reanalysis(job_id: str, prompt: str | None = None, preset: str | No
         stored = transcripts.from_json(job.transcript)
         if stored is None:
             _mark_reanalysis_failed(
-                db, job_id, "Re-analysis needs a stored transcript; this job has none.",
+                db,
+                job_id,
+                "Re-analysis needs a stored transcript; this job has none.",
             )
             return
 
@@ -517,33 +548,41 @@ def _process_reanalysis(job_id: str, prompt: str | None = None, preset: str | No
 
         transcript = transcripts.to_transcript_result(stored)
         analysis = get_processor().analyze(
-            transcript, prompt=prompt, preset=preset,
+            transcript,
+            prompt=prompt,
+            preset=preset,
         )
 
-        (db.query(Violation)
-           .filter(Violation.job_id == job_id,
-                   Violation.label.notin_(exports.SCRUBBER_LABELS))
-           .delete(synchronize_session=False))
+        (
+            db.query(Violation)
+            .filter(
+                Violation.job_id == job_id,
+                Violation.label.notin_(exports.SCRUBBER_LABELS),
+            )
+            .delete(synchronize_session=False)
+        )
 
         for v in analysis.violations:
-            db.add(Violation(
-                id=str(uuid.uuid4()),
-                job_id=job_id,
-                text=v.text,
-                start_time=v.start_time,
-                end_time=v.end_time,
-                label=v.label,
-                rule_violated=getattr(v, "rule_violated", None),
-                severity=getattr(v, "severity", None),
-                action=v.action,
-                reasoning=v.reasoning,
-                is_approximate=bool(getattr(v, "is_approximate", False)),
-                is_ambiguous=bool(getattr(v, "is_ambiguous", False)),
-                # Never pre-accepted. `auto_fix` is a choice made about the
-                # upload; a re-analysis is a choice made in the review screen,
-                # where the whole point is to look at what came back.
-                status="pending",
-            ))
+            db.add(
+                Violation(
+                    id=str(uuid.uuid4()),
+                    job_id=job_id,
+                    text=v.text,
+                    start_time=v.start_time,
+                    end_time=v.end_time,
+                    label=v.label,
+                    rule_violated=getattr(v, "rule_violated", None),
+                    severity=getattr(v, "severity", None),
+                    action=v.action,
+                    reasoning=v.reasoning,
+                    is_approximate=bool(getattr(v, "is_approximate", False)),
+                    is_ambiguous=bool(getattr(v, "is_ambiguous", False)),
+                    # Never pre-accepted. `auto_fix` is a choice made about the
+                    # upload; a re-analysis is a choice made in the review screen,
+                    # where the whole point is to look at what came back.
+                    status="pending",
+                )
+            )
 
         if getattr(analysis, "failed_chunks", None):
             skipped = len(analysis.failed_chunks)
@@ -565,7 +604,9 @@ def _process_reanalysis(job_id: str, prompt: str | None = None, preset: str | No
         # edit list that no longer exists.
         exports.invalidate_export(db, job)
 
-        logger.info(f"Job {job_id} re-analyzed: {len(analysis.violations)} suggestion(s).")
+        logger.info(
+            f"Job {job_id} re-analyzed: {len(analysis.violations)} suggestion(s)."
+        )
 
     except Exception as e:
         logger.error(f"Re-analysis of job {job_id} failed: {e}", exc_info=True)
@@ -589,10 +630,14 @@ def _mark_reanalysis_failed(db, job_id: str, message: str):
         db.rollback()
         job = db.query(Job).filter(Job.id == job_id).first()
         if job is None:
-            logger.error(f"Re-analysis of job {job_id} failed and its row is gone: {message}")
+            logger.error(
+                f"Re-analysis of job {job_id} failed and its row is gone: {message}"
+            )
             return
         job.status = "completed"
-        job.error_message = f"Re-analysis failed, the previous suggestions are unchanged: {message}"
+        job.error_message = (
+            f"Re-analysis failed, the previous suggestions are unchanged: {message}"
+        )
         db.commit()
     except Exception:
         logger.exception(f"Could not record the failed re-analysis of job {job_id}")
@@ -600,7 +645,18 @@ def _mark_reanalysis_failed(db, job_id: str, message: str):
 
 def _find_source_file(job_id: str) -> Path | None:
     """Locate the uploaded media for a job by probing the known extensions."""
-    for ext in (".mp3", ".wav", ".m4a", ".flac", ".ogg", ".webm", ".mp4", ".mov", ".aif", ".aiff"):
+    for ext in (
+        ".mp3",
+        ".wav",
+        ".m4a",
+        ".flac",
+        ".ogg",
+        ".webm",
+        ".mp4",
+        ".mov",
+        ".aif",
+        ".aiff",
+    ):
         candidate = UPLOAD_DIR / f"{job_id}{ext}"
         if candidate.exists():
             return candidate
@@ -626,7 +682,9 @@ def _process_job_sequentially(job_id: str, file_path: str):
         )
         if removed:
             db.commit()
-            logger.info(f"Job {job_id} is being re-run; cleared {removed} stale suggestion(s).")
+            logger.info(
+                f"Job {job_id} is being re-run; cleared {removed} stale suggestion(s)."
+            )
 
         file_path_obj = Path(file_path)
         file_ext = file_path_obj.suffix.lower()
@@ -636,16 +694,18 @@ def _process_job_sequentially(job_id: str, file_path: str):
         if file_ext in [".aif", ".aiff"]:
             job.status = "converting"
             db.commit()
-            
+
             try:
                 mp3_path = file_path_obj.with_suffix(".mp3")
-                ffmpeg.input(file_path).output(str(mp3_path), format="mp3").run(overwrite_output=True, quiet=True)
+                ffmpeg.input(file_path).output(str(mp3_path), format="mp3").run(
+                    overwrite_output=True, quiet=True
+                )
                 file_path_to_use = str(mp3_path)
-                
+
                 # Update job record with new filename
                 job.filename = f"{job_id}.mp3"
                 db.commit()
-                
+
                 # Delete original AIFF
                 file_path_obj.unlink()
             except Exception as e:
@@ -711,13 +771,21 @@ def _process_job_sequentially(job_id: str, file_path: str):
             # ffmpeg-python packs the real diagnosis into e.stderr; str(e) is
             # only ever the generic "ffmpeg error (see stderr output for detail)".
             stderr = getattr(e, "stderr", None)
-            lines = stderr.decode("utf-8", "replace").strip().splitlines() if stderr else []
+            lines = (
+                stderr.decode("utf-8", "replace").strip().splitlines() if stderr else []
+            )
             reason = lines[-1] if lines else str(e)
-            logger.warning(f"Job {job_id}: level pass failed, skipping dead air detection: {reason}")
-            _append_job_warning(db, job, (
-                "Dead air detection skipped: the audio could not be decoded for a "
-                f"level check, so no silence was measured. ({reason})"
-            ))
+            logger.warning(
+                f"Job {job_id}: level pass failed, skipping dead air detection: {reason}"
+            )
+            _append_job_warning(
+                db,
+                job,
+                (
+                    "Dead air detection skipped: the audio could not be decoded for a "
+                    f"level check, so no silence was measured. ({reason})"
+                ),
+            )
 
         # Always run scrubber, but status depends on auto_scrub
         scrubber_violations.extend(Scrubber.detect_silence(transcript, quiet_regions))
@@ -746,7 +814,7 @@ def _process_job_sequentially(job_id: str, file_path: str):
                 # on a job that asked for everything to be applied.
                 is_approximate=bool(getattr(v, "is_approximate", False)),
                 is_ambiguous=bool(getattr(v, "is_ambiguous", False)),
-                status=status
+                status=status,
             )
             db.add(violation)
 
@@ -764,7 +832,9 @@ def _process_job_sequentially(job_id: str, file_path: str):
             # disagree with the review screen describing it.
             applied = [v for v in all_suggestions if _is_pre_accepted(v, job)]
             cuts, mutes = exports.partition_edits(applied)
-            exports.render_export(file_path_to_use, export_path, cuts, mutes, job.media_type)
+            exports.render_export(
+                file_path_to_use, export_path, cuts, mutes, job.media_type
+            )
             job.export_status = "ready"
             # Nothing has been reviewed yet, so this render matches the edit set
             # exactly - revision 0. The first decision the reviewer makes bumps

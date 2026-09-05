@@ -32,7 +32,7 @@ class MediaEditor:
         output_path: str,
         segments_to_cut: list[tuple[float, float]] | None = None,
         segments_to_mute: list[tuple[float, float]] | None = None,
-        media_type: str = "audio"
+        media_type: str = "audio",
     ):
         """
         Apply per-segment cut and mute edits in a single pass.
@@ -46,7 +46,9 @@ class MediaEditor:
 
         if not cuts and not mutes:
             # Nothing to do - just copy/transcode
-            ffmpeg.input(input_path).output(output_path).run(overwrite_output=True, quiet=True)
+            ffmpeg.input(input_path).output(output_path).run(
+                overwrite_output=True, quiet=True
+            )
             return
 
         input_stream = ffmpeg.input(input_path)
@@ -57,11 +59,15 @@ class MediaEditor:
             # eval=frame is required - the default (once) evaluates t a single
             # time at startup, which silently disables the whole expression.
             between_clauses = [f"between(t,{start},{end})" for start, end in mutes]
-            audio = audio.filter('volume', f"if({'+'.join(between_clauses)},0,1)", eval='frame')
+            audio = audio.filter(
+                "volume", f"if({'+'.join(between_clauses)},0,1)", eval="frame"
+            )
 
         if not cuts:
             if media_type == "video":
-                out = ffmpeg.output(input_stream.video, audio, output_path, vcodec='copy')
+                out = ffmpeg.output(
+                    input_stream.video, audio, output_path, vcodec="copy"
+                )
             else:
                 out = ffmpeg.output(audio, output_path)
             out.run(overwrite_output=True, quiet=True)
@@ -69,7 +75,7 @@ class MediaEditor:
 
         # Get duration of original file
         probe = ffmpeg.probe(input_path)
-        duration = float(probe['format']['duration'])
+        duration = float(probe["format"]["duration"])
 
         # Calculate parts to KEEP
         keep_segments = []
@@ -90,7 +96,7 @@ class MediaEditor:
         # muted) audio out explicitly. Raw input pads are split by ffmpeg
         # itself, but the volume filter's output is not.
         if len(keep_segments) > 1:
-            asplit = audio.filter_multi_output('asplit', len(keep_segments))
+            asplit = audio.filter_multi_output("asplit", len(keep_segments))
             audio_sources = [asplit[i] for i in range(len(keep_segments))]
         else:
             audio_sources = [audio]
@@ -101,15 +107,23 @@ class MediaEditor:
         a_segments = []
 
         for i, (start, end) in enumerate(keep_segments):
-            a = audio_sources[i].filter('atrim', start=start, end=end).filter('asetpts', 'PTS-STARTPTS')
+            a = (
+                audio_sources[i]
+                .filter("atrim", start=start, end=end)
+                .filter("asetpts", "PTS-STARTPTS")
+            )
             a_segments.append(a)
 
             if media_type == "video":
-                v = input_stream.video.filter('trim', start=start, end=end).filter('setpts', 'PTS-STARTPTS')
+                v = input_stream.video.filter("trim", start=start, end=end).filter(
+                    "setpts", "PTS-STARTPTS"
+                )
                 v_segments.append(v)
 
         if media_type == "video":
-            joined = ffmpeg.concat(*[s for pair in zip(v_segments, a_segments) for s in pair], v=1, a=1).node
+            joined = ffmpeg.concat(
+                *[s for pair in zip(v_segments, a_segments) for s in pair], v=1, a=1
+            ).node
             out = ffmpeg.output(joined[0], joined[1], output_path)
         else:
             joined = ffmpeg.concat(*a_segments, v=0, a=1).node
@@ -122,13 +136,14 @@ class MediaEditor:
         input_path: str,
         output_path: str,
         segments_to_remove: list[tuple[float, float]],
-        media_type: str = "audio"
+        media_type: str = "audio",
     ):
         """Cut (remove) specified segments from media while maintaining sync."""
         self.apply_edits(
-            input_path, output_path,
+            input_path,
+            output_path,
             segments_to_cut=segments_to_remove,
-            media_type=media_type
+            media_type=media_type,
         )
 
     def mute_segments(
@@ -136,20 +151,23 @@ class MediaEditor:
         input_path: str,
         output_path: str,
         segments_to_mute: list[tuple[float, float]],
-        media_type: str = "audio"
+        media_type: str = "audio",
     ):
         """Mute (silence) specified segments in media."""
         self.apply_edits(
-            input_path, output_path,
+            input_path,
+            output_path,
             segments_to_mute=segments_to_mute,
-            media_type=media_type
+            media_type=media_type,
         )
 
-    def _merge_segments(self, segments: list[tuple[float, float]]) -> list[tuple[float, float]]:
+    def _merge_segments(
+        self, segments: list[tuple[float, float]]
+    ) -> list[tuple[float, float]]:
         """Sort and merge overlapping segments."""
         if not segments:
             return []
-        
+
         sorted_segments = sorted(segments, key=lambda x: x[0])
         merged = []
         for start, end in sorted_segments:
@@ -160,7 +178,9 @@ class MediaEditor:
         return merged
 
 
-def decode_pcm_mono(media_path: str, sample_rate: int = DECODE_SAMPLE_RATE) -> np.ndarray:
+def decode_pcm_mono(
+    media_path: str, sample_rate: int = DECODE_SAMPLE_RATE
+) -> np.ndarray:
     """
     Decode any FFmpeg-readable media to mono float32 PCM at ``sample_rate``.
 
@@ -180,18 +200,14 @@ def decode_pcm_mono(media_path: str, sample_rate: int = DECODE_SAMPLE_RATE) -> n
     mistake is loud.
     """
     out, _ = (
-        ffmpeg
-        .input(media_path)
-        .output('-', format='f32le', acodec='pcm_f32le', ac=1, ar=str(sample_rate))
+        ffmpeg.input(media_path)
+        .output("-", format="f32le", acodec="pcm_f32le", ac=1, ar=str(sample_rate))
         .run(capture_stdout=True, capture_stderr=True)
     )
     return np.frombuffer(out, dtype=np.float32)
 
 
-def generate_waveform_peaks(
-    audio_path: str,
-    num_peaks: int = 800
-) -> list[float]:
+def generate_waveform_peaks(audio_path: str, num_peaks: int = 800) -> list[float]:
     """
     Generate waveform peaks using FFmpeg and numpy (no pydub).
 
@@ -217,11 +233,11 @@ def generate_waveform_peaks(
         for i in range(num_peaks):
             start = i * samples_per_peak
             end = min(start + samples_per_peak, len(samples))
-            
+
             if start >= len(samples):
                 peaks.append(0.0)
                 continue
-                
+
             chunk = samples[start:end]
             if len(chunk) > 0:
                 peak = np.max(np.abs(chunk))
@@ -229,7 +245,7 @@ def generate_waveform_peaks(
                 peaks.append(round(normalized, 3))
             else:
                 peaks.append(0.0)
-                
+
         return peaks
     except Exception as e:
         logger.error(f"Error generating waveform: {str(e)}")

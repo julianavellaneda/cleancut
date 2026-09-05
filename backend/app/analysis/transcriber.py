@@ -11,6 +11,7 @@ from faster_whisper import WhisperModel
 @dataclass
 class Word:
     """Represents a single transcribed word with timing."""
+
     text: str
     start: float
     end: float
@@ -20,6 +21,7 @@ class Word:
 @dataclass
 class Segment:
     """Represents a transcribed segment (sentence/phrase) with timing."""
+
     text: str
     start: float
     end: float
@@ -30,6 +32,7 @@ class Segment:
 @dataclass
 class TranscriptResult:
     """Complete transcription result."""
+
     segments: list[Segment]
     language: str
     duration: float
@@ -90,7 +93,9 @@ class Transcriber:
             vad_filter=True,  # Voice activity detection to skip silence
         )
 
-        print(f"Detected language: {info.language} (probability: {info.language_probability:.2f})")
+        print(
+            f"Detected language: {info.language} (probability: {info.language_probability:.2f})"
+        )
         print(f"Audio duration: {info.duration:.1f} seconds")
 
         segments = []
@@ -98,20 +103,24 @@ class Transcriber:
             words = []
             if seg.words:
                 for w in seg.words:
-                    words.append(Word(
-                        text=w.word,
-                        start=w.start,
-                        end=w.end,
-                        probability=w.probability,
-                    ))
+                    words.append(
+                        Word(
+                            text=w.word,
+                            start=w.start,
+                            end=w.end,
+                            probability=w.probability,
+                        )
+                    )
 
-            segments.append(Segment(
-                text=seg.text.strip(),
-                start=seg.start,
-                end=seg.end,
-                words=words,
-                language=info.language,
-            ))
+            segments.append(
+                Segment(
+                    text=seg.text.strip(),
+                    start=seg.start,
+                    end=seg.end,
+                    words=words,
+                    language=info.language,
+                )
+            )
 
             # Print progress
             print(f"  [{seg.start:.1f}s - {seg.end:.1f}s] {seg.text.strip()[:50]}...")
@@ -166,12 +175,12 @@ def load_transcript(file_path: str) -> TranscriptResult:
     """
     import re
 
-    pattern = re.compile(r'\[(\d+\.?\d*)s\s*-\s*(\d+\.?\d*)s\]\s*(.+)')
+    pattern = re.compile(r"\[(\d+\.?\d*)s\s*-\s*(\d+\.?\d*)s\]\s*(.+)")
     segments = []
     max_end = 0.0
     skipped: list[str] = []
 
-    with open(file_path, encoding='utf-8') as f:
+    with open(file_path, encoding="utf-8") as f:
         for line in f:
             line = line.strip()
             if not line:
@@ -183,12 +192,14 @@ def load_transcript(file_path: str) -> TranscriptResult:
                 end = float(match.group(2))
                 text = match.group(3)
 
-                segments.append(Segment(
-                    text=text,
-                    start=start,
-                    end=end,
-                    words=[],  # No word-level data from text file
-                ))
+                segments.append(
+                    Segment(
+                        text=text,
+                        start=start,
+                        end=end,
+                        words=[],  # No word-level data from text file
+                    )
+                )
                 max_end = max(max_end, end)
             else:
                 skipped.append(line)
@@ -234,7 +245,7 @@ if __name__ == "__main__":
     transcriber = Transcriber(model_size="medium")
     result = transcriber.transcribe(sys.argv[1])
 
-    print("\n" + "="*50)
+    print("\n" + "=" * 50)
     print("TRANSCRIPT:")
-    print("="*50)
+    print("=" * 50)
     print(transcriber.to_timestamped_text(result))

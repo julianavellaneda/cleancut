@@ -27,11 +27,14 @@ def generate_uuid():
 
 class Job(Base):
     """Represents an audio processing job."""
+
     __tablename__ = "jobs"
 
     id = Column(String, primary_key=True, default=generate_uuid)
     filename = Column(String, nullable=False)
-    original_filename = Column(String, nullable=True)  # Track the extension (mp4, mov, mp3)
+    original_filename = Column(
+        String, nullable=True
+    )  # Track the extension (mp4, mov, mp3)
     media_type = Column(String, default="audio")  # 'audio' or 'video'
     prompt = Column(Text, nullable=True)  # User instructions for editing
     status = Column(String, default="pending")  # pending, processing, completed, failed
@@ -52,7 +55,9 @@ class Job(Base):
     # failed re-encode marks the whole job "failed" and throws away the review the
     # user just finished, and there would be no way to tell "never exported" from
     # "export ready".
-    export_status = Column(String, default="none")  # none, queued, exporting, ready, failed
+    export_status = Column(
+        String, default="none"
+    )  # none, queued, exporting, ready, failed
     export_error = Column(Text, nullable=True)
     # Monotonic counter over the *accepted* edit set: bumped whenever a decision
     # or an action changes what a render would produce. `export_revision` records
@@ -63,7 +68,9 @@ class Job(Base):
     edit_revision = Column(Integer, default=0, nullable=False)
     export_revision = Column(Integer, nullable=True)
 
-    violations = relationship("Violation", back_populates="job", cascade="all, delete-orphan")
+    violations = relationship(
+        "Violation", back_populates="job", cascade="all, delete-orphan"
+    )
     # Background work outstanding for this job. Cascaded so deleting a job -
     # by hand or by the retention sweeper - cannot leave a task behind that a
     # restart would then try to replay against a row that is gone.
@@ -72,6 +79,7 @@ class Job(Base):
 
 class Violation(Base):
     """Represents a detected compliance violation."""
+
     __tablename__ = "violations"
 
     id = Column(String, primary_key=True, default=generate_uuid)
@@ -79,8 +87,12 @@ class Violation(Base):
     text = Column(Text, nullable=False)  # Quoted text
     start_time = Column(Float, nullable=False)  # Seconds
     end_time = Column(Float, nullable=False)  # Seconds
-    label = Column(String, nullable=True)  # Generic label (e.g., "Filler Word", "Off-topic")
-    rule_violated = Column(String, nullable=True)  # Deprecated in favor of label, but keeping for compatibility
+    label = Column(
+        String, nullable=True
+    )  # Generic label (e.g., "Filler Word", "Off-topic")
+    rule_violated = Column(
+        String, nullable=True
+    )  # Deprecated in favor of label, but keeping for compatibility
     severity = Column(String, nullable=True)  # high, medium, low
     reasoning = Column(Text, nullable=True)  # AI explanation
     status = Column(String, default="pending")  # pending, accepted, rejected

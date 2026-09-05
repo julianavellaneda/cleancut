@@ -19,7 +19,7 @@ DATABASE_URL = f"sqlite:///{DATABASE_PATH}"
 
 engine = create_engine(
     DATABASE_URL,
-    connect_args={"check_same_thread": False}  # Needed for SQLite with FastAPI
+    connect_args={"check_same_thread": False},  # Needed for SQLite with FastAPI
 )
 
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
@@ -43,6 +43,7 @@ def init_db():
     # the tables it finds there. Dropping this as an unused import would leave
     # a fresh database with no tables and no error.
     from . import models  # noqa: F401
+
     Base.metadata.create_all(bind=engine)
     _apply_migrations()
 
@@ -81,7 +82,9 @@ def _migrate_tasks():
     same output path.
     """
     inspector = inspect(engine)
-    if any(idx["name"] == "uq_tasks_job_kind" for idx in inspector.get_indexes("tasks")):
+    if any(
+        idx["name"] == "uq_tasks_job_kind" for idx in inspector.get_indexes("tasks")
+    ):
         return
 
     with engine.begin() as conn:
@@ -127,8 +130,12 @@ def _migrate_violations():
         for column in ("is_approximate", "is_ambiguous"):
             if column in existing:
                 continue
-            conn.execute(text(f"ALTER TABLE violations ADD COLUMN {column} BOOLEAN DEFAULT 0"))
-            conn.execute(text(f"UPDATE violations SET {column} = 0 WHERE {column} IS NULL"))
+            conn.execute(
+                text(f"ALTER TABLE violations ADD COLUMN {column} BOOLEAN DEFAULT 0")
+            )
+            conn.execute(
+                text(f"UPDATE violations SET {column} = 0 WHERE {column} IS NULL")
+            )
 
 
 def _migrate_jobs():
@@ -147,10 +154,16 @@ def _migrate_jobs():
         # Export moved onto the worker queue and needs its own state, kept apart
         # from `status` so a failed export cannot destroy a completed review.
         if "export_status" not in existing:
-            conn.execute(text("ALTER TABLE jobs ADD COLUMN export_status VARCHAR DEFAULT 'none'"))
+            conn.execute(
+                text("ALTER TABLE jobs ADD COLUMN export_status VARCHAR DEFAULT 'none'")
+            )
             # Rows created before this column existed may already have an export
             # on disk; the filesystem probe in routes/audio.py still finds it.
-            conn.execute(text("UPDATE jobs SET export_status = 'none' WHERE export_status IS NULL"))
+            conn.execute(
+                text(
+                    "UPDATE jobs SET export_status = 'none' WHERE export_status IS NULL"
+                )
+            )
         if "export_error" not in existing:
             conn.execute(text("ALTER TABLE jobs ADD COLUMN export_error TEXT"))
 
@@ -169,8 +182,12 @@ def _migrate_jobs():
         # they are today; the first edit after this migration bumps them into
         # the tracked world.
         if "edit_revision" not in existing:
-            conn.execute(text("ALTER TABLE jobs ADD COLUMN edit_revision INTEGER DEFAULT 0"))
-            conn.execute(text("UPDATE jobs SET edit_revision = 0 WHERE edit_revision IS NULL"))
+            conn.execute(
+                text("ALTER TABLE jobs ADD COLUMN edit_revision INTEGER DEFAULT 0")
+            )
+            conn.execute(
+                text("UPDATE jobs SET edit_revision = 0 WHERE edit_revision IS NULL")
+            )
         if "export_revision" not in existing:
             conn.execute(text("ALTER TABLE jobs ADD COLUMN export_revision INTEGER"))
     if "bsm_mode" in existing:

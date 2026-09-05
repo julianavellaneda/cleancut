@@ -52,6 +52,7 @@ def ensure_export_dir(explicit: Path | None = None) -> Path:
     path.mkdir(parents=True, exist_ok=True)
     return path
 
+
 # An export the worker has not finished with. The file on disk is mid-write, so
 # invalidation must not delete it - the render itself checks the revision when
 # it lands.
@@ -67,7 +68,9 @@ def export_suffix(job: Job, source_path: str | Path) -> str:
     return Path(source_path).suffix if job.media_type == "video" else ".mp3"
 
 
-def export_path_for(job: Job, source_path: str | Path, directory: Path | None = None) -> Path:
+def export_path_for(
+    job: Job, source_path: str | Path, directory: Path | None = None
+) -> Path:
     """Where the edited file for ``job`` is written."""
     return export_dir(directory) / f"{job.id}_edited{export_suffix(job, source_path)}"
 
@@ -93,7 +96,11 @@ def affects_export(violation, new_status: str | None, new_action: str | None) ->
     status = violation.status or "pending"
     action = violation.action or "cut"
 
-    if new_status is not None and new_status != status and "accepted" in (status, new_status):
+    if (
+        new_status is not None
+        and new_status != status
+        and "accepted" in (status, new_status)
+    ):
         return True
 
     effective_status = new_status if new_status is not None else status
@@ -266,7 +273,9 @@ def render_export(
     else:
         # Nothing to remove - still produce an export, so "download the master"
         # means the same thing whether or not any edit survived review.
-        ffmpeg.input(source_path).output(str(export_path)).run(overwrite_output=True, quiet=True)
+        ffmpeg.input(source_path).output(str(export_path)).run(
+            overwrite_output=True, quiet=True
+        )
 
 
 def describe_edits(cuts: Sequence[Segment], mutes: Sequence[Segment]) -> str:

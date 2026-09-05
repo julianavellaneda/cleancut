@@ -44,16 +44,25 @@ def make_job():
         try:
             db.add(Job(id=job_id, filename=f"{job_id}.mp3", status="completed"))
             for i, (approximate, ambiguous) in enumerate(flags):
-                db.add(Violation(
-                    id=f"{job_id}-{i}", job_id=job_id, text="like",
-                    start_time=float(i), end_time=float(i) + 0.5,
-                    label="Filler Word", status="pending", action="cut",
-                    is_approximate=approximate, is_ambiguous=ambiguous,
-                ))
+                db.add(
+                    Violation(
+                        id=f"{job_id}-{i}",
+                        job_id=job_id,
+                        text="like",
+                        start_time=float(i),
+                        end_time=float(i) + 0.5,
+                        label="Filler Word",
+                        status="pending",
+                        action="cut",
+                        is_approximate=approximate,
+                        is_ambiguous=ambiguous,
+                    )
+                )
             db.commit()
         finally:
             db.close()
         return job_id
+
     return _make
 
 
@@ -63,7 +72,9 @@ def test_the_list_route_carries_both_flags(client, make_job):
     body = client.get(f"/api/jobs/{job_id}/violations").json()
 
     assert [(v["is_approximate"], v["is_ambiguous"]) for v in body] == [
-        (False, False), (True, False), (False, True),
+        (False, False),
+        (True, False),
+        (False, True),
     ]
 
 
@@ -76,7 +87,8 @@ def test_the_patch_response_carries_them_too(client, make_job):
     job_id = make_job([(True, False)])
 
     body = client.patch(
-        f"/api/jobs/{job_id}/violations/{job_id}-0", json={"status": "accepted"},
+        f"/api/jobs/{job_id}/violations/{job_id}-0",
+        json={"status": "accepted"},
     ).json()
 
     assert body["status"] == "accepted"
@@ -94,11 +106,18 @@ def test_a_row_written_without_the_flags_reads_as_false(client):
     db = SessionLocal()
     try:
         db.add(Job(id=job_id, filename=f"{job_id}.mp3", status="completed"))
-        db.add(Violation(
-            id=f"{job_id}-0", job_id=job_id, text="um",
-            start_time=0.0, end_time=0.5, label="Filler Word",
-            status="pending", action="cut",
-        ))
+        db.add(
+            Violation(
+                id=f"{job_id}-0",
+                job_id=job_id,
+                text="um",
+                start_time=0.0,
+                end_time=0.5,
+                label="Filler Word",
+                status="pending",
+                action="cut",
+            )
+        )
         db.commit()
     finally:
         db.close()

@@ -82,11 +82,14 @@ def test_transcript_is_actually_chunked(monkeypatch, transcript):
 
 
 def test_one_failed_chunk_keeps_the_other_findings(monkeypatch, transcript):
-    analyzer = _analyzer_with(monkeypatch, [
-        [_suggestion(1)],
-        AnalysisError("garbled response"),
-        [_suggestion(101)],
-    ])
+    analyzer = _analyzer_with(
+        monkeypatch,
+        [
+            [_suggestion(1)],
+            AnalysisError("garbled response"),
+            [_suggestion(101)],
+        ],
+    )
 
     result = analyzer.analyze(transcript, prompt="find claims")
 
@@ -94,11 +97,14 @@ def test_one_failed_chunk_keeps_the_other_findings(monkeypatch, transcript):
 
 
 def test_one_failed_chunk_is_reported(monkeypatch, transcript):
-    analyzer = _analyzer_with(monkeypatch, [
-        [_suggestion(1)],
-        AnalysisError("garbled response"),
-        [_suggestion(101)],
-    ])
+    analyzer = _analyzer_with(
+        monkeypatch,
+        [
+            [_suggestion(1)],
+            AnalysisError("garbled response"),
+            [_suggestion(101)],
+        ],
+    )
 
     result = analyzer.analyze(transcript, prompt="find claims")
 
@@ -108,10 +114,15 @@ def test_one_failed_chunk_is_reported(monkeypatch, transcript):
 
 
 def test_failure_names_the_unanalyzed_timespan(monkeypatch, transcript):
-    """"Which part of my audio was skipped?" has to be answerable."""
-    analyzer = _analyzer_with(monkeypatch, [
-        [], AnalysisError("garbled"), [],
-    ])
+    """ "Which part of my audio was skipped?" has to be answerable."""
+    analyzer = _analyzer_with(
+        monkeypatch,
+        [
+            [],
+            AnalysisError("garbled"),
+            [],
+        ],
+    )
 
     result = analyzer.analyze(transcript, prompt="find claims")
 
@@ -132,11 +143,14 @@ def test_all_chunks_failing_raises(monkeypatch, transcript):
     No chunk analyzed means no analysis. Returning an empty result here would
     render as a clean recording.
     """
-    analyzer = _analyzer_with(monkeypatch, [
-        AnalysisError("garbled 1"),
-        AnalysisError("garbled 2"),
-        AnalysisError("garbled 3"),
-    ])
+    analyzer = _analyzer_with(
+        monkeypatch,
+        [
+            AnalysisError("garbled 1"),
+            AnalysisError("garbled 2"),
+            AnalysisError("garbled 3"),
+        ],
+    )
 
     with pytest.raises(AnalysisError) as excinfo:
         analyzer.analyze(transcript, prompt="find claims")
@@ -167,11 +181,14 @@ def test_a_refused_chunk_is_a_gap_not_a_dead_job(monkeypatch, transcript):
     and named, exactly like an unreadable answer. Losing the other chunks over
     it would be the worse trade.
     """
-    analyzer = _analyzer_with(monkeypatch, [
-        [_suggestion(1)],
-        ProviderError("claude-opus-5 declined to analyze this section"),
-        [_suggestion(101)],
-    ])
+    analyzer = _analyzer_with(
+        monkeypatch,
+        [
+            [_suggestion(1)],
+            ProviderError("claude-opus-5 declined to analyze this section"),
+            [_suggestion(101)],
+        ],
+    )
 
     result = analyzer.analyze(transcript, prompt="find claims")
 
@@ -181,7 +198,7 @@ def test_a_refused_chunk_is_a_gap_not_a_dead_job(monkeypatch, transcript):
 
 
 def test_every_chunk_refusing_still_fails_the_job(monkeypatch, transcript):
-    """"Nothing was analyzed" must never read as "nothing was found"."""
+    """ "Nothing was analyzed" must never read as "nothing was found"."""
     analyzer = _analyzer_with(monkeypatch, [ProviderError("declined")] * 3)
 
     with pytest.raises(AnalysisError):
@@ -192,6 +209,7 @@ def test_every_chunk_refusing_still_fails_the_job(monkeypatch, transcript):
 #
 # `total_segments_analyzed` used to be the length of the transcript regardless
 # of what failed, so a partial run reported full coverage.
+
 
 def test_clean_run_covers_every_segment(monkeypatch, transcript):
     analyzer = _analyzer_with(monkeypatch, [[], [], []])
@@ -225,6 +243,7 @@ def test_overlap_still_counts_a_segment_once(monkeypatch, transcript):
 # The JSON file is often all a downstream reader ever sees. Dropping
 # `failed_chunks` from it recreated the false-clean result the chunk handling
 # exists to prevent.
+
 
 def test_json_carries_the_partial_status(monkeypatch, transcript):
     analyzer = _analyzer_with(monkeypatch, [[], AnalysisError("garbled"), []])

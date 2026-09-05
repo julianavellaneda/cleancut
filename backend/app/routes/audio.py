@@ -59,7 +59,18 @@ def _waveform_lock(job_id: str) -> threading.Lock:
 
 def _get_audio_path(job_id: str) -> Path | None:
     """Find the audio/video file for a job."""
-    for ext in [".mp3", ".wav", ".m4a", ".flac", ".ogg", ".webm", ".mp4", ".mov", ".aif", ".aiff"]:
+    for ext in [
+        ".mp3",
+        ".wav",
+        ".m4a",
+        ".flac",
+        ".ogg",
+        ".webm",
+        ".mp4",
+        ".mov",
+        ".aif",
+        ".aiff",
+    ]:
         path = UPLOAD_DIR / f"{job_id}{ext}"
         if path.exists():
             return path
@@ -71,7 +82,10 @@ def _get_export_path(job_id: str, job: Job) -> Path | None:
     audio_path = _get_audio_path(job_id)
     export_ext = exports.export_suffix(job, audio_path) if audio_path else ".mp3"
     export_dir = exports.EXPORT_DIR
-    for candidate in (export_dir / f"{job_id}_edited{export_ext}", export_dir / f"{job_id}_edited.mp3"):
+    for candidate in (
+        export_dir / f"{job_id}_edited{export_ext}",
+        export_dir / f"{job_id}_edited.mp3",
+    ):
         if candidate.exists():
             return candidate
     return None
@@ -90,11 +104,7 @@ def stream_audio(job_id: str, db: Session = Depends(get_db)):
 
     media_type = MEDIA_TYPES.get(audio_path.suffix.lower(), "application/octet-stream")
 
-    return FileResponse(
-        audio_path,
-        media_type=media_type,
-        filename=job.filename
-    )
+    return FileResponse(audio_path, media_type=media_type, filename=job.filename)
 
 
 @router.get("/{job_id}/audio/waveform")
@@ -142,14 +152,14 @@ def get_waveform(job_id: str, db: Session = Depends(get_db)):
 
             return {"peaks": peaks}
         except Exception as e:
-            raise HTTPException(status_code=500, detail=f"Failed to generate waveform: {str(e)}")
+            raise HTTPException(
+                status_code=500, detail=f"Failed to generate waveform: {str(e)}"
+            )
 
 
 @router.post("/{job_id}/export", response_model=ExportResponse, status_code=202)
 def export_media(
-    job_id: str,
-    request: ExportRequest = ExportRequest(),
-    db: Session = Depends(get_db)
+    job_id: str, request: ExportRequest = ExportRequest(), db: Session = Depends(get_db)
 ):
     """
     Queue an edited render of the accepted suggestions.
@@ -191,7 +201,7 @@ def export_media(
     if not accepted:
         raise HTTPException(
             status_code=400,
-            detail="No accepted edits to remove. Accept some suggested edits first."
+            detail="No accepted edits to remove. Accept some suggested edits first.",
         )
 
     # `export_status` and the task row commit as one, and the task is published
@@ -215,7 +225,9 @@ def export_media(
     db.commit()
     publish(task)
 
-    export_filename = exports.export_filename_for(job, exports.export_suffix(job, audio_path))
+    export_filename = exports.export_filename_for(
+        job, exports.export_suffix(job, audio_path)
+    )
     return ExportResponse(
         job_id=job_id,
         export_filename=export_filename,
@@ -231,9 +243,11 @@ def download_export(job_id: str, db: Session = Depends(get_db)):
 
     return FileResponse(
         export_path,
-        media_type=MEDIA_TYPES.get(export_path.suffix.lower(), "application/octet-stream"),
+        media_type=MEDIA_TYPES.get(
+            export_path.suffix.lower(), "application/octet-stream"
+        ),
         filename=export_filename,
-        headers={"Content-Disposition": f'attachment; filename="{export_filename}"'}
+        headers={"Content-Disposition": f'attachment; filename="{export_filename}"'},
     )
 
 
@@ -247,9 +261,11 @@ def stream_export(job_id: str, db: Session = Depends(get_db)):
 
     return FileResponse(
         export_path,
-        media_type=MEDIA_TYPES.get(export_path.suffix.lower(), "application/octet-stream"),
+        media_type=MEDIA_TYPES.get(
+            export_path.suffix.lower(), "application/octet-stream"
+        ),
         filename=export_filename,
-        headers={"Content-Disposition": f'inline; filename="{export_filename}"'}
+        headers={"Content-Disposition": f'inline; filename="{export_filename}"'},
     )
 
 
@@ -273,7 +289,7 @@ def _resolve_export(job_id: str, db: Session) -> tuple[Job, Path, str]:
     if not export_path:
         raise HTTPException(
             status_code=404,
-            detail="Export not found. Generate export first with POST /export"
+            detail="Export not found. Generate export first with POST /export",
         )
 
     return job, export_path, f"{Path(job.filename).stem}_edited{export_path.suffix}"

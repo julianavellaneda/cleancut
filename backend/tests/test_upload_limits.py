@@ -22,6 +22,7 @@ from app.limits import (
 
 # --- configuration ---------------------------------------------------------
 
+
 def test_size_default():
     assert max_upload_bytes({}) == 500_000_000
 
@@ -45,6 +46,7 @@ def test_malformed_limit_falls_back_to_default(value):
 
 
 # --- streaming save --------------------------------------------------------
+
 
 def test_file_under_the_cap_is_written(tmp_path):
     dest = tmp_path / "clip.mp3"
@@ -95,6 +97,7 @@ def test_empty_upload_is_written(tmp_path):
 
 # --- duration probe --------------------------------------------------------
 
+
 def test_unreadable_file_has_unknown_duration(tmp_path):
     """`None` means "could not tell", never zero."""
     bogus = tmp_path / "clip.mp3"
@@ -108,6 +111,7 @@ def test_missing_file_has_unknown_duration(tmp_path):
 
 
 # --- duration enforcement --------------------------------------------------
+
 
 def test_duration_under_the_cap_is_returned(tmp_path, monkeypatch):
     monkeypatch.setattr("app.limits.probe_duration_seconds", lambda p: 42.0)
@@ -142,6 +146,7 @@ def test_duration_error_names_both_numbers():
 
 # --- route integration -----------------------------------------------------
 
+
 @pytest.fixture(autouse=True)
 def db_ready():
     from app.database import init_db
@@ -156,7 +161,9 @@ def client(monkeypatch):
 
     from app.main import app
 
-    monkeypatch.setattr("app.routes.jobs.enqueue_job", lambda job_id, path, db=None: "task")
+    monkeypatch.setattr(
+        "app.routes.jobs.enqueue_job", lambda job_id, path, db=None: "task"
+    )
     monkeypatch.setattr("app.routes.jobs.publish", lambda task: task)
     return TestClient(app)
 

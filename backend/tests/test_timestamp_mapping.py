@@ -35,7 +35,9 @@ def _segment(text: str, start: float, end: float) -> Segment:
     tokens = text.split()
     step = (end - start) / max(len(tokens), 1)
     words = [
-        Word(text=t, start=start + i * step, end=start + (i + 1) * step, probability=0.9)
+        Word(
+            text=t, start=start + i * step, end=start + (i + 1) * step, probability=0.9
+        )
         for i, t in enumerate(tokens)
     ]
     return Segment(text=text, start=start, end=end, words=words)
@@ -46,9 +48,15 @@ def split_sentence():
     """The rehearsal transcript: one claim, split by Whisper at a pause."""
     return TranscriptResult(
         segments=[
-            _segment("Some people earn nothing at all, and that's the honest truth.", 7.40, 11.01),
+            _segment(
+                "Some people earn nothing at all, and that's the honest truth.",
+                7.40,
+                11.01,
+            ),
             _segment("You know, ah, honestly, you could quit your job", 11.01, 13.69),
-            _segment("by Christmas if you just, like, follow the system.", 13.69, 17.01),
+            _segment(
+                "by Christmas if you just, like, follow the system.", 13.69, 17.01
+            ),
         ],
         language="en",
         duration=17.01,
@@ -79,7 +87,9 @@ def test_the_span_covers_the_words_that_were_quoted(analyzer, split_sentence):
     assert start > 11.0
 
 
-def test_the_span_does_not_reach_back_into_the_previous_sentence(analyzer, split_sentence):
+def test_the_span_does_not_reach_back_into_the_previous_sentence(
+    analyzer, split_sentence
+):
     """
     The old fallback started at 9.0s, inside "some people earn nothing at all" -
     a deliberately compliant line. Cutting there removes the wrong content.
@@ -107,7 +117,9 @@ def test_a_quote_matching_nothing_is_reported_as_unaligned(analyzer, split_sente
     quote nobody could place be auto-applied to whatever sat at that time.
     """
     start, end, aligned = analyzer._find_text_timestamps(
-        "entirely different words about unrelated subject matter", split_sentence, approx_time=30.0
+        "entirely different words about unrelated subject matter",
+        split_sentence,
+        approx_time=30.0,
     )
 
     assert (start, end) == (28.0, 32.0)
@@ -119,13 +131,17 @@ def test_short_quotes_do_not_trigger_cross_segment_alignment(analyzer, split_sen
     Two or three words match too much of a transcript to place safely. The
     approximate window is the honest answer.
     """
-    start, end, aligned = analyzer._find_text_timestamps("job by", split_sentence, approx_time=40.0)
+    start, end, aligned = analyzer._find_text_timestamps(
+        "job by", split_sentence, approx_time=40.0
+    )
 
     assert (start, end) == (38.0, 42.0)
     assert aligned is False
 
 
-def test_alignment_survives_punctuation_and_casing_differences(analyzer, split_sentence):
+def test_alignment_survives_punctuation_and_casing_differences(
+    analyzer, split_sentence
+):
     """Models re-punctuate their quotes; the transcript's commas are Whisper's."""
     start, end, aligned = analyzer._find_text_timestamps(
         "You could quit your job -- by Christmas!", split_sentence, approx_time=11.0
@@ -140,7 +156,12 @@ def test_transcripts_without_word_timings_fall_back_rather_than_guess(analyzer):
     transcript = TranscriptResult(
         segments=[
             Segment(text="you could quit your job", start=11.0, end=13.7, words=[]),
-            Segment(text="by Christmas if you follow the system", start=13.7, end=17.0, words=[]),
+            Segment(
+                text="by Christmas if you follow the system",
+                start=13.7,
+                end=17.0,
+                words=[],
+            ),
         ],
         language="en",
         duration=17.0,
@@ -183,6 +204,7 @@ def test_the_nearest_occurrence_to_the_models_timestamp_wins(analyzer):
 # inside "like", and the end was a word count measured from a start nobody had
 # verified. The span landed on speech that was never quoted - and under
 # `auto_fix`, that is the speech that got cut.
+
 
 def test_a_first_word_hiding_inside_another_word_does_not_anchor_the_span(analyzer):
     """
@@ -251,8 +273,13 @@ def test_an_unmatchable_quote_inside_a_segment_uses_the_segment_bounds(analyzer)
 
 # --- timestamps the model made up -------------------------------------------
 
-@pytest.mark.parametrize("approximate_time", ["nan", "inf", "-inf", "-12s", "later", None])
-def test_an_unusable_model_timestamp_does_not_reach_the_span(analyzer, approximate_time):
+
+@pytest.mark.parametrize(
+    "approximate_time", ["nan", "inf", "-inf", "-12s", "later", None]
+)
+def test_an_unusable_model_timestamp_does_not_reach_the_span(
+    analyzer, approximate_time
+):
     """
     float() accepts "nan" and "inf" as readily as "12.5", and both used to flow
     straight into a span the exporter hands to FFmpeg. A negative time is as
@@ -265,8 +292,13 @@ def test_an_unusable_model_timestamp_does_not_reach_the_span(analyzer, approxima
     )
 
     mapped = analyzer._map_to_timestamps(
-        [{"text": "words that appear nowhere in this transcript at all",
-          "approximate_time": approximate_time, "label": "Income Claim"}],
+        [
+            {
+                "text": "words that appear nowhere in this transcript at all",
+                "approximate_time": approximate_time,
+                "label": "Income Claim",
+            }
+        ],
         transcript,
         prompt="find income claims",
     )
@@ -284,7 +316,13 @@ def test_a_usable_model_timestamp_is_still_honoured(analyzer):
     )
 
     mapped = analyzer._map_to_timestamps(
-        [{"text": "nothing here matches", "approximate_time": "30s", "label": "Income Claim"}],
+        [
+            {
+                "text": "nothing here matches",
+                "approximate_time": "30s",
+                "label": "Income Claim",
+            }
+        ],
         transcript,
         prompt="find income claims",
     )
@@ -294,6 +332,7 @@ def test_a_usable_model_timestamp_is_still_honoured(analyzer):
 
 # --- an unplaced quote says so ----------------------------------------------
 
+
 def test_an_unplaced_quote_is_marked_approximate(analyzer):
     transcript = TranscriptResult(
         segments=[_segment("you could quit your job by Christmas", 11.0, 14.0)],
@@ -302,9 +341,14 @@ def test_an_unplaced_quote_is_marked_approximate(analyzer):
     )
 
     mapped = analyzer._map_to_timestamps(
-        [{"text": "a sentence nobody in this recording said",
-          "approximate_time": "12s", "label": "Income Claim",
-          "reasoning": "Promises a specific outcome."}],
+        [
+            {
+                "text": "a sentence nobody in this recording said",
+                "approximate_time": "12s",
+                "label": "Income Claim",
+                "reasoning": "Promises a specific outcome.",
+            }
+        ],
         transcript,
         prompt="find income claims",
     )
@@ -324,8 +368,14 @@ def test_a_placed_quote_is_not_marked_approximate(analyzer):
     )
 
     mapped = analyzer._map_to_timestamps(
-        [{"text": "quit your job by Christmas", "approximate_time": "11s",
-          "label": "Income Claim", "reasoning": "Promises a specific outcome."}],
+        [
+            {
+                "text": "quit your job by Christmas",
+                "approximate_time": "11s",
+                "label": "Income Claim",
+                "reasoning": "Promises a specific outcome.",
+            }
+        ],
         transcript,
         prompt="find income claims",
     )

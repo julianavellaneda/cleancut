@@ -227,7 +227,9 @@ def test_an_interrupted_task_is_replayed_with_its_arguments():
     assert report.replayed == 1
     task = _drain()[0]
     assert (task.kind, task.job_id, task.file_path) == (
-        "process", job_id, "/tmp/interrupted.mp3",
+        "process",
+        job_id,
+        "/tmp/interrupted.mp3",
     )
     # Still on the books - it is outstanding again, not done.
     assert _tasks(job_id)[0].state == "pending"
@@ -250,7 +252,9 @@ def test_a_task_that_has_used_up_its_attempts_is_abandoned():
     process, comes back on the next boot, and kills it again.
     """
     job_id = _make_job(status="transcribing")
-    _add_task(job_id, "process", attempts=worker.MAX_ATTEMPTS, file_path="/tmp/poison.mp3")
+    _add_task(
+        job_id, "process", attempts=worker.MAX_ATTEMPTS, file_path="/tmp/poison.mp3"
+    )
 
     report = worker.recover_interrupted_work()
 
@@ -296,7 +300,9 @@ def test_a_task_whose_job_is_gone_is_dropped():
     assert [t.id for t in _tasks()] == [] or orphan not in [t.id for t in _tasks()]
 
 
-def test_a_job_interrupted_before_its_task_was_recorded_is_requeued(tmp_path, monkeypatch):
+def test_a_job_interrupted_before_its_task_was_recorded_is_requeued(
+    tmp_path, monkeypatch
+):
     """
     The window between committing the job row and writing the task row. There
     is no transcript yet, so re-running the whole pipeline is safe.
@@ -315,7 +321,9 @@ def test_a_job_interrupted_before_its_task_was_recorded_is_requeued(tmp_path, mo
     assert [t.kind for t in _tasks(job_id)] == ["process"]
 
 
-def test_a_stranded_job_whose_media_is_gone_fails_with_an_explanation(tmp_path, monkeypatch):
+def test_a_stranded_job_whose_media_is_gone_fails_with_an_explanation(
+    tmp_path, monkeypatch
+):
     job_id = _make_job(status="transcribing")
     monkeypatch.setattr(worker, "UPLOAD_DIR", tmp_path)
 
@@ -343,14 +351,24 @@ def test_a_reviewed_job_is_never_re_run_over_the_top(tmp_path, monkeypatch):
         job = db.query(Job).filter(Job.id == job_id).first()
         job.transcript = transcripts.to_json(
             TranscriptResult(
-                segments=[Segment(text="already transcribed", start=0.0, end=1.0, words=[])],
+                segments=[
+                    Segment(text="already transcribed", start=0.0, end=1.0, words=[])
+                ],
                 language="en",
                 duration=1.0,
             )
         )
-        db.add(ViolationRow(id=str(uuid.uuid4()), job_id=job_id, text="keep me",
-                            start_time=0.0, end_time=1.0, label="Filler Word",
-                            status="accepted"))
+        db.add(
+            ViolationRow(
+                id=str(uuid.uuid4()),
+                job_id=job_id,
+                text="keep me",
+                start_time=0.0,
+                end_time=1.0,
+                label="Filler Word",
+                status="accepted",
+            )
+        )
         db.commit()
     finally:
         db.close()
@@ -433,8 +451,16 @@ def test_re_running_a_job_replaces_its_suggestions(monkeypatch, tmp_path):
 
     db = SessionLocal()
     try:
-        db.add(ViolationRow(id=str(uuid.uuid4()), job_id=job_id, text="um",
-                            start_time=0.0, end_time=0.4, label="Filler Word"))
+        db.add(
+            ViolationRow(
+                id=str(uuid.uuid4()),
+                job_id=job_id,
+                text="um",
+                start_time=0.0,
+                end_time=0.4,
+                label="Filler Word",
+            )
+        )
         db.commit()
     finally:
         db.close()
@@ -447,20 +473,30 @@ def test_re_running_a_job_replaces_its_suggestions(monkeypatch, tmp_path):
 
         def analyze(self, transcript, prompt=None, preset=None):
             return AnalysisResult(
-                violations=[Violation(text="um", start_time=0.0, end_time=0.4,
-                                      label="Filler Word", action="cut",
-                                      reasoning="hesitation")],
+                violations=[
+                    Violation(
+                        text="um",
+                        start_time=0.0,
+                        end_time=0.4,
+                        label="Filler Word",
+                        action="cut",
+                        reasoning="hesitation",
+                    )
+                ],
                 total_segments_analyzed=0,
                 transcript_language="en",
             )
 
     monkeypatch.setattr(worker, "get_processor", lambda: StubProcessor())
-    monkeypatch.setattr(worker, "decode_pcm_mono",
-                        lambda path, sr=8000: np.zeros(sr, dtype=np.float32))
-    monkeypatch.setattr(worker.Scrubber, "detect_silence",
-                        staticmethod(lambda t, *a, **k: []))
-    monkeypatch.setattr(worker.Scrubber, "detect_filler_words",
-                        staticmethod(lambda t: []))
+    monkeypatch.setattr(
+        worker, "decode_pcm_mono", lambda path, sr=8000: np.zeros(sr, dtype=np.float32)
+    )
+    monkeypatch.setattr(
+        worker.Scrubber, "detect_silence", staticmethod(lambda t, *a, **k: [])
+    )
+    monkeypatch.setattr(
+        worker.Scrubber, "detect_filler_words", staticmethod(lambda t: [])
+    )
     monkeypatch.setattr(worker, "ffmpeg", _StubFfmpeg())
     monkeypatch.setattr(exports, "ffmpeg", _StubFfmpeg())
 

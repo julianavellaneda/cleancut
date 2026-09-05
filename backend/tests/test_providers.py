@@ -30,16 +30,20 @@ from app.analysis.providers import (
 
 # --- the spec ---------------------------------------------------------------
 
+
 def test_the_default_is_the_provider_the_tool_shipped_with():
     """Introducing the router must not change what an unconfigured checkout does."""
     assert DEFAULT_MODEL_SPEC == "openai:gpt-4o"
 
 
-@pytest.mark.parametrize("raw,provider,model", [
-    ("openai:gpt-4o", "openai", "gpt-4o"),
-    ("anthropic:claude-opus-5", "anthropic", "claude-opus-5"),
-    ("  OpenAI : gpt-4o-mini  ", "openai", "gpt-4o-mini"),
-])
+@pytest.mark.parametrize(
+    "raw,provider,model",
+    [
+        ("openai:gpt-4o", "openai", "gpt-4o"),
+        ("anthropic:claude-opus-5", "anthropic", "claude-opus-5"),
+        ("  OpenAI : gpt-4o-mini  ", "openai", "gpt-4o-mini"),
+    ],
+)
 def test_a_well_formed_spec_parses(raw, provider, model):
     spec = parse_model_spec(raw)
 
@@ -51,7 +55,9 @@ def test_only_the_first_colon_splits():
     assert parse_model_spec("openai:ft:gpt-4o:acme").model == "ft:gpt-4o:acme"
 
 
-@pytest.mark.parametrize("raw", ["", "gpt-4o", "openai:", ":gpt-4o", "mistral:large", None])
+@pytest.mark.parametrize(
+    "raw", ["", "gpt-4o", "openai:", ":gpt-4o", "mistral:large", None]
+)
 def test_a_malformed_spec_names_what_was_expected(raw):
     """
     The error has to be readable by whoever edited `.env`, since that is the
@@ -81,6 +87,7 @@ def test_the_variable_is_read_per_call_not_at_import(monkeypatch):
 
 # --- building the client ----------------------------------------------------
 
+
 def test_the_missing_key_named_is_the_one_this_deployment_needs(monkeypatch):
     """
     An OpenAI key is no help to a machine configured for Anthropic, and the
@@ -97,10 +104,13 @@ def test_the_missing_key_named_is_the_one_this_deployment_needs(monkeypatch):
     assert "OPENAI_API_KEY" not in str(excinfo.value)
 
 
-@pytest.mark.parametrize("spec,expected", [
-    ("openai:gpt-4o", "OpenAIProvider"),
-    ("anthropic:claude-opus-5", "AnthropicProvider"),
-])
+@pytest.mark.parametrize(
+    "spec,expected",
+    [
+        ("openai:gpt-4o", "OpenAIProvider"),
+        ("anthropic:claude-opus-5", "AnthropicProvider"),
+    ],
+)
 def test_the_spec_picks_the_client(monkeypatch, spec, expected):
     monkeypatch.setenv("CLEANCUT_MODEL", spec)
     monkeypatch.setenv("OPENAI_API_KEY", "sk-test")
@@ -110,6 +120,7 @@ def test_the_spec_picks_the_client(monkeypatch, spec, expected):
 
 
 # --- the Anthropic path -----------------------------------------------------
+
 
 class _Block:
     def __init__(self, type_, text=""):
@@ -127,6 +138,7 @@ class _Response:
 @pytest.fixture
 def anthropic_provider(monkeypatch):
     """An AnthropicProvider whose client returns a canned response."""
+
     def _build(response):
         calls = {}
 
@@ -137,7 +149,9 @@ def anthropic_provider(monkeypatch):
 
         provider = AnthropicProvider.__new__(AnthropicProvider)
         provider.model = "claude-opus-5"
-        provider._client = type("C", (), {"beta": type("B", (), {"messages": StubMessages()})()})()
+        provider._client = type(
+            "C", (), {"beta": type("B", (), {"messages": StubMessages()})()}
+        )()
         return provider, calls
 
     return _build
@@ -148,11 +162,15 @@ def test_the_answer_is_the_text_blocks(anthropic_provider):
     Thinking blocks can precede the answer, so the first block is not assumed
     to be the one carrying the JSON.
     """
-    provider, _ = anthropic_provider(_Response([
-        _Block("thinking", "reasoning that is not the answer"),
-        _Block("text", '{"violations": '),
-        _Block("text", "[]}"),
-    ]))
+    provider, _ = anthropic_provider(
+        _Response(
+            [
+                _Block("thinking", "reasoning that is not the answer"),
+                _Block("text", '{"violations": '),
+                _Block("text", "[]}"),
+            ]
+        )
+    )
 
     assert provider.complete("system", "transcript") == '{"violations": []}'
 
@@ -173,7 +191,9 @@ def test_a_refusal_is_raised_rather_than_returned_empty(anthropic_provider):
     returning the joined text would hand the analyzer "" - which parses as
     nothing found, and reads on the review screen as a clean recording.
     """
-    provider, _ = anthropic_provider(_Response([], stop_reason="refusal", category="cyber"))
+    provider, _ = anthropic_provider(
+        _Response([], stop_reason="refusal", category="cyber")
+    )
 
     with pytest.raises(ProviderError) as excinfo:
         provider.complete("system", "transcript")

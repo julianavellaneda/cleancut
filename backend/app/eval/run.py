@@ -46,7 +46,10 @@ def _bar(found: int, total: int, width: int = 12) -> str:
 
 
 def format_report(
-    spec: EvalSpec, suite: Suite, card: Scorecard, run: RunResult | None = None,
+    spec: EvalSpec,
+    suite: Suite,
+    card: Scorecard,
+    run: RunResult | None = None,
 ) -> str:
     lines: list[str] = []
     add = lines.append
@@ -90,7 +93,9 @@ def format_report(
         add("")
 
     if card.duplicates:
-        add(f"Duplicates (a second suggestion on an already-found label): {len(card.duplicates)}")
+        add(
+            f"Duplicates (a second suggestion on an already-found label): {len(card.duplicates)}"
+        )
     if card.out_of_scope:
         add(f"Out of scope for this suite, not graded: {len(card.out_of_scope)}")
 
@@ -103,12 +108,16 @@ def format_report(
 
     if run is not None and run.is_partial:
         add("")
-        add(f"INCOMPLETE RUN - {len(run.failed_chunks)} chunk(s) failed. Every number "
-            "above is a floor, not a measurement:")
+        add(
+            f"INCOMPLETE RUN - {len(run.failed_chunks)} chunk(s) failed. Every number "
+            "above is a floor, not a measurement:"
+        )
         for chunk in run.failed_chunks:
             add(f"  ! {chunk}")
 
-    excluded = [e for e in spec.expectations if not e.present and e.category in suite.categories]
+    excluded = [
+        e for e in spec.expectations if not e.present and e.category in suite.categories
+    ]
     if excluded:
         add("")
         add("Excluded from scoring (the clip does not contain these):")
@@ -126,7 +135,9 @@ def as_dict(card: Scorecard, run: RunResult | None = None) -> dict:
         "f1": card.f1,
         "graded": card.counted,
         "labels": len(card.scorable),
-        "per_category": {c: {"found": f, "expected": t} for c, (f, t) in card.per_category.items()},
+        "per_category": {
+            c: {"found": f, "expected": t} for c, (f, t) in card.per_category.items()
+        },
         "misses": [e.id for e in card.misses],
         "false_positives": len(card.false_positives),
         "control_hits": [c.id for _, c in card.control_hits],
@@ -139,7 +150,11 @@ def as_dict(card: Scorecard, run: RunResult | None = None) -> dict:
 
 
 DEMO_TRANSCRIPT = (
-    Path(__file__).resolve().parents[3] / "tests" / "fixtures" / "demo" / "transcript_words.json"
+    Path(__file__).resolve().parents[3]
+    / "tests"
+    / "fixtures"
+    / "demo"
+    / "transcript_words.json"
 )
 
 
@@ -253,30 +268,55 @@ def main(argv: list[str] | None = None) -> int:
         description="Score a run's suggestions against the labelled demo clip.",
     )
     parser.add_argument(
-        "run", nargs="?", type=Path,
+        "run",
+        nargs="?",
+        type=Path,
         help="A saved run: seed_job.json, an analysis JSON, or an API violation list.",
     )
-    parser.add_argument("--suite", default="claims-and-scrub", help="Which suite to grade against.")
-    parser.add_argument("--live", type=Path, metavar="MEDIA",
-                        help="Transcribe and analyze this file instead of reading a saved run.")
-    parser.add_argument("--detectors", type=Path, metavar="MEDIA",
-                        help="Run only the deterministic detectors against this file. "
-                             "No model, no API key.")
-    parser.add_argument("--transcript", type=Path, default=DEMO_TRANSCRIPT,
-                        help="Word-level transcript JSON for --detectors "
-                             f"(default: {DEMO_TRANSCRIPT.name}).")
-    parser.add_argument("--model", default="medium", help="Whisper model size for --live.")
+    parser.add_argument(
+        "--suite", default="claims-and-scrub", help="Which suite to grade against."
+    )
+    parser.add_argument(
+        "--live",
+        type=Path,
+        metavar="MEDIA",
+        help="Transcribe and analyze this file instead of reading a saved run.",
+    )
+    parser.add_argument(
+        "--detectors",
+        type=Path,
+        metavar="MEDIA",
+        help="Run only the deterministic detectors against this file. "
+        "No model, no API key.",
+    )
+    parser.add_argument(
+        "--transcript",
+        type=Path,
+        default=DEMO_TRANSCRIPT,
+        help="Word-level transcript JSON for --detectors "
+        f"(default: {DEMO_TRANSCRIPT.name}).",
+    )
+    parser.add_argument(
+        "--model", default="medium", help="Whisper model size for --live."
+    )
     parser.add_argument("--labels", type=Path, help="Override the labels file.")
-    parser.add_argument("--json", action="store_true", help="Print the scorecard as JSON.")
+    parser.add_argument(
+        "--json", action="store_true", help="Print the scorecard as JSON."
+    )
     parser.add_argument("--min-precision", type=float, default=None)
     parser.add_argument("--min-recall", type=float, default=None)
-    parser.add_argument("--allow-partial", action="store_true",
-                        help="Score a run whose analysis was incomplete instead of exiting 2.")
+    parser.add_argument(
+        "--allow-partial",
+        action="store_true",
+        help="Score a run whose analysis was incomplete instead of exiting 2.",
+    )
     args = parser.parse_args(argv)
 
     modes = [bool(args.run), bool(args.live), bool(args.detectors)]
     if sum(modes) != 1:
-        parser.error("Give exactly one of: a saved run file, --live MEDIA, or --detectors MEDIA.")
+        parser.error(
+            "Give exactly one of: a saved run file, --live MEDIA, or --detectors MEDIA."
+        )
 
     spec = load_spec(args.labels)
     suite = spec.suite(args.suite)

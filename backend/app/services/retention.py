@@ -241,7 +241,9 @@ def _sweep_loop(max_age_seconds: float, interval_seconds: float) -> None:
             return
 
 
-def start_retention_sweeper(env: Mapping[str, str] | None = None) -> threading.Thread | None:
+def start_retention_sweeper(
+    env: Mapping[str, str] | None = None,
+) -> threading.Thread | None:
     """
     Start the background sweeper, or don't when retention is off.
 
@@ -252,13 +254,18 @@ def start_retention_sweeper(env: Mapping[str, str] | None = None) -> threading.T
     """
     max_age = retention_seconds(env)
     if max_age is None:
-        logger.info("RETENTION_HOURS is unset; uploads and exports are kept indefinitely.")
+        logger.info(
+            "RETENTION_HOURS is unset; uploads and exports are kept indefinitely."
+        )
         return None
 
     interval = sweep_interval_seconds(env)
     _stop_sweeping.clear()
     thread = threading.Thread(
-        target=_sweep_loop, args=(max_age, interval), daemon=True, name="retention-sweeper"
+        target=_sweep_loop,
+        args=(max_age, interval),
+        daemon=True,
+        name="retention-sweeper",
     )
     thread.start()
     logger.info(

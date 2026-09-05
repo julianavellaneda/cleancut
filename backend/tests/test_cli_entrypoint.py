@@ -52,11 +52,17 @@ def test_no_module_uses_a_syspath_hack():
 
 def test_analysis_modules_are_importable_as_a_package():
     result = subprocess.run(
-        [sys.executable, "-c",
-         "from app.analysis.prompt_analyzer import Violation as A;"
-         "from app.services.processor import Violation as B;"
-         "print(A is B)"],
-        cwd=BACKEND_DIR, capture_output=True, text=True, timeout=180,
+        [
+            sys.executable,
+            "-c",
+            "from app.analysis.prompt_analyzer import Violation as A;"
+            "from app.services.processor import Violation as B;"
+            "print(A is B)",
+        ],
+        cwd=BACKEND_DIR,
+        capture_output=True,
+        text=True,
+        timeout=180,
     )
     assert result.returncode == 0, result.stderr
     assert result.stdout.strip() == "True"

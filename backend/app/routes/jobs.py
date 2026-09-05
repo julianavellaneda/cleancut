@@ -65,7 +65,7 @@ def create_job(
     auto_fix: bool = Form(False),
     auto_scrub: bool = Form(False),
     preset: str | None = Form(None),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
 ):
     """
     Upload media file and start background processing.
@@ -84,16 +84,27 @@ def create_job(
     if not is_valid_preset(preset):
         raise HTTPException(
             status_code=400,
-            detail=f"Unknown preset '{preset}'. Available: {', '.join(PRESETS)}"
+            detail=f"Unknown preset '{preset}'. Available: {', '.join(PRESETS)}",
         )
 
     # Validate file type
-    allowed_extensions = {".mp3", ".wav", ".m4a", ".flac", ".ogg", ".webm", ".aif", ".aiff", ".mp4", ".mov"}
+    allowed_extensions = {
+        ".mp3",
+        ".wav",
+        ".m4a",
+        ".flac",
+        ".ogg",
+        ".webm",
+        ".aif",
+        ".aiff",
+        ".mp4",
+        ".mov",
+    }
     file_ext = Path(file.filename).suffix.lower()
     if file_ext not in allowed_extensions:
         raise HTTPException(
             status_code=400,
-            detail=f"Unsupported file type. Allowed: {', '.join(allowed_extensions)}"
+            detail=f"Unsupported file type. Allowed: {', '.join(allowed_extensions)}",
         )
 
     # Determine media type if not provided
@@ -111,7 +122,7 @@ def create_job(
         status="pending",
         auto_fix=auto_fix,
         auto_scrub=auto_scrub,
-        preset=preset
+        preset=preset,
     )
     db.add(job)
     db.commit()
@@ -191,11 +202,7 @@ def list_jobs(
     defaults to 0 rather than assuming every job id appears.
     """
     jobs = (
-        db.query(Job)
-        .order_by(Job.created_at.desc())
-        .limit(limit)
-        .offset(offset)
-        .all()
+        db.query(Job).order_by(Job.created_at.desc()).limit(limit).offset(offset).all()
     )
     counts = _violation_counts(db, [job.id for job in jobs])
     return [
@@ -211,7 +218,7 @@ def list_jobs(
             preset=job.preset,
             duration_seconds=job.duration_seconds,
             created_at=job.created_at,
-            violation_count=counts.get(job.id, 0)
+            violation_count=counts.get(job.id, 0),
         )
         for job in jobs
     ]
@@ -239,7 +246,13 @@ def _violation_counts(db: Session, job_ids: list[str]) -> dict:
 # imported from the worker so the route does not depend on the worker module
 # just to name four strings; `retention.TERMINAL_STATUSES` is the other side of
 # the same fact.
-ACTIVE_JOB_STATUSES = ("pending", "converting", "transcribing", "analyzing", "exporting")
+ACTIVE_JOB_STATUSES = (
+    "pending",
+    "converting",
+    "transcribing",
+    "analyzing",
+    "exporting",
+)
 ACTIVE_EXPORT_STATUSES = ("queued", "exporting")
 
 
@@ -305,7 +318,9 @@ def get_job(job_id: str, db: Session = Depends(get_db)):
 
 
 @router.post("/{job_id}/reanalyze", response_model=ReanalyzeResponse, status_code=202)
-def reanalyze_job(job_id: str, request: ReanalyzeRequest, db: Session = Depends(get_db)):
+def reanalyze_job(
+    job_id: str, request: ReanalyzeRequest, db: Session = Depends(get_db)
+):
     """
     Ask a different question about a transcript that has already been made.
 
@@ -391,12 +406,16 @@ def get_transcript(job_id: str, db: Session = Depends(get_db)):
 
     stored = transcripts.from_json(job.transcript)
     if stored is None:
-        raise HTTPException(status_code=404, detail="No transcript stored for this job.")
+        raise HTTPException(
+            status_code=404, detail="No transcript stored for this job."
+        )
 
     return TranscriptResponse(
         job_id=job.id,
         language=stored.language or job.language,
-        duration=stored.duration if stored.duration is not None else job.duration_seconds,
+        duration=stored.duration
+        if stored.duration is not None
+        else job.duration_seconds,
         segments=[
             TranscriptSegment(start=seg.start, end=seg.end, text=seg.text)
             for seg in stored.segments
@@ -499,5 +518,5 @@ def _build_job_response(job: Job, db: Session) -> JobResponse:
         violation_count=sum(by_status.values()),
         pending_count=by_status.get("pending", 0),
         accepted_count=by_status.get("accepted", 0),
-        rejected_count=by_status.get("rejected", 0)
+        rejected_count=by_status.get("rejected", 0),
     )

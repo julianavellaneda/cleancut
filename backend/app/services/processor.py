@@ -59,7 +59,9 @@ class AudioProcessor:
             self._analyzer = PromptAnalyzer()
         return self._analyzer
 
-    def transcribe(self, audio_path: str, language: str | None = None) -> TranscriptResult:
+    def transcribe(
+        self, audio_path: str, language: str | None = None
+    ) -> TranscriptResult:
         """
         Transcribe an audio file.
 
@@ -92,10 +94,7 @@ class AudioProcessor:
         return self.analyzer.analyze(transcript, prompt=prompt, preset=preset)
 
     def process_audio(
-        self,
-        audio_path: str,
-        prompt: str | None = None,
-        language: str | None = None
+        self, audio_path: str, prompt: str | None = None, language: str | None = None
     ) -> tuple[TranscriptResult, AnalysisResult]:
         """
         Full pipeline: transcribe and analyze.

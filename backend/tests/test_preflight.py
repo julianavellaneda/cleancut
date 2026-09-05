@@ -105,9 +105,11 @@ def test_app_runs_preflight_before_serving(monkeypatch):
 
     import app.main as main
 
-    monkeypatch.setattr(main, "verify_environment", lambda: (_ for _ in ()).throw(
-        PreflightError("boom")
-    ))
+    monkeypatch.setattr(
+        main,
+        "verify_environment",
+        lambda: (_ for _ in ()).throw(PreflightError("boom")),
+    )
 
     with pytest.raises(PreflightError):
         with TestClient(main.app):

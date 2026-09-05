@@ -47,25 +47,32 @@ def _raw(**overrides):
 
 # --- the derivation itself -------------------------------------------------
 
-@pytest.mark.parametrize("instruction", [
-    None,
-    "",
-    "flag every income claim",
-    "find the filler words",
-    "remove anything off-topic",
-])
+
+@pytest.mark.parametrize(
+    "instruction",
+    [
+        None,
+        "",
+        "flag every income claim",
+        "find the filler words",
+        "remove anything off-topic",
+    ],
+)
 def test_ordinary_instructions_default_to_cut(instruction):
     assert _prompt_default_action(instruction) == "cut"
 
 
-@pytest.mark.parametrize("instruction", [
-    "redact any personal information",
-    "bleep the profanity",
-    "silence anything sensitive",
-    "censor the account numbers",
-    "anonymize every name you hear",
-    "Mute any PII",
-])
+@pytest.mark.parametrize(
+    "instruction",
+    [
+        "redact any personal information",
+        "bleep the profanity",
+        "silence anything sensitive",
+        "censor the account numbers",
+        "anonymize every name you hear",
+        "Mute any PII",
+    ],
+)
 def test_redaction_instructions_default_to_mute(instruction):
     assert _prompt_default_action(instruction) == "mute"
 
@@ -76,7 +83,10 @@ def test_a_mixed_instruction_defaults_to_cut():
     covers the common case; the system prompt asks the model to mark the
     individual redactions, and a model-supplied action always wins.
     """
-    assert _prompt_default_action("cut the filler words and bleep the phone numbers") == "cut"
+    assert (
+        _prompt_default_action("cut the filler words and bleep the phone numbers")
+        == "cut"
+    )
 
 
 def test_the_derivation_is_case_insensitive():
@@ -85,7 +95,10 @@ def test_the_derivation_is_case_insensitive():
 
 # --- how it reaches a Violation --------------------------------------------
 
-def test_prompt_mode_falls_back_to_the_instruction_derived_default(analyzer, transcript):
+
+def test_prompt_mode_falls_back_to_the_instruction_derived_default(
+    analyzer, transcript
+):
     [v] = analyzer._map_to_timestamps(
         _raw(label="Phone Number"), transcript, prompt="redact any personal information"
     )
@@ -93,7 +106,9 @@ def test_prompt_mode_falls_back_to_the_instruction_derived_default(analyzer, tra
     assert v.action == "mute"
 
 
-def test_prompt_mode_defaults_to_cut_for_a_non_redaction_instruction(analyzer, transcript):
+def test_prompt_mode_defaults_to_cut_for_a_non_redaction_instruction(
+    analyzer, transcript
+):
     [v] = analyzer._map_to_timestamps(
         _raw(label="Income Claim"), transcript, prompt="flag every income claim"
     )

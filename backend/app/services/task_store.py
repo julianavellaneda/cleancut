@@ -206,11 +206,7 @@ def outstanding(db) -> list[Task]:
     `running` belongs to a worker thread that no longer exists, so it is work
     that was interrupted, not work in progress.
     """
-    return (
-        db.query(Task)
-        .order_by(Task.created_at, Task.id)
-        .all()
-    )
+    return db.query(Task).order_by(Task.created_at, Task.id).all()
 
 
 def outstanding_kinds_by_job(db) -> dict[str, set[str]]:
@@ -230,8 +226,6 @@ def outstanding_kinds_by_job(db) -> dict[str, set[str]]:
 def has_outstanding(db, job_id: str, kind: str) -> bool:
     """Whether a task of this kind is already queued or running for a job."""
     return (
-        db.query(Task.id)
-        .filter(Task.job_id == job_id, Task.kind == kind)
-        .first()
+        db.query(Task.id).filter(Task.job_id == job_id, Task.kind == kind).first()
         is not None
     )

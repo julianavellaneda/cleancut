@@ -49,7 +49,7 @@ def print_marker(v, index: int) -> None:
     renders them the way the review screen renders its badge.
     """
     action_colors = {
-        "cut": "\033[91m",    # Red
+        "cut": "\033[91m",  # Red
         "mute": "\033[93m",  # Yellow
     }
     reset = "\033[0m"
@@ -58,16 +58,20 @@ def print_marker(v, index: int) -> None:
 
     print(f"\n{color}[{index}] {v.label.upper()} ({v.action.upper()}){reset}")
     print(f"    Time: {v.start_time:.1f}s - {v.end_time:.1f}s")
-    print(f"    Text: \"{v.text}\"")
+    print(f'    Text: "{v.text}"')
     print(f"    Reason: {v.reasoning}")
 
     yellow = "\033[93m"
     if getattr(v, "is_approximate", False):
-        print(f"    {yellow}Check: this quote could not be matched to the transcript, "
-              f"so the span is an estimate.{reset}")
+        print(
+            f"    {yellow}Check: this quote could not be matched to the transcript, "
+            f"so the span is an estimate.{reset}"
+        )
     if getattr(v, "is_ambiguous", False):
-        print(f"    {yellow}Check: this is also an ordinary word, and nothing around it "
-              f"marks it as a hesitation.{reset}")
+        print(
+            f"    {yellow}Check: this is also an ordinary word, and nothing around it "
+            f"marks it as a hesitation.{reset}"
+        )
 
 
 def print_partial_warning(result: AnalysisResult) -> None:
@@ -78,8 +82,10 @@ def print_partial_warning(result: AnalysisResult) -> None:
 
     print(f"\n{yellow}  WARNING: PARTIAL ANALYSIS{reset}")
     if total:
-        print(f"  {covered} of {total} segment(s) were analyzed "
-              f"({len(result.failed_chunks)} chunk(s) failed).")
+        print(
+            f"  {covered} of {total} segment(s) were analyzed "
+            f"({len(result.failed_chunks)} chunk(s) failed)."
+        )
     else:
         print(f"  {len(result.failed_chunks)} chunk(s) failed.")
     print("  These spans were NOT checked - findings below are incomplete:")
@@ -88,64 +94,62 @@ def print_partial_warning(result: AnalysisResult) -> None:
 
 
 def main():
-    parser = argparse.ArgumentParser(
-        description="Analyze audio based on a prompt."
+    parser = argparse.ArgumentParser(description="Analyze audio based on a prompt.")
+    parser.add_argument(
+        "audio_file", nargs="?", help="Path to the audio file to analyze"
     )
     parser.add_argument(
-        "audio_file",
-        nargs="?",
-        help="Path to the audio file to analyze"
+        "--output",
+        "-o",
+        help="Output JSON file path (default: <audio_name>_analysis.json)",
     )
     parser.add_argument(
-        "--output", "-o",
-        help="Output JSON file path (default: <audio_name>_analysis.json)"
+        "--prompt", "-p", help="The editing instruction or question for the analyzer."
     )
     parser.add_argument(
-        "--prompt", "-p",
-        help="The editing instruction or question for the analyzer."
-    )
-    parser.add_argument(
-        "--model", "-m",
+        "--model",
+        "-m",
         default="medium",
         choices=["tiny", "base", "small", "medium", "large-v3"],
-        help="Whisper model size (default: medium)"
+        help="Whisper model size (default: medium)",
     )
     parser.add_argument(
-        "--language", "-l",
-        help="Audio language (e.g., 'en', 'es'). Auto-detect if not specified."
+        "--language",
+        "-l",
+        help="Audio language (e.g., 'en', 'es'). Auto-detect if not specified.",
     )
     parser.add_argument(
-        "--rules", "-r",
-        help="Path to a custom rules file (used as baseline context in prompt mode)"
+        "--rules",
+        "-r",
+        help="Path to a custom rules file (used as baseline context in prompt mode)",
     )
     parser.add_argument(
         "--preset",
         choices=sorted(PRESETS),
-        help="Run a built-in rule preset instead of a free-form prompt"
+        help="Run a built-in rule preset instead of a free-form prompt",
     )
     parser.add_argument(
-        "--transcript-only", "-t",
+        "--transcript-only",
+        "-t",
         action="store_true",
-        help="Only transcribe, skip analysis"
+        help="Only transcribe, skip analysis",
     )
     parser.add_argument(
-        "--transcript", "-T",
-        help="Path to existing transcript file (skip transcription, run analysis only)"
+        "--transcript",
+        "-T",
+        help="Path to existing transcript file (skip transcription, run analysis only)",
     )
     parser.add_argument(
-        "--chunk-size", "-c",
+        "--chunk-size",
+        "-c",
         type=int,
-        help="Segments per chunk for analysis (default: 50)"
+        help="Segments per chunk for analysis (default: 50)",
     )
     parser.add_argument(
-        "--overlap",
-        type=int,
-        help="Segments to overlap between chunks (default: 10)"
+        "--overlap", type=int, help="Segments to overlap between chunks (default: 10)"
     )
     parser.add_argument(
-        "--no-overlap",
-        action="store_true",
-        help="Disable chunk overlap"
+        "--no-overlap", action="store_true", help="Disable chunk overlap"
     )
 
     args = parser.parse_args()
@@ -165,7 +169,10 @@ def main():
         if args.output:
             output_path = Path(args.output)
         else:
-            output_path = transcript_path.parent / f"{transcript_path.stem.replace('_transcript', '')}_analysis.json"
+            output_path = (
+                transcript_path.parent
+                / f"{transcript_path.stem.replace('_transcript', '')}_analysis.json"
+            )
 
         print_header("LOADING EXISTING TRANSCRIPT")
         try:
@@ -175,7 +182,7 @@ def main():
             print(f"Error: {e}")
             sys.exit(1)
         print(f"Loaded {len(transcript.segments)} segments from {transcript_path.name}")
-    
+
     else:
         audio_path = Path(args.audio_file)
         if not audio_path.exists():
@@ -190,7 +197,9 @@ def main():
         print_header("STEP 1: TRANSCRIPTION")
         transcriber = Transcriber(model_size=args.model)
         transcript = transcriber.transcribe(str(audio_path), language=args.language)
-        print(f"\nTranscribed {len(transcript.segments)} segments, language: {transcript.language}")
+        print(
+            f"\nTranscribed {len(transcript.segments)} segments, language: {transcript.language}"
+        )
 
     if args.transcript_only:
         transcript_output = audio_path.parent / f"{audio_path.stem}_transcript.txt"
@@ -206,9 +215,7 @@ def main():
     overlap = 0 if args.no_overlap else args.overlap
     try:
         analyzer = PromptAnalyzer(
-            rules_path=args.rules,
-            chunk_size=args.chunk_size,
-            overlap=overlap
+            rules_path=args.rules, chunk_size=args.chunk_size, overlap=overlap
         )
     except ValueError as e:
         # --chunk-size and --overlap come straight from the command line, so a
@@ -228,7 +235,9 @@ def main():
 
     if not result.violations:
         if result.is_partial:
-            print("\n  No segments matching the prompt were found in the analyzed portion.")
+            print(
+                "\n  No segments matching the prompt were found in the analyzed portion."
+            )
         else:
             print("\n  No segments matching the prompt were found.")
     else:

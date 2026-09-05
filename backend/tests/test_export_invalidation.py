@@ -43,8 +43,14 @@ class RecordingEditor:
 
     last = None
 
-    def apply_edits(self, input_path, output_path, segments_to_cut=None,
-                    segments_to_mute=None, media_type="audio"):
+    def apply_edits(
+        self,
+        input_path,
+        output_path,
+        segments_to_cut=None,
+        segments_to_mute=None,
+        media_type="audio",
+    ):
         RecordingEditor.last = {
             "cuts": sorted(segments_to_cut or []),
             "mutes": sorted(segments_to_mute or []),
@@ -68,7 +74,9 @@ def export_dir(monkeypatch, tmp_path):
 
 @pytest.fixture
 def client(export_dir, monkeypatch):
-    monkeypatch.setattr(audio_routes, "enqueue_export", lambda job_id, edit_action=None, db=None: "task")
+    monkeypatch.setattr(
+        audio_routes, "enqueue_export", lambda job_id, edit_action=None, db=None: "task"
+    )
     monkeypatch.setattr(audio_routes, "publish", lambda task: task)
     return TestClient(app)
 
@@ -86,14 +94,29 @@ def make_job(monkeypatch, export_dir):
         ids = []
         db = SessionLocal()
         try:
-            db.add(Job(id=job_id, filename=f"{job_id}.mp3", status="completed",
-                       transcript=transcript))
+            db.add(
+                Job(
+                    id=job_id,
+                    filename=f"{job_id}.mp3",
+                    status="completed",
+                    transcript=transcript,
+                )
+            )
             for start, end, action, vstatus in violations:
                 vid = str(uuid.uuid4())
                 ids.append(vid)
-                db.add(Violation(id=vid, job_id=job_id, text="x", label="Income Claim",
-                                 start_time=start, end_time=end,
-                                 action=action, status=vstatus))
+                db.add(
+                    Violation(
+                        id=vid,
+                        job_id=job_id,
+                        text="x",
+                        label="Income Claim",
+                        start_time=start,
+                        end_time=end,
+                        action=action,
+                        status=vstatus,
+                    )
+                )
             db.commit()
         finally:
             db.close()
@@ -121,6 +144,7 @@ def _render(job_id):
 
 # --- a finished render records what it was rendered from --------------------
 
+
 def test_a_finished_export_records_its_revision(client, make_job, export_dir):
     job_id, _ = make_job()
 
@@ -144,12 +168,15 @@ def test_the_poll_reports_both_revisions(client, make_job):
 
 # --- a decision that changes the render retires it ---------------------------
 
+
 def test_rejecting_an_accepted_edit_retires_the_export(client, make_job, export_dir):
     """The headline case: the file no longer contains the cut it advertises."""
     job_id, vids = make_job()
     _render(job_id)
 
-    client.patch(f"/api/jobs/{job_id}/violations/{vids[0]}", json={"status": "rejected"})
+    client.patch(
+        f"/api/jobs/{job_id}/violations/{vids[0]}", json={"status": "rejected"}
+    )
 
     job = _job(job_id)
     assert job.edit_revision == 1
@@ -159,13 +186,17 @@ def test_rejecting_an_accepted_edit_retires_the_export(client, make_job, export_
 
 
 def test_accepting_a_pending_edit_retires_the_export(client, make_job, export_dir):
-    job_id, vids = make_job(violations=(
-        (1.0, 2.0, "cut", "accepted"),
-        (3.0, 4.0, "cut", "pending"),
-    ))
+    job_id, vids = make_job(
+        violations=(
+            (1.0, 2.0, "cut", "accepted"),
+            (3.0, 4.0, "cut", "pending"),
+        )
+    )
     _render(job_id)
 
-    client.patch(f"/api/jobs/{job_id}/violations/{vids[1]}", json={"status": "accepted"})
+    client.patch(
+        f"/api/jobs/{job_id}/violations/{vids[1]}", json={"status": "accepted"}
+    )
 
     assert _job(job_id).export_status == "none"
     assert not _export_file(export_dir, job_id).exists()
@@ -185,7 +216,9 @@ def test_the_poll_shows_a_retired_export_as_such(client, make_job):
     job_id, vids = make_job()
     _render(job_id)
 
-    client.patch(f"/api/jobs/{job_id}/violations/{vids[0]}", json={"status": "rejected"})
+    client.patch(
+        f"/api/jobs/{job_id}/violations/{vids[0]}", json={"status": "rejected"}
+    )
 
     body = client.get(f"/api/jobs/{job_id}").json()
     assert body["export_status"] == "none"
@@ -199,14 +232,19 @@ def test_the_poll_shows_a_retired_export_as_such(client, make_job):
 # reviewer rejected a suggestion that was never in it would make the export
 # button churn for no reason.
 
+
 def test_rejecting_a_pending_edit_keeps_the_export(client, make_job, export_dir):
-    job_id, vids = make_job(violations=(
-        (1.0, 2.0, "cut", "accepted"),
-        (3.0, 4.0, "cut", "pending"),
-    ))
+    job_id, vids = make_job(
+        violations=(
+            (1.0, 2.0, "cut", "accepted"),
+            (3.0, 4.0, "cut", "pending"),
+        )
+    )
     _render(job_id)
 
-    client.patch(f"/api/jobs/{job_id}/violations/{vids[1]}", json={"status": "rejected"})
+    client.patch(
+        f"/api/jobs/{job_id}/violations/{vids[1]}", json={"status": "rejected"}
+    )
 
     job = _job(job_id)
     assert job.edit_revision == 0
@@ -216,8 +254,9 @@ def test_rejecting_a_pending_edit_keeps_the_export(client, make_job, export_dir)
 
 def test_recutting_a_rejected_edit_keeps_the_export(client, make_job):
     """A rejected row's action is not in the render, so changing it changes nothing."""
-    job_id, vids = make_job(violations=((1.0, 2.0, "cut", "rejected"),
-                                        (3.0, 4.0, "cut", "accepted")))
+    job_id, vids = make_job(
+        violations=((1.0, 2.0, "cut", "rejected"), (3.0, 4.0, "cut", "accepted"))
+    )
     _render(job_id)
 
     client.patch(f"/api/jobs/{job_id}/violations/{vids[0]}", json={"action": "mute"})
@@ -229,7 +268,9 @@ def test_writing_the_value_a_row_already_has_keeps_the_export(client, make_job):
     job_id, vids = make_job()
     _render(job_id)
 
-    client.patch(f"/api/jobs/{job_id}/violations/{vids[0]}", json={"status": "accepted"})
+    client.patch(
+        f"/api/jobs/{job_id}/violations/{vids[0]}", json={"status": "accepted"}
+    )
 
     assert _job(job_id).edit_revision == 0
     assert _job(job_id).export_status == "ready"
@@ -240,8 +281,9 @@ def test_a_rejected_update_does_not_touch_the_export(client, make_job):
     job_id, vids = make_job()
     _render(job_id)
 
-    response = client.patch(f"/api/jobs/{job_id}/violations/{vids[0]}",
-                            json={"status": "banana"})
+    response = client.patch(
+        f"/api/jobs/{job_id}/violations/{vids[0]}", json={"status": "banana"}
+    )
 
     assert response.status_code == 400
     assert _job(job_id).export_status == "ready"
@@ -249,15 +291,20 @@ def test_a_rejected_update_does_not_touch_the_export(client, make_job):
 
 # --- bulk moves --------------------------------------------------------------
 
+
 def test_clean_all_retires_the_export_once(client, make_job, export_dir):
-    job_id, _ = make_job(violations=(
-        (1.0, 2.0, "cut", "accepted"),
-        (3.0, 4.0, "cut", "pending"),
-        (5.0, 6.0, "cut", "pending"),
-    ))
+    job_id, _ = make_job(
+        violations=(
+            (1.0, 2.0, "cut", "accepted"),
+            (3.0, 4.0, "cut", "pending"),
+            (5.0, 6.0, "cut", "pending"),
+        )
+    )
     _render(job_id)
 
-    client.post(f"/api/jobs/{job_id}/violations/bulk-update", json={"status": "accepted"})
+    client.post(
+        f"/api/jobs/{job_id}/violations/bulk-update", json={"status": "accepted"}
+    )
 
     job = _job(job_id)
     assert job.edit_revision == 1, "one sweep is one revision, not one per row"
@@ -269,8 +316,10 @@ def test_a_bulk_move_that_matches_nothing_keeps_the_export(client, make_job):
     job_id, _ = make_job()
     _render(job_id)
 
-    response = client.post(f"/api/jobs/{job_id}/violations/bulk-update",
-                           json={"status": "accepted", "ids": []})
+    response = client.post(
+        f"/api/jobs/{job_id}/violations/bulk-update",
+        json={"status": "accepted", "ids": []},
+    )
 
     assert response.json()["updated"] == 0
     assert _job(job_id).export_status == "ready"
@@ -278,7 +327,9 @@ def test_a_bulk_move_that_matches_nothing_keeps_the_export(client, make_job):
 
 def test_undoing_a_sweep_retires_the_export_again(client, make_job):
     job_id, vids = make_job(violations=((1.0, 2.0, "cut", "pending"),))
-    client.post(f"/api/jobs/{job_id}/violations/bulk-update", json={"status": "accepted"})
+    client.post(
+        f"/api/jobs/{job_id}/violations/bulk-update", json={"status": "accepted"}
+    )
     _render(job_id)
 
     client.post(
@@ -290,6 +341,7 @@ def test_undoing_a_sweep_retires_the_export_again(client, make_job):
 
 
 # --- an edit landing while the render runs -----------------------------------
+
 
 def test_an_in_flight_export_is_not_deleted_out_from_under_the_worker(
     client, make_job, export_dir
@@ -308,14 +360,18 @@ def test_an_in_flight_export_is_not_deleted_out_from_under_the_worker(
     finally:
         db.close()
 
-    client.patch(f"/api/jobs/{job_id}/violations/{vids[0]}", json={"status": "rejected"})
+    client.patch(
+        f"/api/jobs/{job_id}/violations/{vids[0]}", json={"status": "rejected"}
+    )
 
     job = _job(job_id)
     assert job.edit_revision == 1
     assert job.export_status == "exporting", "the worker still owns this render"
 
 
-def test_a_render_overtaken_by_an_edit_is_discarded(client, make_job, export_dir, monkeypatch):
+def test_a_render_overtaken_by_an_edit_is_discarded(
+    client, make_job, export_dir, monkeypatch
+):
     """
     The reviewer changes their mind mid-encode. The file that lands answers the
     old edit list, so it is thrown away rather than published as ready - which
@@ -326,8 +382,9 @@ def test_a_render_overtaken_by_an_edit_is_discarded(client, make_job, export_dir
     class EditingEditor(RecordingEditor):
         def apply_edits(self, *args, **kwargs):
             super().apply_edits(*args, **kwargs)
-            client.patch(f"/api/jobs/{job_id}/violations/{vids[0]}",
-                         json={"status": "rejected"})
+            client.patch(
+                f"/api/jobs/{job_id}/violations/{vids[0]}", json={"status": "rejected"}
+            )
 
     monkeypatch.setattr(exports, "MediaEditor", EditingEditor)
 
@@ -341,22 +398,33 @@ def test_a_render_overtaken_by_an_edit_is_discarded(client, make_job, export_dir
 
 # --- re-analysis -------------------------------------------------------------
 
+
 def test_a_re_analysis_retires_the_export(client, make_job, export_dir, monkeypatch):
     """
     A re-run deletes every LLM suggestion, decisions included. Whatever is in
     exports/ was rendered from a list that no longer exists.
     """
-    transcript = json.dumps({
-        "version": 2, "language": "en", "duration": 5.0,
-        "segments": [{"start": 0.0, "end": 3.0, "text": "hello there", "words": []}],
-    })
+    transcript = json.dumps(
+        {
+            "version": 2,
+            "language": "en",
+            "duration": 5.0,
+            "segments": [
+                {"start": 0.0, "end": 3.0, "text": "hello there", "words": []}
+            ],
+        }
+    )
     job_id, _ = make_job(transcript=transcript)
     _render(job_id)
 
     class StubProcessor:
         def analyze(self, transcript, prompt=None, preset=None):
-            return AnalysisResult(violations=[], total_segments_analyzed=1,
-                                  transcript_language="en", failed_chunks=[])
+            return AnalysisResult(
+                violations=[],
+                total_segments_analyzed=1,
+                transcript_language="en",
+                failed_chunks=[],
+            )
 
     monkeypatch.setattr(worker, "get_processor", lambda: StubProcessor())
 
@@ -369,6 +437,7 @@ def test_a_re_analysis_retires_the_export(client, make_job, export_dir, monkeypa
 
 
 # --- the download route is the last line of defence --------------------------
+
 
 def test_a_stale_export_cannot_be_downloaded(client, make_job, export_dir):
     """
@@ -422,7 +491,9 @@ def test_an_export_of_unknown_provenance_still_downloads(client, make_job, expor
 # --- The decision and its consequence are one transaction --------------------
 
 
-def test_a_decision_and_its_invalidation_commit_together(client, make_job, export_dir, monkeypatch):
+def test_a_decision_and_its_invalidation_commit_together(
+    client, make_job, export_dir, monkeypatch
+):
     """
     The failure that used to be unrecoverable.
 
@@ -463,12 +534,17 @@ def test_a_decision_and_its_invalidation_commit_together(client, make_job, expor
 
     db = SessionLocal()
     try:
-        assert db.query(Violation).filter(Violation.id == violation_id).first().status == "accepted"
+        assert (
+            db.query(Violation).filter(Violation.id == violation_id).first().status
+            == "accepted"
+        )
     finally:
         db.close()
 
 
-def test_a_failed_unlink_does_not_fail_the_request(client, make_job, export_dir, monkeypatch):
+def test_a_failed_unlink_does_not_fail_the_request(
+    client, make_job, export_dir, monkeypatch
+):
     """
     A file that will not delete must not cost the reviewer their decision.
 
@@ -502,12 +578,17 @@ def test_a_failed_unlink_does_not_fail_the_request(client, make_job, export_dir,
     # The decision landed, which is what the request was for.
     db = SessionLocal()
     try:
-        assert db.query(Violation).filter(Violation.id == violation_id).first().status == "rejected"
+        assert (
+            db.query(Violation).filter(Violation.id == violation_id).first().status
+            == "rejected"
+        )
     finally:
         db.close()
 
 
-def test_a_bulk_sweep_invalidates_in_one_commit(client, make_job, export_dir, monkeypatch):
+def test_a_bulk_sweep_invalidates_in_one_commit(
+    client, make_job, export_dir, monkeypatch
+):
     """Same guarantee on the bulk route, which 'Clean All' and undo both use."""
     job_id, (violation_id,) = make_job()
     _render(job_id)
@@ -527,6 +608,9 @@ def test_a_bulk_sweep_invalidates_in_one_commit(client, make_job, export_dir, mo
     assert _job(job_id).export_status == "ready"
     db = SessionLocal()
     try:
-        assert db.query(Violation).filter(Violation.id == violation_id).first().status == "accepted"
+        assert (
+            db.query(Violation).filter(Violation.id == violation_id).first().status
+            == "accepted"
+        )
     finally:
         db.close()

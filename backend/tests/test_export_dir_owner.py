@@ -63,10 +63,14 @@ def test_no_module_binds_the_export_dir_as_a_default_argument():
         for node in ast.walk(tree):
             if not isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
                 continue
-            defaults = [d for d in node.args.defaults + node.args.kw_defaults if d is not None]
+            defaults = [
+                d for d in node.args.defaults + node.args.kw_defaults if d is not None
+            ]
             for default in defaults:
                 if isinstance(default, ast.Name) and default.id == "EXPORT_DIR":
-                    offenders.append(f"{path.relative_to(APP_DIR).as_posix()}:{node.name}")
+                    offenders.append(
+                        f"{path.relative_to(APP_DIR).as_posix()}:{node.name}"
+                    )
     assert offenders == []
 
 

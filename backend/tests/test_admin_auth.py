@@ -30,7 +30,11 @@ from app.database import SessionLocal, init_db
 from app.main import app
 from app.models import Job
 
-DESTRUCTIVE = ["/api/admin/reset-database", "/api/admin/clear-storage", "/api/admin/reset-all"]
+DESTRUCTIVE = [
+    "/api/admin/reset-database",
+    "/api/admin/clear-storage",
+    "/api/admin/reset-all",
+]
 
 
 @pytest.fixture(autouse=True)
@@ -72,6 +76,7 @@ def dev_open(monkeypatch):
 
 # --- admin_token() ---------------------------------------------------------
 
+
 @pytest.mark.parametrize("env", [{}, {"ADMIN_TOKEN": ""}, {"ADMIN_TOKEN": "   "}])
 def test_blank_or_absent_token_means_unconfigured(env):
     """`.env.example` ships the key empty; an empty string is not a usable token."""
@@ -84,20 +89,30 @@ def test_configured_token_is_stripped():
 
 # --- unauthenticated_admin_allowed() ---------------------------------------
 
+
 @pytest.mark.parametrize("value", ["1", "true", "TRUE", "yes", "on", " 1 "])
 def test_opt_out_accepts_the_usual_spellings_of_yes(value):
-    assert unauthenticated_admin_allowed({ALLOW_UNAUTHENTICATED_ADMIN_VAR: value}) is True
+    assert (
+        unauthenticated_admin_allowed({ALLOW_UNAUTHENTICATED_ADMIN_VAR: value}) is True
+    )
 
 
-@pytest.mark.parametrize("env", [{}, {ALLOW_UNAUTHENTICATED_ADMIN_VAR: ""},
-                                 {ALLOW_UNAUTHENTICATED_ADMIN_VAR: "0"},
-                                 {ALLOW_UNAUTHENTICATED_ADMIN_VAR: "false"},
-                                 {ALLOW_UNAUTHENTICATED_ADMIN_VAR: "maybe"}])
+@pytest.mark.parametrize(
+    "env",
+    [
+        {},
+        {ALLOW_UNAUTHENTICATED_ADMIN_VAR: ""},
+        {ALLOW_UNAUTHENTICATED_ADMIN_VAR: "0"},
+        {ALLOW_UNAUTHENTICATED_ADMIN_VAR: "false"},
+        {ALLOW_UNAUTHENTICATED_ADMIN_VAR: "maybe"},
+    ],
+)
 def test_opt_out_is_off_unless_it_is_a_clear_yes(env):
     assert unauthenticated_admin_allowed(env) is False
 
 
 # --- check_admin_token() ---------------------------------------------------
+
 
 def test_check_refuses_when_nothing_is_configured():
     """
@@ -147,6 +162,7 @@ def test_check_accepts_the_exact_token():
 
 # --- the routes ------------------------------------------------------------
 
+
 @pytest.mark.parametrize("path", DESTRUCTIVE)
 def test_destructive_routes_are_disabled_when_nothing_is_configured(client, path):
     response = client.post(path)
@@ -175,7 +191,9 @@ def test_destructive_routes_401_with_the_wrong_header(client, with_token, path):
 
 @pytest.mark.parametrize("path", DESTRUCTIVE)
 def test_destructive_routes_accept_the_right_header(client, with_token, path):
-    assert client.post(path, headers={ADMIN_TOKEN_HEADER: with_token}).status_code == 200
+    assert (
+        client.post(path, headers={ADMIN_TOKEN_HEADER: with_token}).status_code == 200
+    )
 
 
 def test_reset_all_is_gated_in_its_own_right(client, with_token):

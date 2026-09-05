@@ -69,8 +69,9 @@ def _job(job_id):
 def test_prompt_arrives_from_form_data(client):
     """The flagship feature: a custom instruction sent in the body is stored."""
     prompt = "Flag every specific income claim and any health claim."
-    response = _upload(client, {"prompt": prompt, "auto_fix": "false",
-                                "auto_scrub": "false"})
+    response = _upload(
+        client, {"prompt": prompt, "auto_fix": "false", "auto_scrub": "false"}
+    )
 
     assert response.status_code == 200
     body = response.json()
@@ -92,8 +93,9 @@ def test_boolean_flags_arrive_from_form_data(client):
 
 def test_preset_without_prompt(client):
     """A preset is the one path that legitimately sends no prompt."""
-    response = _upload(client, {"auto_fix": "false", "auto_scrub": "false",
-                                "preset": "income-claims"})
+    response = _upload(
+        client, {"auto_fix": "false", "auto_scrub": "false", "preset": "income-claims"}
+    )
 
     assert response.status_code == 200
     body = response.json()

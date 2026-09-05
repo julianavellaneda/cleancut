@@ -146,8 +146,12 @@ def _coverage(pred: Prediction, exp: Expectation) -> float:
     if shorter <= 0:
         # A zero-length suggestion (Whisper occasionally emits one for a word it
         # barely heard) has no span to share. Count it if it lands inside.
-        return 1.0 if _overlap(pred.start, pred.end, exp.start - 0.01, exp.end + 0.01) >= 0 \
-            and exp.start - 0.01 <= pred.start <= exp.end + 0.01 else 0.0
+        return (
+            1.0
+            if _overlap(pred.start, pred.end, exp.start - 0.01, exp.end + 0.01) >= 0
+            and exp.start - 0.01 <= pred.start <= exp.end + 0.01
+            else 0.0
+        )
     return _overlap(pred.start, pred.end, exp.start, exp.end) / shorter
 
 
@@ -163,16 +167,22 @@ def _contains_token(pred: Prediction, exp: Expectation) -> bool:
         if not wanted:
             continue
         n = len(wanted)
-        if any(got[i:i + n] == wanted for i in range(len(got) - n + 1)):
+        if any(got[i : i + n] == wanted for i in range(len(got) - n + 1)):
             return True
     return False
 
 
 def _near(pred: Prediction, exp: Expectation) -> bool:
-    return _overlap(
-        pred.start, pred.end,
-        exp.start - TOKEN_TOLERANCE, exp.end + TOKEN_TOLERANCE,
-    ) > 0 or exp.start - TOKEN_TOLERANCE <= pred.start <= exp.end + TOKEN_TOLERANCE
+    return (
+        _overlap(
+            pred.start,
+            pred.end,
+            exp.start - TOKEN_TOLERANCE,
+            exp.end + TOKEN_TOLERANCE,
+        )
+        > 0
+        or exp.start - TOKEN_TOLERANCE <= pred.start <= exp.end + TOKEN_TOLERANCE
+    )
 
 
 def _matches(pred: Prediction, exp: Expectation) -> float | None:
@@ -234,10 +244,17 @@ def score(spec: EvalSpec, suite: Suite, predictions: list[Prediction]) -> Scorec
             duplicates.append((i, exp.id))
             continue
         claimed.add(exp.id)
-        hits.append(Hit(
-            exp.id, exp.category, i, coverage,
-            pred.start - exp.start, pred.end - exp.end, exp.timed,
-        ))
+        hits.append(
+            Hit(
+                exp.id,
+                exp.category,
+                i,
+                coverage,
+                pred.start - exp.start,
+                pred.end - exp.end,
+                exp.timed,
+            )
+        )
 
     # Whatever is left either answers a label this suite did not ask about, or
     # is a false positive - and a false positive on a control is the one the
@@ -248,8 +265,7 @@ def score(spec: EvalSpec, suite: Suite, predictions: list[Prediction]) -> Scorec
     # it invented something; excluding that from the denominator would let a
     # hallucinated phone number on a silent line score a flawless run.
     rest = [
-        e for e in spec.expectations
-        if e.present and e.category not in suite.categories
+        e for e in spec.expectations if e.present and e.category not in suite.categories
     ]
     for i, pred in enumerate(predictions):
         if i in matched_predictions:
@@ -261,8 +277,13 @@ def score(spec: EvalSpec, suite: Suite, predictions: list[Prediction]) -> Scorec
             out_of_scope.append((i, elsewhere.id))
             continue
         hit_control = next(
-            (c for c in spec.controls
-             if _overlap(pred.start, pred.end, c.start, c.end) / max(pred.duration, 1e-9) >= MIN_COVERAGE),
+            (
+                c
+                for c in spec.controls
+                if _overlap(pred.start, pred.end, c.start, c.end)
+                / max(pred.duration, 1e-9)
+                >= MIN_COVERAGE
+            ),
             None,
         )
         if hit_control is not None:
@@ -346,7 +367,9 @@ def load_run(source: Path | str | dict | list) -> RunResult:
         failed_chunks = ()
         is_partial = False
     if not isinstance(rows, list):
-        raise ValueError("Expected a list of suggestions, or an object with a 'violations' list.")
+        raise ValueError(
+            "Expected a list of suggestions, or an object with a 'violations' list."
+        )
 
     predictions = []
     for row in rows:
@@ -358,12 +381,14 @@ def load_run(source: Path | str | dict | list) -> RunResult:
         # before it starts is not a tight cut, it is a corrupt row.
         if end < start:
             raise ValueError(f"Suggestion ends before it starts: {row!r}")
-        predictions.append(Prediction(
-            text=str(row.get("text", "")),
-            start=start,
-            end=end,
-            label=row.get("label"),
-        ))
+        predictions.append(
+            Prediction(
+                text=str(row.get("text", "")),
+                start=start,
+                end=end,
+                label=row.get("label"),
+            )
+        )
     return RunResult(
         predictions=tuple(predictions),
         is_partial=is_partial,

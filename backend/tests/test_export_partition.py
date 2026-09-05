@@ -38,8 +38,14 @@ class RecordingEditor:
 
     last = None
 
-    def apply_edits(self, input_path, output_path, segments_to_cut=None,
-                    segments_to_mute=None, media_type="audio"):
+    def apply_edits(
+        self,
+        input_path,
+        output_path,
+        segments_to_cut=None,
+        segments_to_mute=None,
+        media_type="audio",
+    ):
         RecordingEditor.last = {
             "cuts": sorted(segments_to_cut or []),
             "mutes": sorted(segments_to_mute or []),
@@ -64,18 +70,21 @@ def client(monkeypatch, tmp_path):
 @pytest.fixture
 def do_export(client):
     """POST the export, then run the queued render synchronously."""
+
     def _do(job_id, payload=None):
         payload = {} if payload is None else payload
         response = client.post(f"/api/jobs/{job_id}/export", json=payload)
         if response.status_code == 202:
             worker._process_export(job_id, payload.get("edit_action"))
         return response
+
     return _do
 
 
 @pytest.fixture
 def make_job(monkeypatch, tmp_path):
     """Create a completed job with violations, plus a stand-in media file."""
+
     def _make(violations, media_type="audio"):
         job_id = str(uuid.uuid4())
         media = tmp_path / f"{job_id}.mp3"
@@ -84,17 +93,31 @@ def make_job(monkeypatch, tmp_path):
 
         db = SessionLocal()
         try:
-            db.add(Job(id=job_id, filename=f"{job_id}.mp3", status="completed",
-                       media_type=media_type))
+            db.add(
+                Job(
+                    id=job_id,
+                    filename=f"{job_id}.mp3",
+                    status="completed",
+                    media_type=media_type,
+                )
+            )
             for start, end, action, status in violations:
-                db.add(Violation(
-                    id=str(uuid.uuid4()), job_id=job_id, text="x",
-                    start_time=start, end_time=end, action=action, status=status,
-                ))
+                db.add(
+                    Violation(
+                        id=str(uuid.uuid4()),
+                        job_id=job_id,
+                        text="x",
+                        start_time=start,
+                        end_time=end,
+                        action=action,
+                        status=status,
+                    )
+                )
             db.commit()
         finally:
             db.close()
         return job_id
+
     return _make
 
 
@@ -116,11 +139,13 @@ def test_all_mute_violations_go_to_the_mute_bucket(do_export, make_job):
 
 def test_mixed_actions_are_partitioned(do_export, make_job):
     """The headline fix - both actions honored in one export."""
-    job_id = make_job([
-        (1.0, 2.0, "cut", "accepted"),
-        (5.0, 6.0, "mute", "accepted"),
-        (8.0, 9.0, "cut", "accepted"),
-    ])
+    job_id = make_job(
+        [
+            (1.0, 2.0, "cut", "accepted"),
+            (5.0, 6.0, "mute", "accepted"),
+            (8.0, 9.0, "cut", "accepted"),
+        ]
+    )
 
     assert do_export(job_id, {}).status_code == 202
     assert RecordingEditor.last["cuts"] == [(1.0, 2.0), (8.0, 9.0)]
@@ -128,11 +153,13 @@ def test_mixed_actions_are_partitioned(do_export, make_job):
 
 
 def test_only_accepted_violations_are_exported(do_export, make_job):
-    job_id = make_job([
-        (1.0, 2.0, "cut", "accepted"),
-        (3.0, 4.0, "cut", "rejected"),
-        (5.0, 6.0, "mute", "pending"),
-    ])
+    job_id = make_job(
+        [
+            (1.0, 2.0, "cut", "accepted"),
+            (3.0, 4.0, "cut", "rejected"),
+            (5.0, 6.0, "mute", "pending"),
+        ]
+    )
 
     assert do_export(job_id, {}).status_code == 202
     assert RecordingEditor.last["cuts"] == [(1.0, 2.0)]
@@ -215,11 +242,13 @@ def test_media_type_is_passed_through(do_export, make_job):
 
 def test_queued_response_names_the_accepted_count(do_export, make_job):
     """The POST answers before FFmpeg runs, so it reports what was queued."""
-    job_id = make_job([
-        (1.0, 2.0, "cut", "accepted"),
-        (5.0, 6.0, "mute", "accepted"),
-        (8.0, 9.0, "mute", "rejected"),
-    ])
+    job_id = make_job(
+        [
+            (1.0, 2.0, "cut", "accepted"),
+            (5.0, 6.0, "mute", "accepted"),
+            (8.0, 9.0, "mute", "rejected"),
+        ]
+    )
 
     body = do_export(job_id, {}).json()
 

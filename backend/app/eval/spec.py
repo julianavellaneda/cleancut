@@ -106,8 +106,7 @@ class EvalSpec:
     def scorable(self, suite: Suite) -> tuple[Expectation, ...]:
         """In-scope expectations the clip actually contains."""
         return tuple(
-            e for e in self.expectations
-            if e.present and e.category in suite.categories
+            e for e in self.expectations if e.present and e.category in suite.categories
         )
 
     def categories_for_label(self, label: str | None) -> tuple[str, ...]:
@@ -130,7 +129,9 @@ class EvalSpec:
         )
 
 
-def _window(entry: dict, lines: list[dict], pauses: list[dict], where: str) -> tuple[float, float]:
+def _window(
+    entry: dict, lines: list[dict], pauses: list[dict], where: str
+) -> tuple[float, float]:
     """
     Resolve a label's window from the generated offsets.
 
@@ -148,12 +149,18 @@ def _window(entry: dict, lines: list[dict], pauses: list[dict], where: str) -> t
 
     span = index if isinstance(index, list) else [index, index]
     if len(span) != 2:
-        raise SpecError(f"{where} gives {len(span)} {kind} indices; a span needs exactly two.")
+        raise SpecError(
+            f"{where} gives {len(span)} {kind} indices; a span needs exactly two."
+        )
     for i in span:
         if not isinstance(i, int) or isinstance(i, bool) or not 0 <= i < len(source):
-            raise SpecError(f"{where} points at {kind} {i}, which the clip does not have.")
+            raise SpecError(
+                f"{where} points at {kind} {i}, which the clip does not have."
+            )
     if span[1] < span[0]:
-        raise SpecError(f"{where} spans {kind}s {span[0]} to {span[1]}, which runs backwards.")
+        raise SpecError(
+            f"{where} spans {kind}s {span[0]} to {span[1]}, which runs backwards."
+        )
     return float(source[span[0]]["start"]), float(source[span[1]]["end"])
 
 
@@ -166,7 +173,8 @@ def load_spec(
     labels = json.loads(labels_path.read_text())
 
     timings_path = Path(
-        timings_path or labels_path.parent / labels.get("timings_from", "expected_violations.json")
+        timings_path
+        or labels_path.parent / labels.get("timings_from", "expected_violations.json")
     )
     timings = json.loads(timings_path.read_text())
     lines = list(timings.get("lines", []))
@@ -191,19 +199,21 @@ def load_spec(
             raise SpecError(f"Token expectation '{eid}' has no text to match on.")
         start, end = _window(entry, lines, pauses, f"Expectation '{eid}'")
         spans_indices = isinstance(entry.get("line", entry.get("pause")), list)
-        expectations.append(Expectation(
-            id=eid,
-            category=category,
-            match=match,
-            start=start,
-            end=end,
-            text=entry.get("text"),
-            also=tuple(entry.get("also", ())),
-            quote=entry.get("quote"),
-            present=bool(entry.get("present", True)),
-            note=entry.get("note"),
-            timed=not spans_indices,
-        ))
+        expectations.append(
+            Expectation(
+                id=eid,
+                category=category,
+                match=match,
+                start=start,
+                end=end,
+                text=entry.get("text"),
+                also=tuple(entry.get("also", ())),
+                quote=entry.get("quote"),
+                present=bool(entry.get("present", True)),
+                note=entry.get("note"),
+                timed=not spans_indices,
+            )
+        )
 
     seen: set[str] = set()
     for e in expectations:
@@ -215,15 +225,22 @@ def load_spec(
     for entry in labels.get("controls", []):
         cid = entry.get("id") or "<unnamed control>"
         start, end = _window(entry, lines, pauses, f"Control '{cid}'")
-        controls.append(Control(
-            id=cid, start=start, end=end, reason=entry.get("reason", ""),
-        ))
+        controls.append(
+            Control(
+                id=cid,
+                start=start,
+                end=end,
+                reason=entry.get("reason", ""),
+            )
+        )
 
     suites = {}
     for sid, entry in labels.get("suites", {}).items():
         unknown = [c for c in entry.get("categories", []) if c not in categories]
         if unknown:
-            raise SpecError(f"Suite '{sid}' names unknown categories: {', '.join(unknown)}.")
+            raise SpecError(
+                f"Suite '{sid}' names unknown categories: {', '.join(unknown)}."
+            )
         suites[sid] = Suite(
             id=sid,
             description=entry.get("description", ""),

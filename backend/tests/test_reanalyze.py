@@ -39,24 +39,34 @@ def db_ready():
 @pytest.fixture
 def client(monkeypatch):
     """A client whose re-analysis requests queue rather than run."""
-    monkeypatch.setattr("app.routes.jobs.enqueue_reanalysis", lambda job_id, **kwargs: "task")
+    monkeypatch.setattr(
+        "app.routes.jobs.enqueue_reanalysis", lambda job_id, **kwargs: "task"
+    )
     monkeypatch.setattr("app.routes.jobs.publish", lambda task: task)
     return TestClient(app)
 
 
-TRANSCRIPT = json.dumps({
-    "version": 2, "language": "en", "duration": 12.0,
-    "segments": [{
-        "start": 0.0, "end": 3.0, "text": "I made eleven thousand dollars",
-        "words": [
-            {"start": 0.0, "end": 0.4, "text": "I"},
-            {"start": 0.4, "end": 0.9, "text": "made"},
-            {"start": 0.9, "end": 1.6, "text": "eleven"},
-            {"start": 1.6, "end": 2.3, "text": "thousand"},
-            {"start": 2.3, "end": 3.0, "text": "dollars"},
+TRANSCRIPT = json.dumps(
+    {
+        "version": 2,
+        "language": "en",
+        "duration": 12.0,
+        "segments": [
+            {
+                "start": 0.0,
+                "end": 3.0,
+                "text": "I made eleven thousand dollars",
+                "words": [
+                    {"start": 0.0, "end": 0.4, "text": "I"},
+                    {"start": 0.4, "end": 0.9, "text": "made"},
+                    {"start": 0.9, "end": 1.6, "text": "eleven"},
+                    {"start": 1.6, "end": 2.3, "text": "thousand"},
+                    {"start": 2.3, "end": 3.0, "text": "dollars"},
+                ],
+            }
         ],
-    }],
-})
+    }
+)
 
 
 @pytest.fixture
@@ -65,18 +75,34 @@ def make_job():
         job_id = str(uuid.uuid4())
         db = SessionLocal()
         try:
-            db.add(Job(id=job_id, filename=f"{job_id}.mp3", status=status,
-                       transcript=transcript, prompt="find income claims", **kwargs))
+            db.add(
+                Job(
+                    id=job_id,
+                    filename=f"{job_id}.mp3",
+                    status=status,
+                    transcript=transcript,
+                    prompt="find income claims",
+                    **kwargs,
+                )
+            )
             for label, vstatus in violations:
-                db.add(ViolationRow(
-                    id=str(uuid.uuid4()), job_id=job_id, text=label,
-                    start_time=1.0, end_time=2.0, label=label,
-                    status=vstatus, action="cut",
-                ))
+                db.add(
+                    ViolationRow(
+                        id=str(uuid.uuid4()),
+                        job_id=job_id,
+                        text=label,
+                        start_time=1.0,
+                        end_time=2.0,
+                        label=label,
+                        status=vstatus,
+                        action="cut",
+                    )
+                )
             db.commit()
         finally:
             db.close()
         return job_id
+
     return _make
 
 
@@ -105,7 +131,9 @@ def stub_analysis(monkeypatch):
     def _stub(violations=(), failed_chunks=(), raises=None):
         class StubProcessor:
             def analyze(self, transcript, prompt=None, preset=None):
-                calls.append({"transcript": transcript, "prompt": prompt, "preset": preset})
+                calls.append(
+                    {"transcript": transcript, "prompt": prompt, "preset": preset}
+                )
                 if raises:
                     raise raises
                 return AnalysisResult(
@@ -122,17 +150,25 @@ def stub_analysis(monkeypatch):
 
 
 def _violation(label, start=0.9, end=3.0):
-    return Violation(text="eleven thousand dollars", start_time=start, end_time=end,
-                     label=label, action="cut", reasoning="because")
+    return Violation(
+        text="eleven thousand dollars",
+        start_time=start,
+        end_time=end,
+        label=label,
+        action="cut",
+        reasoning="because",
+    )
 
 
 # --- the route validates, queues, and answers 202 ---------------------------
 
+
 def test_a_re_analysis_is_queued_not_run(client, make_job):
     job_id = make_job()
 
-    response = client.post(f"/api/jobs/{job_id}/reanalyze",
-                           json={"prompt": "find every filler"})
+    response = client.post(
+        f"/api/jobs/{job_id}/reanalyze", json={"prompt": "find every filler"}
+    )
 
     assert response.status_code == 202
     assert response.json()["prompt"] == "find every filler"
@@ -214,6 +250,7 @@ def test_an_unknown_job_is_a_404(client):
 
 # --- the worker re-runs the analysis off the stored words -------------------
 
+
 def test_the_stored_words_are_what_the_analyzer_sees(make_job, stub_analysis):
     """The headline: no audio is touched, and the timing is not degraded."""
     calls = stub_analysis(violations=[_violation("Filler Word Hunt")])
@@ -223,14 +260,19 @@ def test_the_stored_words_are_what_the_analyzer_sees(make_job, stub_analysis):
 
     transcript = calls[0]["transcript"]
     assert [w.text for w in transcript.segments[0].words] == [
-        "I", "made", "eleven", "thousand", "dollars",
+        "I",
+        "made",
+        "eleven",
+        "thousand",
+        "dollars",
     ]
 
 
 def test_the_old_suggestions_are_replaced(make_job, stub_analysis):
     stub_analysis(violations=[_violation("Health Claims")])
-    job_id = make_job(violations=[("Income Claims", "accepted"),
-                                  ("Income Claims", "rejected")])
+    job_id = make_job(
+        violations=[("Income Claims", "accepted"), ("Income Claims", "rejected")]
+    )
 
     worker._process_reanalysis(job_id)
 
@@ -244,9 +286,13 @@ def test_the_scrubbers_work_and_its_decisions_survive(make_job, stub_analysis):
     pure loss.
     """
     stub_analysis(violations=[_violation("Health Claims")])
-    job_id = make_job(violations=[("Filler Word", "accepted"),
-                                  ("Dead Air", "rejected"),
-                                  ("Income Claims", "accepted")])
+    job_id = make_job(
+        violations=[
+            ("Filler Word", "accepted"),
+            ("Dead Air", "rejected"),
+            ("Income Claims", "accepted"),
+        ]
+    )
 
     worker._process_reanalysis(job_id)
 
@@ -275,7 +321,9 @@ def test_a_stale_partial_warning_is_cleared(make_job, stub_analysis):
     job_id = make_job()
     db = SessionLocal()
     try:
-        db.query(Job).filter(Job.id == job_id).first().error_message = "Partial analysis: 2 ..."
+        db.query(Job).filter(
+            Job.id == job_id
+        ).first().error_message = "Partial analysis: 2 ..."
         db.commit()
     finally:
         db.close()
@@ -287,8 +335,9 @@ def test_a_stale_partial_warning_is_cleared(make_job, stub_analysis):
 
 
 def test_a_partial_re_analysis_still_completes_with_a_warning(make_job, stub_analysis):
-    stub_analysis(violations=[_violation("Health Claims")],
-                  failed_chunks=["segments 10-60"])
+    stub_analysis(
+        violations=[_violation("Health Claims")], failed_chunks=["segments 10-60"]
+    )
     job_id = make_job()
 
     worker._process_reanalysis(job_id)
@@ -340,7 +389,8 @@ def test_the_prompt_and_the_suggestions_land_together(make_job, stub_analysis):
 
 
 def test_a_failed_re_run_leaves_the_old_prompt_over_the_old_suggestions(
-    make_job, stub_analysis,
+    make_job,
+    stub_analysis,
 ):
     """
     The mismatch this closes: the suggestions on screen answer the *old*
@@ -360,7 +410,8 @@ def test_a_failed_re_run_leaves_the_old_prompt_over_the_old_suggestions(
 
 
 def test_a_re_run_with_no_stored_transcript_does_not_move_the_prompt(
-    make_job, stub_analysis,
+    make_job,
+    stub_analysis,
 ):
     """The other early return out of the worker, which never reaches the swap."""
     stub_analysis()
@@ -373,6 +424,7 @@ def test_a_re_run_with_no_stored_transcript_does_not_move_the_prompt(
 
 def test_the_route_hands_the_question_to_the_queue(client, make_job, monkeypatch):
     queued = []
+
     def record(job_id, db=None, **kwargs):
         # `db` is admission plumbing, not part of the question being asked, so
         # it is taken off before the call is recorded: this test is about the
@@ -396,10 +448,18 @@ def test_a_version_1_row_re_analyzes_at_segment_precision(make_job, stub_analysi
     reason to refuse the re-run.
     """
     calls = stub_analysis(violations=[_violation("Health Claims")])
-    job_id = make_job(transcript=json.dumps({
-        "version": 1, "language": "en", "duration": 12.0,
-        "segments": [{"start": 0.0, "end": 3.0, "text": "I made eleven thousand dollars"}],
-    }))
+    job_id = make_job(
+        transcript=json.dumps(
+            {
+                "version": 1,
+                "language": "en",
+                "duration": 12.0,
+                "segments": [
+                    {"start": 0.0, "end": 3.0, "text": "I made eleven thousand dollars"}
+                ],
+            }
+        )
+    )
 
     worker._process_reanalysis(job_id)
 

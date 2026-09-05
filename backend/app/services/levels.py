@@ -111,7 +111,7 @@ def find_quiet_regions(
     # Drop the trailing partial frame rather than zero-padding it: a padded tail
     # reads as quiet whether or not it is, which would invent a dead-air region
     # at the very end of every file whose length is not a whole number of frames.
-    frames = x[:frame_count * hop].reshape(frame_count, hop)
+    frames = x[: frame_count * hop].reshape(frame_count, hop)
 
     # float64 for the mean - squaring float32 samples near the floor loses
     # precision exactly where the comparison is being made.

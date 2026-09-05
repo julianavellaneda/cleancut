@@ -68,7 +68,9 @@ def unauthenticated_admin_allowed(env: Mapping[str, str] | None = None) -> bool:
     return (env.get(ALLOW_UNAUTHENTICATED_ADMIN_VAR) or "").strip().lower() in _TRUTHY
 
 
-def check_admin_token(supplied: str | None, env: Mapping[str, str] | None = None) -> None:
+def check_admin_token(
+    supplied: str | None, env: Mapping[str, str] | None = None
+) -> None:
     """
     Raise unless the request may run a destructive admin action.
 

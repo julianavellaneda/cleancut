@@ -33,7 +33,9 @@ def db_ready():
 @pytest.fixture
 def client(monkeypatch, tmp_path):
     """The API with the render queue stubbed out - nothing here should render."""
-    monkeypatch.setattr(audio_routes, "enqueue_export", lambda job_id, edit_action=None, db=None: "task")
+    monkeypatch.setattr(
+        audio_routes, "enqueue_export", lambda job_id, edit_action=None, db=None: "task"
+    )
     monkeypatch.setattr(audio_routes, "publish", lambda task: task)
     monkeypatch.setattr(exports, "EXPORT_DIR", tmp_path)
     return TestClient(app)
@@ -50,9 +52,17 @@ def completed_job_with_accepted_edit(monkeypatch, tmp_path):
     db = SessionLocal()
     try:
         db.add(Job(id=job_id, filename=media.name, status="completed"))
-        db.add(Violation(id=str(uuid.uuid4()), job_id=job_id, text="x",
-                         start_time=1.0, end_time=2.0,
-                         action="cut", status="accepted"))
+        db.add(
+            Violation(
+                id=str(uuid.uuid4()),
+                job_id=job_id,
+                text="x",
+                start_time=1.0,
+                end_time=2.0,
+                action="cut",
+                status="accepted",
+            )
+        )
         db.commit()
     finally:
         db.close()
@@ -167,7 +177,9 @@ def test_unknown_export_action_is_rejected(action):
         ExportRequest(edit_action=action)
 
 
-def test_export_route_rejects_an_unknown_action(client, completed_job_with_accepted_edit):
+def test_export_route_rejects_an_unknown_action(
+    client, completed_job_with_accepted_edit
+):
     job_id = completed_job_with_accepted_edit
     response = client.post(f"/api/jobs/{job_id}/export", json={"edit_action": "mutee"})
     assert response.status_code == 422
@@ -204,7 +216,9 @@ def test_transcript_with_no_timestamps_is_an_error(tmp_path):
     Every line discarded used to give an empty transcript, which analyzes to
     "nothing found" and prints as a clean recording.
     """
-    path = _write(tmp_path, "Speaker 1: we made forty thousand last month\nSpeaker 2: wow\n")
+    path = _write(
+        tmp_path, "Speaker 1: we made forty thousand last month\nSpeaker 2: wow\n"
+    )
     with pytest.raises(TranscriptFormatError) as excinfo:
         load_transcript(path)
     assert "Speaker 1" in str(excinfo.value)

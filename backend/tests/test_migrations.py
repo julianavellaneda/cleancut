@@ -72,14 +72,16 @@ BSM_JOBS_TABLE = LEGACY_JOBS_TABLE.replace(
 def _build_db(tmp_path, monkeypatch, name, create_sql, rows):
     db_path = tmp_path / name
     conn = sqlite3.connect(db_path)
-    for statement in ([create_sql] if isinstance(create_sql, str) else create_sql):
+    for statement in [create_sql] if isinstance(create_sql, str) else create_sql:
         conn.execute(statement)
     for sql in rows:
         conn.execute(sql)
     conn.commit()
     conn.close()
 
-    engine = create_engine(f"sqlite:///{db_path}", connect_args={"check_same_thread": False})
+    engine = create_engine(
+        f"sqlite:///{db_path}", connect_args={"check_same_thread": False}
+    )
     monkeypatch.setattr(database, "engine", engine)
     return engine
 
@@ -88,8 +90,13 @@ def _build_db(tmp_path, monkeypatch, name, create_sql, rows):
 def legacy_db(tmp_path, monkeypatch):
     """A database from before any analysis-mode column existed."""
     engine = _build_db(
-        tmp_path, monkeypatch, "legacy.db", LEGACY_JOBS_TABLE,
-        ["INSERT INTO jobs (id, filename, status) VALUES ('old-job', 'a.mp3', 'completed')"],
+        tmp_path,
+        monkeypatch,
+        "legacy.db",
+        LEGACY_JOBS_TABLE,
+        [
+            "INSERT INTO jobs (id, filename, status) VALUES ('old-job', 'a.mp3', 'completed')"
+        ],
     )
     yield engine
     engine.dispose()
@@ -99,7 +106,10 @@ def legacy_db(tmp_path, monkeypatch):
 def bsm_db(tmp_path, monkeypatch):
     """A database still carrying the retired boolean `bsm_mode` column."""
     engine = _build_db(
-        tmp_path, monkeypatch, "strict_mode.db", BSM_JOBS_TABLE,
+        tmp_path,
+        monkeypatch,
+        "strict_mode.db",
+        BSM_JOBS_TABLE,
         [
             "INSERT INTO jobs (id, filename, bsm_mode) VALUES ('strict-job', 'a.mp3', 1)",
             "INSERT INTO jobs (id, filename, bsm_mode) VALUES ('prompt-job', 'b.mp3', 0)",
@@ -113,7 +123,9 @@ def bsm_db(tmp_path, monkeypatch):
 def legacy_violations_db(tmp_path, monkeypatch):
     """A database from before the review flags were columns on `violations`."""
     engine = _build_db(
-        tmp_path, monkeypatch, "violations.db",
+        tmp_path,
+        monkeypatch,
+        "violations.db",
         [LEGACY_JOBS_TABLE, LEGACY_VIOLATIONS_TABLE],
         [
             "INSERT INTO jobs (id, filename, status) VALUES ('j', 'a.mp3', 'completed')",
@@ -264,7 +276,9 @@ def test_legacy_db_is_missing_the_review_flag_columns(legacy_violations_db):
 
 def test_migration_adds_the_review_flag_columns(legacy_violations_db):
     database._apply_migrations()
-    assert {"is_approximate", "is_ambiguous"} <= _violation_columns(legacy_violations_db)
+    assert {"is_approximate", "is_ambiguous"} <= _violation_columns(
+        legacy_violations_db
+    )
 
 
 def test_existing_suggestions_carry_no_review_flags(legacy_violations_db):
@@ -286,7 +300,9 @@ def test_existing_suggestions_carry_no_review_flags(legacy_violations_db):
 def test_review_flag_migration_is_idempotent(legacy_violations_db):
     database._apply_migrations()
     database._apply_migrations()
-    assert {"is_approximate", "is_ambiguous"} <= _violation_columns(legacy_violations_db)
+    assert {"is_approximate", "is_ambiguous"} <= _violation_columns(
+        legacy_violations_db
+    )
 
 
 def test_a_database_with_no_violations_table_still_migrates_jobs(legacy_db):
@@ -306,9 +322,7 @@ def test_bsm_mode_rows_are_backfilled_to_a_preset(bsm_db):
     """A job that ran in the old strict boolean mode keeps running that rulebook."""
     database._apply_migrations()
     with bsm_db.begin() as conn:
-        presets = dict(
-            conn.execute(text("SELECT id, preset FROM jobs")).fetchall()
-        )
+        presets = dict(conn.execute(text("SELECT id, preset FROM jobs")).fetchall())
     assert presets["strict-job"] == "income-claims"
     assert presets["prompt-job"] is None
 
@@ -374,7 +388,9 @@ def duplicate_tasks_db(tmp_path, monkeypatch):
     export tasks for one job, written by two requests that raced.
     """
     engine = _build_db(
-        tmp_path, monkeypatch, "dupes.db",
+        tmp_path,
+        monkeypatch,
+        "dupes.db",
         [LEGACY_JOBS_TABLE, UNCONSTRAINED_TASKS_TABLE],
         [
             "INSERT INTO jobs (id, filename, status) VALUES ('j1', 'a.mp3', 'completed')",

@@ -2,7 +2,6 @@
 Violation routes - list and update violation status.
 """
 
-
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 
@@ -63,7 +62,7 @@ def update_violation(
     job_id: str,
     violation_id: str,
     update: ViolationUpdate,
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
 ):
     """
     Update violation status (accept/reject).
@@ -132,7 +131,7 @@ def bulk_update_violations(
             "cannot silently revisit a decision the reviewer already made."
         ),
     ),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
 ):
     """
     Update several violations at once, optionally filtered by label.
@@ -180,7 +179,9 @@ def bulk_update_violations(
     for v in violations:
         # Asked before the row is written, and only once for the whole sweep:
         # the export is retired if *any* accepted edit moved.
-        changed_export = changed_export or exports.affects_export(v, update.status, update.action)
+        changed_export = changed_export or exports.affects_export(
+            v, update.status, update.action
+        )
         if update.status is not None:
             v.status = update.status
         if update.action is not None:

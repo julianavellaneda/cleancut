@@ -89,7 +89,9 @@ def max_upload_bytes(env: Mapping[str, str] | None = None) -> int:
 def max_duration_seconds(env: Mapping[str, str] | None = None) -> float:
     """Duration ceiling for media, from ``MAX_DURATION_MINUTES``."""
     env = os.environ if env is None else env
-    return _positive_float(env, "MAX_DURATION_MINUTES", DEFAULT_MAX_DURATION_MINUTES) * 60
+    return (
+        _positive_float(env, "MAX_DURATION_MINUTES", DEFAULT_MAX_DURATION_MINUTES) * 60
+    )
 
 
 def save_within_limit(source: BinaryIO, destination: Path, max_bytes: int) -> int:
@@ -132,9 +134,13 @@ def probe_duration_seconds(path: Path | str) -> float | None:
     try:
         result = subprocess.run(
             [
-                "ffprobe", "-v", "error",
-                "-show_entries", "format=duration",
-                "-of", "default=noprint_wrappers=1:nokey=1",
+                "ffprobe",
+                "-v",
+                "error",
+                "-show_entries",
+                "format=duration",
+                "-of",
+                "default=noprint_wrappers=1:nokey=1",
                 str(path),
             ],
             capture_output=True,

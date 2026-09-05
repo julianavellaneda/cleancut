@@ -135,7 +135,9 @@ def test_fresh_job_is_untouched(db, media_dirs):
     assert (uploads / f"{job_id}.mp3").exists()
 
 
-@pytest.mark.parametrize("status", ["pending", "converting", "transcribing", "analyzing", "exporting"])
+@pytest.mark.parametrize(
+    "status", ["pending", "converting", "transcribing", "analyzing", "exporting"]
+)
 def test_in_flight_job_survives_its_own_expiry(db, media_dirs, status):
     """
     The worker is sequential, so a job can be queued behind a long one for

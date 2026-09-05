@@ -71,7 +71,8 @@ def test_income_claims_preset_defaults_to_cut(analyzer, transcript):
 def test_model_supplied_action_wins_over_the_preset_default(analyzer, transcript):
     [v] = analyzer._map_to_timestamps(
         _raw(rule_violated="Direct Identifiers", action="cut"),
-        transcript, preset="pii-redaction",
+        transcript,
+        preset="pii-redaction",
     )
 
     assert v.action == "cut"
@@ -80,7 +81,8 @@ def test_model_supplied_action_wins_over_the_preset_default(analyzer, transcript
 def test_preset_mode_maps_rule_violated_onto_the_label(analyzer, transcript):
     [v] = analyzer._map_to_timestamps(
         _raw(rule_violated="Credentials & Access", severity="high"),
-        transcript, preset="pii-redaction",
+        transcript,
+        preset="pii-redaction",
     )
 
     assert v.label == "Credentials & Access"
@@ -141,7 +143,7 @@ def test_preset_system_prompt_embeds_its_own_categories(preset_id):
 
 
 def test_is_valid_preset():
-    assert is_valid_preset(None)          # prompt mode
+    assert is_valid_preset(None)  # prompt mode
     assert is_valid_preset("income-claims")
     assert not is_valid_preset("nope")
 

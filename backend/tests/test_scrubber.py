@@ -56,10 +56,12 @@ ROOM_TONE_WINDOW = (34.3, 37.8)
 
 def _signal(*spans) -> np.ndarray:
     """Concatenate (seconds, amplitude) spans into one mono buffer at 8 kHz."""
-    return np.concatenate([
-        np.full(int(round(seconds * SR)), amplitude, dtype=np.float32)
-        for seconds, amplitude in spans
-    ])
+    return np.concatenate(
+        [
+            np.full(int(round(seconds * SR)), amplitude, dtype=np.float32)
+            for seconds, amplitude in spans
+        ]
+    )
 
 
 def _transcript(*spans, duration: float) -> TranscriptResult:
@@ -78,6 +80,7 @@ def _dead_air(violations):
 # --------------------------------------------------------------------------
 # find_quiet_regions - the level maths, on synthetic arrays
 # --------------------------------------------------------------------------
+
 
 def test_fully_silent_buffer_is_one_region():
     """The whole buffer is below the floor, so the whole buffer comes back."""
@@ -111,7 +114,9 @@ def test_trailing_partial_frame_is_dropped_not_padded():
     is, inventing a dead-air region at the end of every file whose length is not
     a whole number of frames.
     """
-    x = np.concatenate([_signal((1.0, LOUD)), np.full(SR // 100, LOUD, dtype=np.float32)])
+    x = np.concatenate(
+        [_signal((1.0, LOUD)), np.full(SR // 100, LOUD, dtype=np.float32)]
+    )
     assert find_quiet_regions(x, SR) == []
 
 
@@ -141,6 +146,7 @@ def test_floor_argument_changes_what_counts_as_quiet():
 # Settings
 # --------------------------------------------------------------------------
 
+
 def test_floor_and_minimum_default_when_unset():
     assert levels.floor_db({}) == DEFAULT_FLOOR_DB
     assert levels.min_quiet_seconds({}) == levels.DEFAULT_MIN_QUIET_SECONDS
@@ -154,22 +160,34 @@ def test_floor_and_minimum_read_from_the_environment():
 def test_malformed_settings_fall_back_rather_than_crash():
     """A typo in .env should not take the API down - same rule as limits.py."""
     assert levels.floor_db({"DEAD_AIR_FLOOR_DB": "quiet please"}) == DEFAULT_FLOOR_DB
-    assert levels.min_quiet_seconds({"DEAD_AIR_MIN_SECONDS": ""}) == levels.DEFAULT_MIN_QUIET_SECONDS
+    assert (
+        levels.min_quiet_seconds({"DEAD_AIR_MIN_SECONDS": ""})
+        == levels.DEFAULT_MIN_QUIET_SECONDS
+    )
 
 
 def test_non_positive_minimum_falls_back():
-    """"0" would flag the gap between every two words; nobody means that."""
-    assert levels.min_quiet_seconds({"DEAD_AIR_MIN_SECONDS": "0"}) == levels.DEFAULT_MIN_QUIET_SECONDS
-    assert levels.min_quiet_seconds({"DEAD_AIR_MIN_SECONDS": "-3"}) == levels.DEFAULT_MIN_QUIET_SECONDS
+    """ "0" would flag the gap between every two words; nobody means that."""
+    assert (
+        levels.min_quiet_seconds({"DEAD_AIR_MIN_SECONDS": "0"})
+        == levels.DEFAULT_MIN_QUIET_SECONDS
+    )
+    assert (
+        levels.min_quiet_seconds({"DEAD_AIR_MIN_SECONDS": "-3"})
+        == levels.DEFAULT_MIN_QUIET_SECONDS
+    )
 
 
 # --------------------------------------------------------------------------
 # detect_silence - the intersection
 # --------------------------------------------------------------------------
 
+
 def test_candidate_fully_quiet_is_emitted_whole():
     transcript = _transcript((0.0, 5.0), (10.0, 15.0), duration=15.0)
-    found = _dead_air(Scrubber.detect_silence(transcript, [(5.0, 10.0)], min_silence_len=0.75))
+    found = _dead_air(
+        Scrubber.detect_silence(transcript, [(5.0, 10.0)], min_silence_len=0.75)
+    )
 
     assert len(found) == 1
     assert (found[0].start_time, found[0].end_time) == (5.0, 10.0)
@@ -183,7 +201,9 @@ def test_partly_quiet_candidate_is_trimmed_to_the_quiet_part():
     the quiet sub-interval is what actually wants cutting.
     """
     transcript = _transcript((0.0, 5.0), (10.0, 15.0), duration=15.0)
-    found = _dead_air(Scrubber.detect_silence(transcript, [(5.4, 9.2)], min_silence_len=0.75))
+    found = _dead_air(
+        Scrubber.detect_silence(transcript, [(5.4, 9.2)], min_silence_len=0.75)
+    )
 
     assert len(found) == 1
     assert (found[0].start_time, found[0].end_time) == (5.4, 9.2)
@@ -195,12 +215,22 @@ def test_candidate_with_no_quiet_at_all_is_dropped():
     something is audible there, so it is not dead air and must not be offered.
     """
     transcript = _transcript((0.0, 5.0), (10.0, 15.0), duration=15.0)
-    assert _dead_air(Scrubber.detect_silence(transcript, [(20.0, 25.0)], min_silence_len=0.75)) == []
+    assert (
+        _dead_air(
+            Scrubber.detect_silence(transcript, [(20.0, 25.0)], min_silence_len=0.75)
+        )
+        == []
+    )
 
 
 def test_quiet_but_too_short_is_dropped():
     transcript = _transcript((0.0, 5.0), (10.0, 15.0), duration=15.0)
-    assert _dead_air(Scrubber.detect_silence(transcript, [(5.0, 5.5)], min_silence_len=0.75)) == []
+    assert (
+        _dead_air(
+            Scrubber.detect_silence(transcript, [(5.0, 5.5)], min_silence_len=0.75)
+        )
+        == []
+    )
 
 
 def test_a_noise_inside_a_gap_splits_it_into_two_suggestions():
@@ -209,15 +239,20 @@ def test_a_noise_inside_a_gap_splits_it_into_two_suggestions():
     through it, so every qualifying sub-interval is offered separately.
     """
     transcript = _transcript((0.0, 5.0), (15.0, 20.0), duration=20.0)
-    found = _dead_air(Scrubber.detect_silence(
-        transcript, [(5.0, 9.0), (9.4, 15.0)], min_silence_len=0.75))
+    found = _dead_air(
+        Scrubber.detect_silence(
+            transcript, [(5.0, 9.0), (9.4, 15.0)], min_silence_len=0.75
+        )
+    )
 
     assert [(v.start_time, v.end_time) for v in found] == [(5.0, 9.0), (9.4, 15.0)]
 
 
 def test_leading_silence_is_confirmed_against_amplitude():
     transcript = _transcript((6.0, 10.0), duration=10.0)
-    found = _dead_air(Scrubber.detect_silence(transcript, [(0.0, 5.7)], min_silence_len=0.75))
+    found = _dead_air(
+        Scrubber.detect_silence(transcript, [(0.0, 5.7)], min_silence_len=0.75)
+    )
 
     assert len(found) == 1
     assert found[0].text == "[Initial Silence]"
@@ -226,7 +261,9 @@ def test_leading_silence_is_confirmed_against_amplitude():
 
 def test_trailing_silence_is_confirmed_against_amplitude():
     transcript = _transcript((0.0, 4.0), duration=10.0)
-    found = _dead_air(Scrubber.detect_silence(transcript, [(4.3, 10.0)], min_silence_len=0.75))
+    found = _dead_air(
+        Scrubber.detect_silence(transcript, [(4.3, 10.0)], min_silence_len=0.75)
+    )
 
     assert len(found) == 1
     assert found[0].text == "[Final Silence]"
@@ -242,7 +279,9 @@ def test_transcript_with_no_segments_still_needs_confirmation():
 
     assert _dead_air(Scrubber.detect_silence(empty, [], min_silence_len=0.75)) == []
 
-    found = _dead_air(Scrubber.detect_silence(empty, [(0.0, 60.0)], min_silence_len=0.75))
+    found = _dead_air(
+        Scrubber.detect_silence(empty, [(0.0, 60.0)], min_silence_len=0.75)
+    )
     assert len(found) == 1
     assert found[0].text == "[Total Silence]"
 
@@ -272,7 +311,9 @@ def test_reasoning_names_both_signals():
     whether to accept a cut needs to know it was confirmed, not merely inferred.
     """
     transcript = _transcript((0.0, 5.0), (10.0, 15.0), duration=15.0)
-    reasoning = Scrubber.detect_silence(transcript, [(5.0, 10.0)], min_silence_len=0.75)[0].reasoning
+    reasoning = Scrubber.detect_silence(
+        transcript, [(5.0, 10.0)], min_silence_len=0.75
+    )[0].reasoning
 
     assert "dBFS" in reasoning
     assert "no speech" in reasoning
@@ -331,14 +372,29 @@ def room_tone_mp3(tmp_path_factory):
     lo, hi = ROOM_TONE_WINDOW
     out = tmp_path_factory.mktemp("roomtone") / "demo_seminar_roomtone.mp3"
     subprocess.run(
-        ["ffmpeg", "-y", "-loglevel", "error", "-i", str(DEMO_MP3),
-         "-f", "lavfi", "-i", "anoisesrc=color=pink:amplitude=0.06:d=74",
-         "-filter_complex",
-         f"[1:a]volume=enable='between(t,{lo},{hi})':volume=1,"
-         f"volume=enable='not(between(t,{lo},{hi}))':volume=0[amb];"
-         f"[0:a][amb]amix=inputs=2:duration=first:normalize=0[out]",
-         "-map", "[out]", "-ar", "24000", str(out)],
-        capture_output=True, check=True,
+        [
+            "ffmpeg",
+            "-y",
+            "-loglevel",
+            "error",
+            "-i",
+            str(DEMO_MP3),
+            "-f",
+            "lavfi",
+            "-i",
+            "anoisesrc=color=pink:amplitude=0.06:d=74",
+            "-filter_complex",
+            f"[1:a]volume=enable='between(t,{lo},{hi})':volume=1,"
+            f"volume=enable='not(between(t,{lo},{hi}))':volume=0[amb];"
+            f"[0:a][amb]amix=inputs=2:duration=first:normalize=0[out]",
+            "-map",
+            "[out]",
+            "-ar",
+            "24000",
+            str(out),
+        ],
+        capture_output=True,
+        check=True,
     )
     return out
 
@@ -349,8 +405,11 @@ def test_level_pass_matches_ffmpeg_silencedetect():
     Precondition - the rest of these tests prove nothing if the level pass does
     not agree with the reference implementation on the unmodified clip.
     """
-    regions = [r for r in find_quiet_regions(decode_pcm_mono(str(DEMO_MP3)))
-               if r[1] - r[0] >= 2.0]
+    regions = [
+        r
+        for r in find_quiet_regions(decode_pcm_mono(str(DEMO_MP3)))
+        if r[1] - r[0] >= 2.0
+    ]
 
     assert len(regions) == len(GROUND_TRUTH_PAUSES)
     for (start, end), (truth_start, truth_end) in zip(regions, GROUND_TRUTH_PAUSES):
@@ -361,15 +420,19 @@ def test_level_pass_matches_ffmpeg_silencedetect():
 @pytestmark_ffmpeg
 def test_planted_pauses_are_flagged_at_amplitude_boundaries():
     """All three pauses found, with the transcript's slop trimmed back off."""
-    found = _dead_air(Scrubber.detect_silence(
-        _demo_transcript(),
-        find_quiet_regions(decode_pcm_mono(str(DEMO_MP3))),
-        min_silence_len=0.75,
-    ))
+    found = _dead_air(
+        Scrubber.detect_silence(
+            _demo_transcript(),
+            find_quiet_regions(decode_pcm_mono(str(DEMO_MP3))),
+            min_silence_len=0.75,
+        )
+    )
 
     assert len(found) == len(GROUND_TRUTH_PAUSES)
     for violation, (truth_start, truth_end) in zip(found, GROUND_TRUTH_PAUSES):
-        assert violation.start_time == pytest.approx(truth_start, abs=BOUNDARY_TOLERANCE)
+        assert violation.start_time == pytest.approx(
+            truth_start, abs=BOUNDARY_TOLERANCE
+        )
         assert violation.end_time == pytest.approx(truth_end, abs=BOUNDARY_TOLERANCE)
 
 
@@ -380,7 +443,7 @@ def test_room_tone_variant_is_audibly_above_the_floor(room_tone_mp3):
     regression test below would pass for entirely the wrong reason.
     """
     samples = decode_pcm_mono(str(room_tone_mp3))
-    window = samples[int(34.5 * SR):int(37.5 * SR)]
+    window = samples[int(34.5 * SR) : int(37.5 * SR)]
     level = 20 * np.log10(np.sqrt((window.astype(np.float64) ** 2).mean()))
 
     assert level > DEFAULT_FLOOR_DB
@@ -393,17 +456,22 @@ def test_room_tone_is_not_flagged_as_dead_air(room_tone_mp3):
     proposes that span - and the old detector cut it. The level pass now vetoes
     it, while the two genuinely empty pauses are still found.
     """
-    found = _dead_air(Scrubber.detect_silence(
-        _demo_transcript(),
-        find_quiet_regions(decode_pcm_mono(str(room_tone_mp3))),
-        min_silence_len=0.75,
-    ))
+    found = _dead_air(
+        Scrubber.detect_silence(
+            _demo_transcript(),
+            find_quiet_regions(decode_pcm_mono(str(room_tone_mp3))),
+            min_silence_len=0.75,
+        )
+    )
 
     overlapping = [v for v in found if v.start_time < 38.5 and v.end_time > 33.5]
     assert overlapping == [], "room tone was flagged as dead air"
 
     assert len(found) == 2
-    for violation, (truth_start, truth_end) in zip(found, [GROUND_TRUTH_PAUSES[0],
-                                                           GROUND_TRUTH_PAUSES[2]]):
-        assert violation.start_time == pytest.approx(truth_start, abs=BOUNDARY_TOLERANCE)
+    for violation, (truth_start, truth_end) in zip(
+        found, [GROUND_TRUTH_PAUSES[0], GROUND_TRUTH_PAUSES[2]]
+    ):
+        assert violation.start_time == pytest.approx(
+            truth_start, abs=BOUNDARY_TOLERANCE
+        )
         assert violation.end_time == pytest.approx(truth_end, abs=BOUNDARY_TOLERANCE)

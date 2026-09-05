@@ -35,8 +35,14 @@ class RecordingEditor:
 
     last = None
 
-    def apply_edits(self, input_path, output_path, segments_to_cut=None,
-                    segments_to_mute=None, media_type="audio"):
+    def apply_edits(
+        self,
+        input_path,
+        output_path,
+        segments_to_cut=None,
+        segments_to_mute=None,
+        media_type="audio",
+    ):
         RecordingEditor.last = {
             "cuts": sorted(segments_to_cut or []),
             "mutes": sorted(segments_to_mute or []),
@@ -51,8 +57,12 @@ class RecordingEditor:
 
 def _violation(start, end, label, action):
     return Violation(
-        text="x", start_time=start, end_time=end, label=label,
-        action=action, reasoning="because",
+        text="x",
+        start_time=start,
+        end_time=end,
+        label=label,
+        action=action,
+        reasoning="because",
     )
 
 
@@ -60,8 +70,13 @@ def _violation(start, end, label, action):
 def run_job(monkeypatch, tmp_path):
     """Run the worker's job body with stubbed analysis and a stubbed editor."""
 
-    def _run(llm_violations=(), scrubber_violations=(), auto_fix=False,
-             auto_scrub=False, media_type="audio"):
+    def _run(
+        llm_violations=(),
+        scrubber_violations=(),
+        auto_fix=False,
+        auto_scrub=False,
+        media_type="audio",
+    ):
         RecordingEditor.last = None
         monkeypatch.setattr(exports, "MediaEditor", RecordingEditor)
         monkeypatch.setattr(exports, "EXPORT_DIR", tmp_path)
@@ -82,17 +97,26 @@ def run_job(monkeypatch, tmp_path):
         monkeypatch.setattr(worker, "get_processor", lambda: StubProcessor())
         # The media here is a placeholder string of bytes; skip the real
         # level pass rather than spawn an ffmpeg that can only fail.
-        monkeypatch.setattr(worker, "decode_pcm_mono",
-                            lambda path, sr=8000: np.zeros(sr, dtype=np.float32))
         monkeypatch.setattr(
-            worker.Scrubber, "detect_silence",
-            staticmethod(lambda t, *a, **k: [v for v in scrubber_violations
-                                             if v.label == "Dead Air"]),
+            worker,
+            "decode_pcm_mono",
+            lambda path, sr=8000: np.zeros(sr, dtype=np.float32),
         )
         monkeypatch.setattr(
-            worker.Scrubber, "detect_filler_words",
-            staticmethod(lambda t: [v for v in scrubber_violations
-                                    if v.label == "Filler Word"]),
+            worker.Scrubber,
+            "detect_silence",
+            staticmethod(
+                lambda t, *a, **k: [
+                    v for v in scrubber_violations if v.label == "Dead Air"
+                ]
+            ),
+        )
+        monkeypatch.setattr(
+            worker.Scrubber,
+            "detect_filler_words",
+            staticmethod(
+                lambda t: [v for v in scrubber_violations if v.label == "Filler Word"]
+            ),
         )
         # Nothing was selected -> the worker transcodes the original instead.
         monkeypatch.setattr(worker, "ffmpeg", _StubFfmpeg())
@@ -106,9 +130,16 @@ def run_job(monkeypatch, tmp_path):
 
         db = SessionLocal()
         try:
-            db.add(Job(id=job_id, filename=media.name, status="pending",
-                       media_type=media_type, auto_fix=auto_fix,
-                       auto_scrub=auto_scrub))
+            db.add(
+                Job(
+                    id=job_id,
+                    filename=media.name,
+                    status="pending",
+                    media_type=media_type,
+                    auto_fix=auto_fix,
+                    auto_scrub=auto_scrub,
+                )
+            )
             db.commit()
         finally:
             db.close()
@@ -266,6 +297,7 @@ def test_media_type_is_passed_through(run_job):
 # measured one, so a quote that matched nothing cut whatever happened to be at
 # the guessed time - the one case where an unreviewed cut is guaranteed wrong.
 
+
 def _approximate(start, end, label, action):
     v = _violation(start, end, label, action)
     v.is_approximate = True
@@ -298,6 +330,7 @@ def test_an_unplaced_suggestion_is_not_rendered_into_the_export(run_job):
 # matches fillers on spelling, and a few of those spellings are ordinary words -
 # an unevidenced "like" cut unattended turns "I like this" into "I this".
 
+
 def _ambiguous(start, end, label, action):
     v = _violation(start, end, label, action)
     v.is_ambiguous = True
@@ -319,6 +352,7 @@ def test_auto_scrub_leaves_an_ambiguous_filler_pending(run_job):
 # the detector's dataclass and die there, so an `auto_fix` job arrived at the
 # review screen as a list of accepted rows with a few pending ones in it and
 # nothing on the row saying why. They are columns now.
+
 
 def test_the_flag_that_held_a_suggestion_back_is_recorded_on_the_row(run_job):
     job_id = run_job(

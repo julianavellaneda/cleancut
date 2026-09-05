@@ -84,15 +84,17 @@ def _seed(job_count: int, violations_each: int) -> list[str]:
             ids.append(job_id)
             db.add(Job(id=job_id, filename=f"{job_id}.mp3", status="completed"))
             for i in range(violations_each):
-                db.add(Violation(
-                    id=str(uuid.uuid4()),
-                    job_id=job_id,
-                    text=f"quote {i}",
-                    start_time=float(i),
-                    end_time=float(i) + 1.0,
-                    label="Filler Word",
-                    status=["pending", "accepted", "rejected"][i % 3],
-                ))
+                db.add(
+                    Violation(
+                        id=str(uuid.uuid4()),
+                        job_id=job_id,
+                        text=f"quote {i}",
+                        start_time=float(i),
+                        end_time=float(i) + 1.0,
+                        label="Filler Word",
+                        status=["pending", "accepted", "rejected"][i % 3],
+                    )
+                )
         db.commit()
     finally:
         db.close()
@@ -259,7 +261,9 @@ def test_concurrent_waveform_requests_decode_once(client, waveform_job, monkeypa
         assert results[key].json()["peaks"] == [0.5] * 800
 
 
-def test_waveform_serves_the_cache_on_the_second_request(client, waveform_job, monkeypatch):
+def test_waveform_serves_the_cache_on_the_second_request(
+    client, waveform_job, monkeypatch
+):
     """Sequentially, too: once cached, no further decode happens."""
     calls = []
 
@@ -367,8 +371,14 @@ def test_the_active_endpoint_includes_a_job_whose_export_is_running(client):
     job_id = str(uuid.uuid4())
     db = SessionLocal()
     try:
-        db.add(Job(id=job_id, filename=f"{job_id}.mp3", status="completed",
-                   export_status="exporting"))
+        db.add(
+            Job(
+                id=job_id,
+                filename=f"{job_id}.mp3",
+                status="completed",
+                export_status="exporting",
+            )
+        )
         db.commit()
     finally:
         db.close()
@@ -399,8 +409,15 @@ def test_the_active_endpoint_carries_no_row_bodies(client):
     job_id = str(uuid.uuid4())
     db = SessionLocal()
     try:
-        db.add(Job(id=job_id, filename=f"{job_id}.mp3", status="analyzing",
-                   prompt="flag income claims", original_filename="seminar.mp3"))
+        db.add(
+            Job(
+                id=job_id,
+                filename=f"{job_id}.mp3",
+                status="analyzing",
+                prompt="flag income claims",
+                original_filename="seminar.mp3",
+            )
+        )
         db.commit()
     finally:
         db.close()

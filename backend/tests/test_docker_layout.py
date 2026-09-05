@@ -56,9 +56,7 @@ def _import_app(workdir, env_extra=None):
 
 def test_app_imports_in_container_layout(container_root):
     result = _import_app(container_root)
-    assert result.returncode == 0, (
-        f"import failed in Docker layout:\n{result.stderr}"
-    )
+    assert result.returncode == 0, f"import failed in Docker layout:\n{result.stderr}"
     assert "CleanCut API" in result.stdout
 
 
@@ -69,12 +67,17 @@ def test_env_resolution_at_literal_container_path(container_root):
     `parents[3]` walk ever comes back.
     """
     result = subprocess.run(
-        [sys.executable, "-c",
-         "from app.config import root_env_path;"
-         "print(repr(root_env_path('/app/app/main.py')))"],
+        [
+            sys.executable,
+            "-c",
+            "from app.config import root_env_path;"
+            "print(repr(root_env_path('/app/app/main.py')))",
+        ],
         cwd=container_root,
         env={"PATH": "/usr/bin:/bin", "PYTHONPATH": str(container_root)},
-        capture_output=True, text=True, timeout=180,
+        capture_output=True,
+        text=True,
+        timeout=180,
     )
     assert result.returncode == 0, result.stderr
     assert result.stdout.strip() == "None"

@@ -64,7 +64,9 @@ def missing_requirements(
 
     for executable in REQUIRED_EXECUTABLES:
         if which(executable) is None:
-            problems.append(f"`{executable}` was not found on PATH - {INSTALL_HINTS[executable]}.")
+            problems.append(
+                f"`{executable}` was not found on PATH - {INSTALL_HINTS[executable]}."
+            )
 
     return problems
 

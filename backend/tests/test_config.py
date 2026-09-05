@@ -45,12 +45,15 @@ def test_docker_container_path_returns_none():
     assert root_env_path("/app/app/main.py") is None
 
 
-@pytest.mark.parametrize("shallow", [
-    "/app/app/main.py",                    # the Docker layout
-    "/app/app/services/processor.py",      # deeper module, same image
-    "/app/main.py",
-    "/main.py",
-])
+@pytest.mark.parametrize(
+    "shallow",
+    [
+        "/app/app/main.py",  # the Docker layout
+        "/app/app/services/processor.py",  # deeper module, same image
+        "/app/main.py",
+        "/main.py",
+    ],
+)
 def test_shallow_layouts_do_not_raise(shallow):
     """Any layout too shallow to hold a repo root must degrade, not raise."""
     assert root_env_path(shallow) is None

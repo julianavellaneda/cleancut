@@ -35,8 +35,14 @@ class RecordingEditor:
 
     last = None
 
-    def apply_edits(self, input_path, output_path, segments_to_cut=None,
-                    segments_to_mute=None, media_type="audio"):
+    def apply_edits(
+        self,
+        input_path,
+        output_path,
+        segments_to_cut=None,
+        segments_to_mute=None,
+        media_type="audio",
+    ):
         RecordingEditor.last = {
             "cuts": sorted(segments_to_cut or []),
             "mutes": sorted(segments_to_mute or []),
@@ -88,13 +94,22 @@ def make_job(monkeypatch, tmp_path):
         try:
             db.add(Job(id=job_id, filename=f"{job_id}.mp3", status=status))
             for start, end, action, vstatus in violations:
-                db.add(Violation(id=str(uuid.uuid4()), job_id=job_id, text="x",
-                                 start_time=start, end_time=end,
-                                 action=action, status=vstatus))
+                db.add(
+                    Violation(
+                        id=str(uuid.uuid4()),
+                        job_id=job_id,
+                        text="x",
+                        start_time=start,
+                        end_time=end,
+                        action=action,
+                        status=vstatus,
+                    )
+                )
             db.commit()
         finally:
             db.close()
         return job_id
+
     return _make
 
 
@@ -108,6 +123,7 @@ def _job(job_id):
 
 # --- the route answers immediately -----------------------------------------
 
+
 def test_export_returns_202_without_rendering(client, make_job, enqueued):
     """The headline fix: the request returns before FFmpeg ever starts."""
     job_id = make_job()
@@ -120,7 +136,9 @@ def test_export_returns_202_without_rendering(client, make_job, enqueued):
     assert enqueued == [(job_id, None)]
 
 
-def test_a_second_export_is_refused_while_one_is_outstanding(client, make_job, enqueued):
+def test_a_second_export_is_refused_while_one_is_outstanding(
+    client, make_job, enqueued
+):
     """
     One render per job. Queuing a second burned a second FFmpeg pass over the
     length of the media for a file the first was about to write anyway, and let
@@ -129,7 +147,9 @@ def test_a_second_export_is_refused_while_one_is_outstanding(client, make_job, e
     job_id = make_job()
     db = SessionLocal()
     try:
-        db.add(Task(id=str(uuid.uuid4()), kind="export", job_id=job_id, state="running"))
+        db.add(
+            Task(id=str(uuid.uuid4()), kind="export", job_id=job_id, state="running")
+        )
         db.commit()
     finally:
         db.close()
@@ -159,6 +179,7 @@ def test_global_override_is_carried_onto_the_queue(client, make_job, enqueued):
 
 # --- validation still happens synchronously ---------------------------------
 
+
 def test_unknown_job_still_404s_without_queueing(client, enqueued):
     assert client.post(f"/api/jobs/{uuid.uuid4()}/export", json={}).status_code == 404
     assert enqueued == []
@@ -186,6 +207,7 @@ def test_nothing_accepted_still_400s_without_queueing(client, make_job, enqueued
 
 # --- the worker side --------------------------------------------------------
 
+
 def test_worker_export_drives_the_job_to_ready(client, make_job):
     job_id = make_job()
     client.post(f"/api/jobs/{job_id}/export", json={})
@@ -199,11 +221,13 @@ def test_worker_export_drives_the_job_to_ready(client, make_job):
 
 
 def test_worker_export_only_renders_accepted_edits(client, make_job):
-    job_id = make_job(violations=(
-        (1.0, 2.0, "cut", "accepted"),
-        (3.0, 4.0, "cut", "rejected"),
-        (5.0, 6.0, "mute", "accepted"),
-    ))
+    job_id = make_job(
+        violations=(
+            (1.0, 2.0, "cut", "accepted"),
+            (3.0, 4.0, "cut", "rejected"),
+            (5.0, 6.0, "mute", "accepted"),
+        )
+    )
 
     worker._process_export(job_id)
 
@@ -242,7 +266,9 @@ def test_a_retry_clears_the_previous_export_error(client, make_job, monkeypatch)
     assert job.export_error is None
 
 
-def test_missing_source_media_is_an_export_failure_not_a_crash(client, make_job, monkeypatch, tmp_path):
+def test_missing_source_media_is_an_export_failure_not_a_crash(
+    client, make_job, monkeypatch, tmp_path
+):
     job_id = make_job()
     (tmp_path / f"{job_id}.mp3").unlink()
 
@@ -262,6 +288,7 @@ def test_export_for_an_unknown_job_is_a_no_op(client):
 # default "none" no matter what the worker had written. Every state below was
 # invisible to the client polling it: the button stayed on "Export" through a
 # running render and never became a download when one finished.
+
 
 def _polled(client, job_id):
     response = client.get(f"/api/jobs/{job_id}")
@@ -393,7 +420,9 @@ def test_deleting_an_idle_job_still_works(client, make_job, tmp_path):
     assert not (tmp_path / f"{job_id}_edited.mp3").exists()
 
 
-def test_a_render_whose_job_vanished_publishes_nothing(client, make_job, tmp_path, monkeypatch):
+def test_a_render_whose_job_vanished_publishes_nothing(
+    client, make_job, tmp_path, monkeypatch
+):
     """
     The narrower race the 409 cannot close: a job that becomes idle between the
     guard and the delete, with a render already in flight behind it.

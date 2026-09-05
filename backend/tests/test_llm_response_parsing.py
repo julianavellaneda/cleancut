@@ -15,19 +15,24 @@ from app.analysis.prompt_analyzer import AnalysisError, _parse_llm_response
 
 # --- genuinely empty results must stay empty, not raise -------------------
 
-@pytest.mark.parametrize("content", [
-    "[]",
-    '{"violations": []}',
-    '{"markers": []}',
-    '{"edits": []}',
-    "{}",
-    '{"violations": null}',
-])
+
+@pytest.mark.parametrize(
+    "content",
+    [
+        "[]",
+        '{"violations": []}',
+        '{"markers": []}',
+        '{"edits": []}',
+        "{}",
+        '{"violations": null}',
+    ],
+)
 def test_empty_results_parse_as_empty(content):
     assert _parse_llm_response(content) == []
 
 
 # --- well-formed results ---------------------------------------------------
+
 
 def test_bare_list():
     content = json.dumps([{"text": "a", "label": "Filler Word"}])
@@ -46,7 +51,9 @@ def test_recognized_wrapper_keys(key):
 def test_single_suggestion_returned_unwrapped():
     content = json.dumps({"text": "I made $10,000", "label": "Income Claim"})
 
-    assert _parse_llm_response(content) == [{"text": "I made $10,000", "label": "Income Claim"}]
+    assert _parse_llm_response(content) == [
+        {"text": "I made $10,000", "label": "Income Claim"}
+    ]
 
 
 def test_single_preset_suggestion_returned_unwrapped():
@@ -63,6 +70,7 @@ def test_renamed_wrapper_key_is_still_accepted():
 
 
 # --- unreadable responses must raise, not return [] ------------------------
+
 
 def test_invalid_json_raises():
     with pytest.raises(AnalysisError) as excinfo:
@@ -122,6 +130,7 @@ def test_error_excerpt_is_truncated():
 # "cut", mapped onto the first segment of the transcript - and with auto_fix on,
 # that segment was deleted. Anything unusable fails the chunk instead.
 
+
 @pytest.mark.parametrize("item", ["a string", 42, None, True, ["nested"]])
 def test_non_object_entry_raises(item):
     content = json.dumps({"violations": [item]})
@@ -178,13 +187,16 @@ def test_unknown_severity_raises():
     assert "unknown severity" in str(excinfo.value)
 
 
-@pytest.mark.parametrize("field,value", [
-    ("text", 42),
-    ("label", ["Filler Word"]),
-    ("reasoning", {"why": "because"}),
-    ("rule_violated", 7),
-    ("approximate_time", 5.2),
-])
+@pytest.mark.parametrize(
+    "field,value",
+    [
+        ("text", 42),
+        ("label", ["Filler Word"]),
+        ("reasoning", {"why": "because"}),
+        ("rule_violated", 7),
+        ("approximate_time", 5.2),
+    ],
+)
 def test_non_string_field_raises(field, value):
     content = json.dumps([{"text": "a", field: value}])
 
@@ -210,16 +222,26 @@ def test_valid_severities_are_accepted(severity):
 
 def test_null_optional_fields_are_accepted():
     """The models pad objects with nulls; that is not a malformed entry."""
-    content = json.dumps([{
-        "text": "a", "label": None, "action": None,
-        "severity": None, "rule_violated": None, "reasoning": None,
-    }])
+    content = json.dumps(
+        [
+            {
+                "text": "a",
+                "label": None,
+                "action": None,
+                "severity": None,
+                "rule_violated": None,
+                "reasoning": None,
+            }
+        ]
+    )
 
     assert len(_parse_llm_response(content)) == 1
 
 
 def test_error_names_the_offending_entry():
-    content = json.dumps({"violations": [{"text": "a"}, {"text": "b"}, {"summary": "x"}]})
+    content = json.dumps(
+        {"violations": [{"text": "a"}, {"text": "b"}, {"summary": "x"}]}
+    )
 
     with pytest.raises(AnalysisError) as excinfo:
         _parse_llm_response(content)
