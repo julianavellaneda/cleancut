@@ -133,6 +133,10 @@ export default function ReviewPage() {
     }
   }, [jobId]);
 
+  // Same rule, same reason as the home page's mount effect - and here there is
+  // not even a synchronous setState to point at: `loadData` awaits before it
+  // touches state at all. See the comment there.
+  // eslint-disable-next-line react-hooks/set-state-in-effect
   useEffect(() => { loadData(); }, [loadData]);
 
   useEffect(() => {
