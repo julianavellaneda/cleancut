@@ -777,8 +777,25 @@ below the fold with no sign it had opened.
   omitting it calls the first render's callback forever. Same shape on the review page: `loadData`
   seeds the selection through the functional setter rather than reading `selectedViolation`, since
   depending on it would re-fetch the job and the whole violation list on every click in the sidebar.
-  `eslint` runs clean; a suppression needs a comment saying why, and the review page's keyboard
-  effect is the only one.
+  `eslint` runs clean; a suppression needs a comment saying why, and there are three in `src/app/`:
+  the review page's keyboard effect (`exhaustive-deps`), and the two mount effects that fetch -
+  the home page's and the review page's - which `react-hooks/set-state-in-effect` flags. That rule
+  arrived with eslint-config-next 16.3.4 and matches an effect that *transitively* reaches a
+  setState, so it cannot be restructured away: removing the one synchronous `setLoadingJobs(true)`
+  on that path leaves the error where it was, and `loadData` awaits before it touches state at all.
+  Fetch-on-mount is the sanctioned use of an effect; satisfying the rule honestly means Suspense and
+  `use()`, which is a rearchitecture rather than a lint fix. The directives are anchored on the
+  **reported line** - `loadJobs();`, not the `useEffect` above it - since an
+  `eslint-disable-next-line` on the wrong line silently does nothing and lints as an unused
+  directive.
+- **`typescript` is held at ^6 and `eslint` at ^9, deliberately, and a Dependabot PR will keep
+  offering to move them.** TypeScript 7 is the Go port and ships no programmatic JS API, so
+  typescript-eslint cannot read it - its peer range says `>=4.8.4 <6.1.0`, and `eslint` aborts
+  before linting a file. ESLint 10 removed `context.getFilename`, which `eslint-plugin-react` still
+  calls; 7.37.5 is that plugin's latest release and peers at `^9.7`, so there is nothing to upgrade
+  to. It reaches us nested under `eslint-config-next`, whose own peer is a too-loose
+  `eslint: >=9.0.0` - which is why the install succeeds and the break waits until a rule loads.
+  Both holds come off when the tooling catches up, not before.
 - Frontend tests live next to what they test (`Foo.test.tsx`), run under vitest in jsdom, and are
   included by `tsc --noEmit` but not by `next build`. `src/test/setup.ts` stubs `ResizeObserver`
   and `scrollIntoView`, which jsdom lacks and a plain render of the sidebar reaches.
