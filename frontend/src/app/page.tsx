@@ -118,7 +118,17 @@ export default function UploadPage() {
     }
   }, [startPolling]);
 
+  // react-hooks/set-state-in-effect (new in the plugin that arrived with
+  // eslint-config-next 16.3.4) flags this and it cannot be restructured away:
+  // the rule fires on an effect that *transitively* reaches a setState, not on
+  // a synchronous one. Deleting `setLoadingJobs(true)` from `loadJobs` - the
+  // only synchronous set on this path - leaves the error exactly where it was,
+  // which is how we know what is being matched. Fetch-on-mount is the sanctioned
+  // use of an effect, not the "you might not need an effect" case the message
+  // describes; satisfying the rule honestly means Suspense and `use()`, which is
+  // a rearchitecture of both pages and not something a dependency bump gets to do.
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     loadJobs();
     loadPresets();
     startPolling();
