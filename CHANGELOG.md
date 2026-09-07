@@ -9,17 +9,41 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- **The backend has a quality gate.** It ran `pytest` and two evals and nothing else — 770 tests
-  over 7,600 lines of application code, with no linter, no type checker and no coverage number,
-  while the frontend had four gates in CI. Now: `ruff check`, `ruff format --check`, `mypy` and a
-  coverage floor of 83% (measured at 85, branch coverage included), all configured in a single
-  `backend/pyproject.toml` and all running in CI. `pytest.ini` moved into that file and was deleted;
-  the two cannot coexist, since `pytest.ini` outranks `pyproject.toml` silently.
+- **The backend has a quality gate.** `ruff check`, `ruff format --check`, `mypy` and a coverage
+  floor of 83% (measured at 85, branch coverage included) now run in CI, all configured in a single
+  `backend/pyproject.toml`.
+  - Before this, the backend ran `pytest` and two evals and nothing else — 770 tests over 7,600
+    lines of application code, with no linter, no type checker and no coverage number, while the
+    frontend already had four gates in CI. `pytest.ini` moved into `pyproject.toml` and was deleted;
+    the two cannot coexist, since `pytest.ini` outranks `pyproject.toml` silently.
+  - mypy covers `app/analysis/` — the LLM boundary, where everything arrives as untyped JSON and a
+    wrong type is a silently wrong answer rather than a 500. Widening it to `app/services/` is
+    blocked on migrating the SQLAlchemy models to `Mapped[...]`, a change to the data layer that is
+    documented as such rather than bundled in.
 
-  mypy covers `app/analysis/` — the LLM boundary, where everything arrives as untyped JSON and a
-  wrong type is a silently wrong answer rather than a 500. Widening it to `app/services/` is blocked
-  on migrating the SQLAlchemy models to `Mapped[...]`, which is a change to the data layer and is
-  documented as such rather than bundled in.
+### Changed
+
+- **Python dependencies are locked.** `requirements.in` / `requirements-dev.in` declare floors and
+  the reasoning behind them; `requirements.txt` / `requirements-dev.txt` are compiled by
+  `uv pip compile` with every version pinned and every artifact hashed, and are what the Dockerfile,
+  CI, `start.sh` and the documented setup all install with `--require-hashes`.
+  - Before this, `backend/requirements.txt` was nine `>=` floors installed straight from PyPI, so
+    two builds a month apart were two different applications.
+  - Compiled `--universal` so one file serves macOS-arm64 development, `ubuntu-latest` CI and
+    `python:3.12-slim` through environment markers rather than baking in whichever machine ran the
+    compile, at a `--python-version 3.10` lower bound to match the Python version the README
+    promises. Consumer filenames are unchanged, so nothing outside `backend/` had to learn a new
+    one.
+  - CI gained a step that re-compiles both locks and fails on any diff: a dependency added to a
+    `.in` without a re-compile installs nothing, and would otherwise merge silently. `uv` is pinned
+    to the same version in `ci.yml` and `CONTRIBUTING.md`.
+
+### Removed
+
+- **`backend/app/analysis/requirements.txt`.** Unreferenced, and wrong where it overlapped with the
+  real declaration.
+  - Contradicted the real declaration (`faster-whisper>=1.0.0` against `>=0.10.0`), listed `pydub`
+    which is not a dependency, and shipped into the image via `COPY app/ ./app/`.
 
 ### Fixed
 
@@ -27,47 +51,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `except` discarded the original exception, so a failed waveform render reached the log with its
   traceback gone.
 - **`zip()` calls that could silently truncate.** `media_editor` interleaves video and audio
-  segments into one concat filter, where a length mismatch does not raise — it produces a shorter
-  file with the audio slipped against the picture. It and the dead-air pass now use `strict=True`.
+  segments into one concat filter.
+  - A length mismatch there did not raise — it produced a shorter file with the audio slipped
+    against the picture. It and the dead-air pass now use `strict=True`.
 - **Every bodyless export request shared one object.** `POST /{job_id}/export` declared
   `request: ExportRequest = ExportRequest()`, a single instance built at import and reused for the
-  life of the process. Nothing mutated it, so nothing was broken; it is now built per request, and
-  a test bans model instances as route defaults anywhere.
+  life of the process.
+  - Nothing mutated it, so nothing was broken; it is now built per request, and a test bans model
+    instances as route defaults anywhere.
 - **A quote could be placed with a measured start and an unmeasured end.** `_find_text_timestamps`
   returned its span after checking only one of the two values its helper returns as a pair.
 - **`app/analysis/` was not a package.** It alone had no `__init__.py`, making it reachable under
   two module names — the condition that produces two distinct `Violation` classes.
 - **A test that guarded nothing.** `test_container_layout_has_no_repo_root_above_package` computed
   the path its docstring describes and never asserted on it.
-
-### Changed
-
-- **Python dependencies are locked.** `backend/requirements.txt` was nine `>=` floors installed
-  straight from PyPI, so two builds a month apart were two different applications. The declaration
-  now lives in `requirements.in` / `requirements-dev.in` (floors and the reasoning comments on
-  them); `requirements.txt` / `requirements-dev.txt` are compiled by `uv pip compile` — every
-  version pinned, every artifact hashed — and are what the Dockerfile, CI, `start.sh` and the
-  documented setup all install, with `--require-hashes`.
-
-  Compiled `--universal` so one file serves macOS-arm64 development, `ubuntu-latest` CI and
-  `python:3.12-slim` through environment markers rather than baking in whichever machine ran the
-  compile, at a `--python-version 3.10` lower bound to match the Python version the README promises.
-  Consumer filenames are unchanged, so nothing outside `backend/` had to learn a new one.
-
-  CI gained a step that re-compiles both locks and fails on any diff: a dependency added to a `.in`
-  without a re-compile installs nothing, and would otherwise merge silently. `uv` is pinned to the
-  same version in `ci.yml` and `CONTRIBUTING.md`.
-
-### Removed
-
-- `backend/app/analysis/requirements.txt` — unreferenced, contradicted the real declaration
-  (`faster-whisper>=1.0.0` against `>=0.10.0`), listed `pydub` which is not a dependency, and shipped
-  into the image via `COPY app/ ./app/`.
-
-### Fixed
-
-- Dependabot can now actually update Python dependencies. The pip entry previously watched a floors
-  file nothing pinned, so a routine week produced no useful PR.
+- **Dependabot can now actually update Python dependencies.** The pip entry previously watched a
+  floors file nothing pinned, so a routine week produced no useful PR.
 
 ## [0.1.0] - 2026-09-05
 
@@ -78,7 +77,8 @@ First tagged release. Publishes `cleancut-backend` and `cleancut-frontend` to GH
 
 - **Prompt-driven analysis.** A free-form instruction ("cut every filler word", "flag any specific
   dollar figure") drives the edit, rather than a fixed rulebook. Long transcripts go through a
-  chunked sliding window — 50 segments, 10 overlap, deduplicated by label and 5s proximity.
+  chunked sliding window — 50 segments, 10 overlap, with findings two chunks both reported
+  collapsed on overlapping spans and matching text, never on timestamp proximity alone.
 - **Rule presets** for recurring review jobs: income and lifestyle claims, and PII redaction. A
   preset is a markdown rulebook plus a registry entry, and surfaces automatically over the API.
 - **Word-level transcription** via `faster-whisper` with int8 quantization for local CPU use.

@@ -20,6 +20,5 @@ assignees: ''
 
 **Would a prompt or a preset get you there?**
 
-<!-- Analysis is prompt-driven, and a rule preset is a markdown rulebook in
-     backend/app/analysis/presets/ plus one entry in PRESETS - so a recurring review job may already
-     be a preset rather than a code change. See "Adding a preset" in AGENTS.md. -->
+<!-- A preset is a markdown rulebook in backend/app/analysis/presets/ plus a PRESETS entry - this
+     job might already be one rather than a code change. See "Adding a preset" in AGENTS.md. -->

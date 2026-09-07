@@ -7,26 +7,23 @@ moves anything structural.
 
 ## Setup
 
-CleanCut needs Python 3.10+, Node 18+, and FFmpeg (`brew install ffmpeg`, or your package
-manager's equivalent). Configuration is a single `.env` **at the repo root**, not in a
-subdirectory — `backend/app/config.py` walks up to find it.
+Follow the README's [local quickstart](README.md#quickstart-local) (Python 3.10+, Node 20.9+,
+FFmpeg) to get the backend and frontend running. One line changes for contributing: install the
+dev lock, not the runtime one.
 
 ```bash
-cp .env.example .env      # then add your model API key
-
 cd backend
-python3 -m venv .venv
-source .venv/bin/activate
-pip install --require-hashes -r requirements-dev.txt   # the compiled lock
-uvicorn app.main:app --reload
-
-cd ../frontend
-npm install
-npm run dev
+pip install --require-hashes -r requirements-dev.txt   # not requirements.txt
 ```
 
-Or `./start.sh` for both. Both bind `127.0.0.1`; see the README's Privacy section for why that is
-the default and what changing it means.
+`requirements-dev.txt` is compiled from `requirements-dev.in`, which is `-r requirements.in` plus
+the test-only dependencies (pytest, ruff, mypy). Installing it pulls in the runtime dependencies
+too, so there is nothing to install twice.
+
+The backend dev server binds `127.0.0.1` by default; a bare `npm run dev` for the frontend does
+not — see the README's [local quickstart](README.md#quickstart-local) for the flag that matches
+`start.sh`, and its [Privacy](README.md#privacy) section for what changes if you set
+`CLEANCUT_HOST`.
 
 ## Adding a Python dependency
 
@@ -40,9 +37,7 @@ hand-edited:
 | `requirements-dev.in` | **yes** | `-r requirements.in` plus the test-only dependencies |
 | `requirements-dev.txt` | no | Same, compiled |
 
-Add the floor to the `.in`, then re-compile **both** locks in the same commit. `uv` is pinned to the
-version CI uses; a different one can format the header differently and fail the drift check on an
-otherwise correct commit.
+Add the floor to the `.in`, then re-compile **both** locks in the same commit:
 
 ```bash
 # uv 0.12.10 — the version .github/workflows/ci.yml pins
@@ -53,72 +48,89 @@ uv pip compile requirements-dev.in \
   --universal --python-version 3.10 --generate-hashes --output-file requirements-dev.txt
 ```
 
-`--universal` is what makes one file serve macOS-arm64 development, `ubuntu-latest` CI and
-`python:3.12-slim` at once: it resolves for every platform and emits environment markers instead of
-baking in the machine that ran the compile. `--python-version 3.10` is a *lower* bound under
-`--universal`, and it is 3.10 because that is the version the README promises — expect packages that
-dropped it to appear twice with markers, which is the mechanism working. `--generate-hashes` pairs
-with the `--require-hashes` every consumer installs with; without both, the hashes are decoration.
+Use the `uv` version CI uses. A different one can format the lock header differently and fail the
+drift check on an otherwise correct commit.
 
-CI re-runs those two commands and fails on any diff, so a `.in` edited without a re-compile cannot
-merge. The locks' first two lines record the exact command that produced them — never hand-edit a
-`.txt`; a re-compile silently overwrites the edit, and `tests/test_dependency_locks.py` fails it
-first.
+Each flag on those commands is doing a specific job:
+
+- `--universal` is what makes one file serve macOS-arm64 development, `ubuntu-latest` CI, and
+  `python:3.12-slim` all at once. It resolves for every platform and emits environment markers
+  instead of baking in the machine that ran the compile.
+- `--python-version 3.10` is a *lower* bound under `--universal`, not the compiling machine's own
+  version. It is 3.10 because that is the floor the README promises.
+- A package that dropped 3.10 support appears twice in the lock, each copy behind its own marker.
+  That duplication is the mechanism working, not a bug.
+- `--generate-hashes` pairs with the `--require-hashes` every consumer installs with. Without both
+  flags, the hashes are decoration.
+
+CI re-runs those two compile commands and fails on any diff, so a `.in` edited without a
+re-compile cannot merge. The locks' first two lines record the exact command that produced them —
+never hand-edit a `.txt`; a re-compile silently overwrites the edit, and
+`tests/test_dependency_locks.py` fails it first.
 
 ## Running what CI runs
 
-CI is `.github/workflows/ci.yml`. Nine checks, all reproducible locally, none of which need an API
-key:
+CI is [`.github/workflows/ci.yml`](.github/workflows/ci.yml): **11 checks** — 7 backend, 4
+frontend — all reproducible locally, none of which need an API key.
 
 ```bash
 # Backend
 cd backend && source .venv/bin/activate
 
-# The locks match their .in files. Re-run the two compile commands from
-# "Adding a Python dependency" above, then:
+# 1. Lock drift: the recompiled locks match what's committed.
+#    Re-run the two compile commands from "Adding a Python dependency" above, then:
 git diff --exit-code -- requirements.txt requirements-dev.txt
 
-# Formatting, linting, types. Every flag lives in backend/pyproject.toml, so
-# these stay bare commands here and in CI - a flag on the call site would be a
-# second place the behaviour is defined.
+# 2-4. Formatting, linting, types. Every flag lives in backend/pyproject.toml, so
+#      these stay bare commands here and in CI - a flag on the call site would be
+#      a second place the behaviour is defined.
 ruff format --check app tests conftest.py
 ruff check app tests conftest.py
 mypy
 
+# 5. Tests plus the coverage floor.
 pytest --cov=app --cov-config=pyproject.toml --cov-report=term-missing
 
-# The scorer and the labels, graded against a recorded run. Deterministic:
-# no model, no media, no key.
+# 6. The scorer and the labels, graded against a recorded run. Deterministic:
+#    no model, no media, no key.
 python -m app.eval.run ../tests/fixtures/demo/seed_job.json
 
-# The detectors as they stand on your commit, against the real clip and the
-# committed word-level transcript. This is the gate that would catch a
-# scrubber regression.
+# 7. The detectors as they stand on this commit, against the real clip and the
+#    committed word-level transcript. The gate that would catch a scrubber regression.
 python -m app.eval.run --detectors ../tests/fixtures/demo/demo_seminar.mp3 \
   --suite scrub --min-precision 0.95 --min-recall 0.85
 
 # Frontend
 cd ../frontend
-npm run lint && npx tsc --noEmit && npm test && npm run build
+npm run lint        # 8
+npx tsc --noEmit     # 9
+npm test            # 10
+npm run build        # 11
 ```
 
-`pytest` on its own is the fast thing and stays that way — the coverage flags are not in `addopts`,
-because they roughly double the run and get in a debugger's way. Run the full line above before
-pushing; the floor is in `pyproject.toml`, not on the command.
+CI's actual check 3 is `ruff check --no-fix --output-format=github app tests conftest.py`. Both
+flags are about the invocation, not the rule set: `--no-fix` stops CI from silently rewriting
+files whose changes you'd never see, and `--output-format=github` turns violations into inline
+annotations on the PR diff. Neither changes what gets flagged, so the bare command above catches
+the same problems locally.
 
-A note on the two backend tools: they are pinned in `requirements-dev.txt` like everything else, so
-Dependabot will bump them. A ruff release can change what `ruff format` produces, and a mypy release
-can find something new. Both are legitimate reasons for a follow-up commit *inside the bot's PR* —
-neither is a reason to pin the tools outside the lock, which is where they would quietly stop being
-updated at all.
+`python -m app.eval.run --live MEDIA` grades the whole pipeline instead — transcription and the
+LLM call included. It is opt-in because it costs money and cannot be deterministic. Run it if you
+touched the analyzer; CI will not.
 
-`python -m app.eval.run --live MEDIA` grades the whole pipeline instead, transcription and LLM call
-included. It is opt-in because it costs money and cannot be deterministic — run it if you touched
-the analyzer, but CI will not.
+The eval prints its scorecard rather than only passing or failing, so a run that drifts while
+still clearing its floors is visible in the build log. If your change moves those numbers, say so
+in the PR and say why.
 
-The eval prints its scorecard rather than only passing or failing, so a run that drifts while still
-clearing its floors is visible in the build log. If your change moves those numbers, say so in the
-PR and say why.
+`pytest` on its own is the fast thing and stays that way — the coverage flags are not in
+`addopts`, because they roughly double the run and get in a debugger's way. Run the full command
+above before pushing; the floor itself lives in `pyproject.toml`, not on the command line.
+
+A note on the two backend tools: `ruff` and `mypy` are pinned in `requirements-dev.txt` like
+everything else, so Dependabot will bump them. A ruff release can change what `ruff format`
+produces, and a mypy release can find something new. Both are legitimate reasons for a follow-up
+commit *inside the bot's PR* — neither is a reason to pin the tools outside the lock, which is
+where they would quietly stop being updated at all.
 
 ## Conventions
 

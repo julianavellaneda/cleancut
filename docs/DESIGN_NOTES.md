@@ -21,6 +21,9 @@ reasoning, and the human clicks accept or reject.
 
 ## 2. The pipeline
 
+The pipeline's shape — stage order, data flow, the queue — is `ARCHITECTURE.md`'s job. This section
+keeps only the *why* behind each stage.
+
 ### Transcription — the ears
 
 Word-level timestamps are the whole foundation; without them there is no way to know *where* to cut.
@@ -33,11 +36,8 @@ the machine, never audio.
 
 ### Analysis — the brain
 
-The transcript goes to an LLM with either the user's plain-English instruction or a preset rulebook.
 A capable model is required here, not a small one: the job includes distinguishing "partnership" in
 the legal sense from "partnership" meaning a spouse.
-
-Output is a JSON list of `{text, approximate_time, label, action, reasoning}`.
 
 **The hard part is mapping back.** The model quotes text; the player needs timestamps. The quoted
 string is located in the transcript, disambiguated by the model's approximate time when it appears
@@ -46,9 +46,10 @@ more than once, then narrowed to word-level start/end within the matched segment
 right paragraph.
 
 **Long recordings need chunking.** A two-hour transcript is large, and models degrade on
-find-everything tasks long before they hit a context limit. Transcripts are split into 50-segment
-chunks with a 10-segment overlap so nothing falls in a boundary, then results are deduplicated by
-label plus timestamp proximity.
+find-everything tasks long before they hit a context limit. `ARCHITECTURE.md` has the chunk size, the
+overlap and the current deduplication rule — the rule was rewritten once already, after the original
+version (label plus timestamp proximity) deleted distinct findings that happened to sit close
+together.
 
 ### Silence and filler — no LLM
 
@@ -61,10 +62,8 @@ what the "Clean All" button bulk-accepts.
 
 Editing runs through a single FFmpeg filter graph rather than a sequence of passes. `trim`/`atrim`
 plus `concat` removes intervals from video and audio streams together, so they cannot drift out of
-sync — which is exactly what happens if you cut the audio and video separately.
-
-Order matters: **mutes are applied before cuts**, because cutting shifts the timeline out from under
-any mute timestamps computed against the original.
+sync — which is exactly what happens if you cut the audio and video separately. Mutes are applied
+before cuts; `ARCHITECTURE.md` has the reason.
 
 ## 3. Prompts vs. presets
 
@@ -81,11 +80,15 @@ to add, so a new review domain does not require touching the analyzer.
 
 - **Hallucinations.** The model will flag innocent content. This is precisely why the human review
   interface is mandatory rather than a nicety.
-- **Silent failures.** `_call_llm` currently swallows a `JSONDecodeError` and returns an empty list,
-  which makes a broken response indistinguishable from "found nothing". This should surface on the
-  job instead.
 - **Diarization.** With a translator present, a prohibited statement exists twice — once in each
   language. Both need flagging. The preset rulebooks instruct the model to do this, but true speaker
   separation would need something like `pyannote.audio`.
-- **Unauthenticated admin.** `/admin` wipes the database and storage with no auth. Fine locally,
-  disqualifying for a deployment.
+
+Two pitfalls that used to be listed here are fixed:
+
+- A silent parse failure used to make a broken LLM response indistinguishable from "found nothing" —
+  `_call_llm` swallowed the `JSONDecodeError` and returned an empty list. `_parse_llm_response` now
+  raises `AnalysisError` instead: a bad chunk leaves the job `completed` with a partial-analysis
+  warning, and a transcript where every chunk fails fails the job outright.
+- The admin routes used to wipe the database and storage with no auth at all. Admin auth now fails
+  closed — see [`SECURITY.md`](../SECURITY.md).

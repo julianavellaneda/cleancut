@@ -1,10 +1,9 @@
-# Fixtures
+# tests/
 
-Sample media and transcripts used for manual runs and eval.
+Media fixtures and eval labels shared across the project, plus this signpost.
 
-This directory is intentionally empty of real recordings. Any transcript or clip
-committed here must be synthetic — written for the project and TTS'd or recorded
-from scratch — never a real customer recording. The demo clip described in
-Phase 3 of `DEVELOPMENT_PLAN.md` lands here.
+`fixtures/demo/` holds the synthetic demo clip and its ground truth. Everything committed here must
+be synthetic — see [`fixtures/demo/README.md`](fixtures/demo/README.md) for the full rule and the
+provenance of each file.
 
-Backend unit tests live in `backend/tests/` and are run with `pytest` from `backend/`.
+Backend unit tests live in `backend/tests/` and run with `pytest` from `backend/`.

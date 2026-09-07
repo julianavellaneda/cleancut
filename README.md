@@ -23,6 +23,66 @@ accepted](docs/assets/demo.gif)
 *Reviewing a seminar recording. Full-quality captures of the whole flow — upload, pipeline, review,
 cut versus mute, export — are in [`docs/demo/captures/`](docs/demo/captures/).*
 
+## Quickstart (Docker)
+
+```bash
+cp .env.example .env      # then add your model API key
+docker compose up --build
+```
+
+Open http://localhost:3000.
+
+### Published images
+
+Every `v*` git tag publishes both images to GHCR, for running CleanCut without building it. The
+image tag drops the leading `v` — a `v0.1.0` tag publishes `0.1.0`, a moving `0.1`, and `latest`:
+
+```bash
+docker pull ghcr.io/julianavellaneda/cleancut-backend:0.1.0
+docker pull ghcr.io/julianavellaneda/cleancut-frontend:0.1.0
+```
+
+These are **`linux/amd64` only**. On Apple Silicon, add `--platform linux/amd64` and Docker Desktop
+runs them emulated — which is slow enough for Whisper that building locally, or `docker compose up
+--build`, is the better trade on an M-series Mac.
+
+The frontend image is not tied to any particular backend: the browser calls the frontend's own
+`/api` and its server proxies to `BACKEND_ORIGIN`, which is read at startup, so pointing it
+somewhere else is an environment variable rather than a rebuild.
+
+`docker compose up --build` stays the path this repo is set up for — Compose is what wires the two
+together, mounts the volumes and publishes on loopback. The published images are for anyone who
+would rather not build.
+
+## Quickstart (local)
+
+Requires Python 3.10+, Node 20.9+, and FFmpeg (`brew install ffmpeg`).
+
+```bash
+# 1. Environment — a .env at the repo root, read by the backend
+cp .env.example .env      # then add your model API key
+
+# 2. Backend (port 8000)
+cd backend
+python3 -m venv .venv
+source .venv/bin/activate
+pip install --require-hashes -r requirements.txt   # pinned + hashed lock
+uvicorn app.main:app --reload
+
+# 3. Frontend (port 3000), in a second terminal
+cd frontend
+npm install
+npm run dev
+```
+
+Or run both with `./start.sh`.
+
+`uvicorn --reload` above defaults to loopback on its own, but a bare `npm run dev` does not — Next
+binds every interface unless you pass `--hostname`. `start.sh` and Docker Compose both bind loopback
+by default and read `CLEANCUT_HOST` to change it; the hand-typed commands above never read that
+variable. To match `start.sh`'s default, run `npm run dev -- --hostname 127.0.0.1`, or just use
+`./start.sh`. See [Privacy](#privacy) for what runs unauthenticated on that port.
+
 ## Key features
 
 - **Word-level transcription** via `faster-whisper`, with int8 quantization for local CPU use.
@@ -31,9 +91,8 @@ cut versus mute, export — are in [`docs/demo/captures/`](docs/demo/captures/).
   in place of a prompt.
 - **Deterministic scrubber** — silence and filler-word detection straight off the word timestamps,
   no LLM involved, plus a one-click "Clean All" for those.
-- **Interactive review** — a waveform with a marker per suggestion, and keyboard-driven
-  accept/reject (`J`/`K` to move, `A`/`R` to decide and advance, `M` to flip cut/mute,
-  `Space` to play, `P` to replay the selected clip, `T` for the transcript, `?` for the full list).
+- **Interactive review** — a waveform with a marker per suggestion and full keyboard-driven
+  accept/reject. See [Reviewing](#reviewing) for the key map.
 - **Searchable transcript panel** — the transcript the analysis actually ran on, kept with the job.
   Click a line to seek there, watch it follow playback, and see which lines carry a suggested edit.
 - **Ask again without re-transcribing** — a new prompt or preset re-runs the analysis against the
@@ -85,64 +144,8 @@ the quoted span, why it was flagged, and the choice between cutting it and mutin
 upload → queue → Whisper (word timestamps) → LLM analysis → review UI → FFmpeg export
 ```
 
-## Quickstart (Docker)
-
-```bash
-cp .env.example .env      # then add your model API key
-docker compose up --build
-```
-
-Open http://localhost:3000.
-
-### Published images
-
-Every `v*` git tag publishes both images to GHCR, for running CleanCut without building it. The
-image tag drops the leading `v` — a `v0.1.0` tag publishes `0.1.0`, a moving `0.1`, and `latest`:
-
-```bash
-docker pull ghcr.io/julianavellaneda/cleancut-backend:0.1.0
-docker pull ghcr.io/julianavellaneda/cleancut-frontend:0.1.0
-```
-
-These are **`linux/amd64` only**. On Apple Silicon, add `--platform linux/amd64` and Docker Desktop
-runs them emulated — which is slow enough for Whisper that building locally, or `docker compose up
---build`, is the better trade on an M-series Mac.
-
-The frontend image is not tied to any particular backend: the browser calls the frontend's own
-`/api` and its server proxies to `BACKEND_ORIGIN`, which is read at startup, so pointing it
-somewhere else is an environment variable rather than a rebuild.
-
-`docker compose up --build` stays the path this repo is set up for — Compose is what wires the two
-together, mounts the volumes and publishes on loopback. The published images are for anyone who
-would rather not build.
-
-## Quickstart (local)
-
-Requires Python 3.10+, Node 18+, and FFmpeg (`brew install ffmpeg`).
-
-```bash
-# 1. Environment — a .env at the repo root, read by the backend
-cp .env.example .env      # then add your model API key
-
-# 2. Backend (port 8000)
-cd backend
-python3 -m venv .venv
-source .venv/bin/activate
-pip install --require-hashes -r requirements.txt   # pinned + hashed lock
-uvicorn app.main:app --reload
-
-# 3. Frontend (port 3000), in a second terminal
-cd frontend
-npm install
-npm run dev
-```
-
-Or run both with `./start.sh`.
-
-Both quickstarts listen on **127.0.0.1** — CleanCut is reachable from this machine and nothing else.
-Everything except the admin wipes is unauthenticated, so opening the port to a network is a decision
-you type rather than a default you inherit: set `CLEANCUT_HOST=0.0.0.0` in `.env` and put a reverse
-proxy that authenticates in front of it. See [Privacy](#privacy).
+See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for the full pipeline, the durable task queue, and
+how export staleness is tracked.
 
 ## Tests
 
@@ -155,43 +158,42 @@ cd ../frontend
 npm test          # vitest + Testing Library, in jsdom - no browser needed
 ```
 
-GitHub Actions runs both suites on every push and pull request, alongside `ruff`, `mypy`, a coverage
-floor, `eslint`, `tsc --noEmit`, the detector eval below, and a production frontend build — see
-`.github/workflows/ci.yml`. Nothing in that list needs an API key.
+GitHub Actions runs both suites, plus the rest of the backend and frontend gates, on every push and
+pull request. See [CONTRIBUTING.md](CONTRIBUTING.md) for the full list of checks CI runs and how to
+run them locally. Nothing in that list needs an API key.
 
 ## Eval
 
 "The analyzer seems accurate" is not a claim worth making, so there is a number behind it.
 
 `tests/fixtures/demo/` holds a synthetic two-speaker seminar clip with every detector's target
-planted at a known offset — income, lifestyle and health claims, ten filler words, three dead-air
+planted at a known offset: income, lifestyle and health claims, ten filler words, three dead-air
 pauses, a code-switch into Spanish, and contact details. Alongside it, `eval_labels.json` records
 what each line is and whether it should be flagged.
 
 ```bash
-cd backend
-source .venv/bin/activate
+cd backend && source .venv/bin/activate
 python -m app.eval.run ../tests/fixtures/demo/seed_job.json
 ```
 
 ```
-  precision  100.0%   (14 suggestions graded)
-  recall      80.0%   (15 labels in scope)
+  precision  100.0%   (17 suggestions graded)
+  recall      93.8%   (16 labels in scope)
+  F1          96.8%
 
 By category:
   income-claim     ############  1/1
   lifestyle-claim  ############  2/2
   health-claim     ############  1/1
-  filler           ########....  5/8
-  dead-air         ############  3/3
+  filler           ##########..  7/8
+  dead-air         ############  4/4
 ```
 
-That run is a recorded snapshot of the real pipeline, so scoring it needs no API key, no model and
-no media — which is why it runs in CI. What it grades is the scorer and the labels, not today's
-code; its filler score is the one the harness found on the day it was built.
+That run scores a recorded snapshot of the real pipeline. It needs no API key, no model and no
+media, which is why it runs in CI — but it grades the scorer and the labels, not today's code.
 
-To grade the detectors **as they stand on this commit**, run them against the real audio and the
-committed word-level transcript. Still free — no model, no API key — so CI gates on this one too:
+To grade the detectors as they stand on this commit, run them against the real audio and the
+committed word-level transcript. Still free, so CI gates on this one too:
 
 ```bash
 python -m app.eval.run --detectors ../tests/fixtures/demo/demo_seminar.mp3 --suite scrub
@@ -200,11 +202,15 @@ python -m app.eval.run --detectors ../tests/fixtures/demo/demo_seminar.mp3 --sui
 ```
   precision  100.0%   (11 suggestions graded)
   recall      91.7%   (12 labels in scope)
+  F1          95.7%
 
 By category:
   filler           ##########..  7/8
   dead-air         ############  4/4
 ```
+
+**This is the run the badge at the top of this file tracks** — its 1.00 precision / 0.92 recall is
+this scorecard's 100% / 91.7%, rounded.
 
 The one filler it misses is an "Er," that Whisper dropped from the transcript altogether — the
 scrubber reads word timestamps, so a word the model never wrote is not a word it can find. The two
@@ -212,18 +218,13 @@ that used to be missed were the harness earning its keep: `FILLER_WORDS` held `"
 matching walked one word at a time, so the most common filler in English could never fire, and the
 set spelled a sound `"hm"` that Whisper writes as `"Hmm"`.
 
-To measure the whole pipeline as it stands, point it at the clip with
-`--live ../tests/fixtures/demo/demo_seminar.mp3`, which transcribes and calls the LLM.
-`--json` emits the scorecard for a machine, and `--min-recall` / `--min-precision` turn a threshold
-into a non-zero exit.
+A suggestion that quotes one tight clause of a labelled line counts: cutting less is the better
+answer for an editor, and coverage is measured against the shorter of the two spans. The clip also
+contains two controls, an honest earnings disclaimer between two income claims and a neutral
+follow-up question. Flagging either fails the run outright, whatever the aggregate numbers say.
 
-Two details worth knowing about how it grades. A suggestion that quotes one tight clause of a
-labelled line **counts** — cutting less is the better answer for an editor, and coverage is measured
-against the shorter of the two spans so the scorer cannot punish precision. And the clip contains
-two **controls**: an honest earnings disclaimer sitting between two income claims, and a neutral
-follow-up question. Flagging either fails the run outright, whatever the aggregate numbers say —
-they are the fixture's test for whether the analyzer is reading sentences or matching on the
-neighbourhood.
+See [CONTRIBUTING.md](CONTRIBUTING.md) for `--live`, `--json`, and the `--min-recall` /
+`--min-precision` thresholds CI enforces.
 
 ## CLI
 
@@ -245,26 +246,20 @@ python -m app.analysis.analyze --transcript path/to/transcript.txt --prompt "fin
 
 ## API
 
-Interactive Swagger docs at http://localhost:8000/docs.
+Interactive Swagger docs at http://localhost:8000/docs. The full endpoint contract — request and
+response shapes, every status code, the schema — is in
+[docs/SPECIFICATION.md](docs/SPECIFICATION.md).
 
 | Method | Endpoint | Description |
 |---|---|---|
 | POST | `/api/jobs` | Upload media and start processing |
-| GET | `/api/jobs` | List jobs |
-| GET | `/api/jobs/presets` | List the built-in rule presets |
+| GET | `/api/jobs` | List jobs, paginated (`limit` default 50, max 200, plus `offset`) |
 | GET | `/api/jobs/{id}` | Job status and metadata |
-| DELETE | `/api/jobs/{id}` | Delete a job and its files |
-| GET | `/api/jobs/{id}/transcript` | The transcript the analysis ran on |
-| POST | `/api/jobs/{id}/reanalyze` | Ask a new question about it — no re-transcription |
 | GET | `/api/jobs/{id}/violations` | List suggested edits |
-| PATCH | `/api/jobs/{id}/violations/{vid}` | Set status (accepted/rejected) or action (cut/mute) |
 | POST | `/api/jobs/{id}/violations/bulk-update` | Bulk accept/reject/undo, filtered by label, id, or source status |
-| GET | `/api/jobs/{id}/audio` | Stream the original media |
-| GET | `/api/jobs/{id}/audio/waveform` | Cached waveform peaks |
 | POST | `/api/jobs/{id}/export` | Queue the edited render (202; poll `export_status`) |
 | GET | `/api/jobs/{id}/export/download` | Download the result |
 | GET | `/api/admin/stats` | System statistics |
-| POST | `/api/admin/reset-database`, `/clear-storage`, `/reset-all` | Destructive wipes; require `ADMIN_TOKEN`, and are disabled until one is set |
 
 ## Analysis modes
 
@@ -280,8 +275,10 @@ a new file plus an entry in `PRESETS` in `prompt_analyzer.py`.
 | `income-claims` | FTC-style earnings and lifestyle claim review for direct-selling material |
 | `pii-redaction` | Spoken personal, financial, and credential data, defaulted to mute |
 
-Long transcripts are chunked at 50 segments with a 10-segment overlap so nothing is missed at a
-boundary, then deduplicated by label and timestamp proximity.
+Long transcripts go through a chunked sliding window so nothing is missed at a boundary, and a
+finding two chunks both report is collapsed on overlapping spans and matching text rather than on
+timestamp proximity. [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) has the chunk size, the overlap
+and the exact matching rule.
 
 ## Reviewing
 
@@ -319,13 +316,15 @@ Set in `.env` at the repo root:
 | `CLEANCUT_MODEL` | `openai:gpt-4o` | Which model analyses the transcript, as `provider:model`. `openai` or `anthropic` |
 | `OPENAI_API_KEY` | — | Required when `CLEANCUT_MODEL` names `openai` |
 | `ANTHROPIC_API_KEY` | — | Required when `CLEANCUT_MODEL` names `anthropic` |
-| `CLEANCUT_HOST` | `127.0.0.1` | Which interface CleanCut listens on. Loopback by default; `0.0.0.0` exposes it to the network, which the unauthenticated media routes are not built for |
+| `CLEANCUT_HOST` | `127.0.0.1` | Which interface `start.sh` and Docker Compose listen on. Loopback by default; `0.0.0.0` exposes it to the network, which the unauthenticated media routes are not built for |
 | `CORS_ORIGINS` | `http://localhost:3000` | Comma-separated allowed origins |
 | `DATABASE_PATH` | `backend/audio_compliance.db` | SQLite file location |
 | `BACKEND_ORIGIN` | `http://localhost:8000` | Where the frontend's own server finds the backend. The browser calls the frontend's `/api` and Next proxies it here, so the backend's address is never compiled into the page |
 | `NEXT_PUBLIC_API_URL` | unset | Set it to have the browser call the backend directly instead of through the proxy. Cross-origin, so `CORS_ORIGINS` must name the frontend — and it is baked into the build, so changing it means rebuilding |
 | `MAX_UPLOAD_MB` | `500` | Upload size cap; larger uploads are rejected with a 413 |
 | `MAX_DURATION_MINUTES` | `120` | Media length cap, measured with `ffprobe` before queueing; media whose duration cannot be read is rejected |
+| `DEAD_AIR_FLOOR_DB` | `-50.0` | dBFS below which audio counts as silence for dead-air detection |
+| `DEAD_AIR_MIN_SECONDS` | `0.75` | Shortest dead-air span worth suggesting |
 | `RETENTION_HOURS` | unset | Delete jobs and their media once they are this old. Unset keeps everything forever |
 | `RETENTION_SWEEP_MINUTES` | `15` | How often the retention sweeper runs |
 | `ADMIN_TOKEN` | unset | Shared secret for the destructive admin routes, sent as an `X-Admin-Token` header. Unset **disables** those routes (503) rather than leaving them open |
@@ -335,36 +334,28 @@ Set in `.env` at the repo root:
 ## Failure modes
 
 The backend runs a preflight at startup and refuses to boot if the configured provider's API key is
-missing or `ffmpeg`/`ffprobe` are not on PATH — both are otherwise only reached minutes into a job, where a
-missing line in `.env` looks like an application bug.
+missing or `ffmpeg`/`ffprobe` are not on PATH. Both are otherwise only reached minutes into a job,
+where a missing line in `.env` looks like an application bug.
 
 Uploads are capped by size and by duration; both come back as a 413 with the limit named, and the
 rejected job is not left behind in the jobs list. The duration cap fails closed — a file `ffprobe`
 cannot read a duration from is rejected with a 422, since a limit that any unprobeable stream can
 skip is not a limit.
 
-Both caps are enforced **after** the multipart body has been read, so `MAX_UPLOAD_MB` bounds what
-CleanCut *keeps*, not what a client can make it receive: Starlette spools the upload to a temp file
-before the handler runs, and a 50 GB POST costs 50 GB of scratch disk on its way to a 413. That is a
-storage-hygiene control, not a DoS control, and it cannot be fixed inside the handler — the body is
-already on disk by the time any application code sees it. On loopback, which is the default trust
-model here, the client is you. Anywhere else, cap the body at the reverse proxy in front of CleanCut
-(`client_max_body_size` in nginx, `limitRequestBody` in Caddy) and set it to match `MAX_UPLOAD_MB`.
+Both caps are enforced after the multipart body has already been spooled to disk, so
+`MAX_UPLOAD_MB` bounds what CleanCut *keeps*, not what a client can make it receive. See
+[SECURITY.md](SECURITY.md) for what that means on a deployment past localhost.
 
 When the model returns something that isn't a readable list of suggestions, that is reported rather
 than silently treated as "nothing found" — a distinction that matters when the output is a
 compliance review. A single unreadable chunk of a long transcript leaves the job completed with a
 partial-analysis warning naming the unanalyzed timespans; if every chunk fails, the job fails. The
-same applies to entries that parse but say nothing actionable — an item with no quoted text or an
+same applies to entries that parse but say nothing actionable: an item with no quoted text or an
 unknown action fails its chunk rather than becoming an empty edit that `auto_fix` would apply.
 
-Work queued for the worker survives a restart. The queue is a table, not just a list in memory, so
-a deploy, a crash or a closed laptop no longer throws away every job that had been accepted and not
-yet run — on the next boot the outstanding tasks are picked up in the order they were queued. A
-task that has taken the process down three times is abandoned rather than replayed a fourth, with
-the reason recorded on the job; one interrupted so late that only the job's status remembers it is
-marked failed with a message saying to try again, rather than re-run over the top of a review you
-have already done.
+Work queued for the worker survives a restart: a deploy, a crash or a closed laptop no longer
+throws away a job that had already been accepted and not yet run. See
+[docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for how the queue is made durable and how it recovers.
 
 The CLI carries the same status: the saved JSON includes `is_partial` and `failed_chunks`,
 `total_segments_analyzed` counts only segments a chunk actually answered for, and a partial run
@@ -373,27 +364,15 @@ exits 2 so a script cannot read it as clean.
 ## Privacy
 
 Transcription runs locally on your machine. Only the resulting transcript text is sent to the LLM
-provider — never the audio. Jobs, uploads, exports, and the stored transcript stay on local disk
+provider, never the audio. Jobs, uploads, exports, and the stored transcript stay on local disk
 (SQLite plus `backend/uploads/` and `backend/exports/`). Use the admin dashboard at `/admin` to
 wipe both.
 
-The wipe endpoints delete everything, so they are off until you configure them: with no
-`ADMIN_TOKEN` set they answer 503 rather than running. Set one — the dashboard has a field for it,
-stored in that browser only — and they require it as an `X-Admin-Token` header. If you would rather
-have the old one-click reset on your own laptop, `ALLOW_UNAUTHENTICATED_ADMIN=1` restores it; that
-is a deliberate choice to leave the delete button open to anything that can reach the port, which is
-why a blank line in `.env` no longer does it for you.
-
 The rest of the API is unauthenticated: anything that can reach the port can list the jobs, stream
-the original recording, read the transcript and download the export. So the port is the access
-control, and it is **loopback by default** — `start.sh` binds `127.0.0.1` and `docker compose`
-publishes on `127.0.0.1`. CleanCut is a local-only tool, and running it that way needs no flag.
-
-`CLEANCUT_HOST=0.0.0.0` opens it to the network, in both the script and Compose. That is supported,
-and it is a decision: the backend prints a warning at startup saying what is now readable, and
-`ALLOW_UNAUTHENTICATED_ADMIN` stops being honoured, since "anything that can reach the port may wipe
-everything" is not what an operator agreed to once a network can reach it. Put a reverse proxy that
-authenticates in front before you do this.
+the original recording, read the transcript and download the export. The port is the access
+control, and it is loopback by default for `start.sh` and Docker Compose. See
+[SECURITY.md](SECURITY.md) for the admin-token setup, what `CLEANCUT_HOST=0.0.0.0` changes, and the
+guidance for running CleanCut anywhere past your own machine.
 
 Nothing is deleted on a timer unless you ask for it. Set `RETENTION_HOURS` and a background sweeper
 deletes each job — its row, its violations, its upload, and its export — once it is that old, along
