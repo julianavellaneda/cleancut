@@ -21,11 +21,32 @@
 # installs, and never touch the lock. Green automation that changes nothing.
 version: 2
 updates:
+  # `lockfile-only` is what keeps this entry honest, and it is not a
+  # preference. requirements.in declares *floors* - the oldest version this
+  # application is willing to run against - and requirements.txt is the
+  # `--universal` compile of them, which is allowed to carry the same package
+  # several times behind environment markers because the floor is Python 3.10
+  # and a package that dropped 3.10 still has to resolve for it.
+  #
+  # Left to `increase`, Dependabot edits the .in to force a bump the floors
+  # forbid, and the marker split silently collapses. That is exactly what it
+  # did to numpy: 2.5.2 requires Python >=3.12, the lock already carried it on
+  # >=3.12 next to 2.4.6 on 3.11 and 2.2.6 below, and the "bump" rewrote
+  # `numpy>=1.24.0` to `numpy>=2.5.2` and folded three lines into one. The PR
+  # delivered no version the lock did not already have on the interpreters that
+  # can run it, and paid for that with 3.10 and 3.11 - the support the README
+  # badge promises. Nothing in CI would have caught it: the lock is internally
+  # consistent and the job runs on 3.12.
+  #
+  # With `lockfile-only`, Dependabot may move requirements.txt within the
+  # declared floors and may not touch the .in at all. Raising a floor stays a
+  # human decision, made when dropping an interpreter is the actual intent.
   - package-ecosystem: pip
     directory: /backend
     schedule:
       interval: weekly
     open-pull-requests-limit: 5
+    versioning-strategy: lockfile-only
     groups:
       backend:
         patterns: ["*"]
@@ -41,6 +62,11 @@ updates:
 
   # The workflows pin actions by major tag (checkout@v4, setup-node@v4), which
   # moves silently. This is what makes a major bump visible as a PR.
+  #
+  # astral-sh/setup-uv is the exception and must stay a full vX.Y.Z: it stopped
+  # publishing major aliases at v8.0.0, so a major-shaped pin there resolves to
+  # nothing and takes the whole backend job down before its first step. See the
+  # comment on that step in ci.yml.
   - package-ecosystem: github-actions
     directory: /
     schedule:
