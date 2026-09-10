@@ -8,7 +8,12 @@ surfaces as a mysteriously failed job rather than a setup error.
 
 import pytest
 
-from app.preflight import PreflightError, missing_requirements, verify_environment
+from app.preflight import (
+    PreflightError,
+    missing_requirements,
+    model_notice,
+    verify_environment,
+)
 
 FULL_ENV = {"OPENAI_API_KEY": "sk-test"}
 
@@ -114,3 +119,34 @@ def test_app_runs_preflight_before_serving(monkeypatch):
     with pytest.raises(PreflightError):
         with TestClient(main.app):
             pass
+
+
+def test_the_mock_provider_needs_no_key():
+    assert missing_requirements({"CLEANCUT_MODEL": "mock:demo"}, all_present) == []
+
+
+def test_the_mock_provider_still_needs_ffmpeg():
+    """No key is not no requirements: transcription and export still run FFmpeg."""
+    problems = missing_requirements({"CLEANCUT_MODEL": "mock:demo"}, nothing_present)
+
+    assert any("ffmpeg" in p for p in problems)
+
+
+def test_a_missing_key_suggests_the_mock_as_a_way_in():
+    problems = missing_requirements({}, all_present)
+
+    assert "mock:demo" in problems[0]
+
+
+def test_startup_names_the_real_model():
+    assert model_notice({"CLEANCUT_MODEL": "anthropic:claude-opus-5"}) == (
+        "Analysis model: anthropic:claude-opus-5"
+    )
+
+
+def test_startup_names_the_default_when_unset():
+    assert model_notice({}) == "Analysis model: openai:gpt-4o"
+
+
+def test_startup_says_nothing_about_a_spec_preflight_already_rejected():
+    assert model_notice({"CLEANCUT_MODEL": "mistral:large"}) is None

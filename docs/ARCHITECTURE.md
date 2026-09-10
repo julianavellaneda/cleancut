@@ -57,7 +57,8 @@ Three processes at most, and on a default install they all sit on loopback.
    agreement (equal, one quoting a token-run of the other, or a `difflib` ratio above
    `_DUPLICATE_TEXT_RATIO`). The fuller quote wins. The model's quoted text is mapped back onto word
    timestamps by `_find_text_timestamps`. `analysis/providers.py` routes
-   `CLEANCUT_MODEL="provider:model"` to OpenAI or Anthropic behind a one-method interface:
+   `CLEANCUT_MODEL="provider:model"` to OpenAI, Anthropic, or a keyless keyword-matching `mock`
+   (`mock:demo`, for running the app with no API key) behind a one-method interface:
    `complete(system_prompt, user_prompt) -> str`.
 5. **Scrub (deterministic)** — `services/scrubber.py`. Filler words and dead air, measured off word
    timestamps and audio levels with no model in the loop.

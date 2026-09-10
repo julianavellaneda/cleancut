@@ -1,0 +1,40 @@
+{
+  "name": "CleanCut",
+  "build": { "dockerfile": "Dockerfile" },
+  "remoteUser": "vscode",
+
+  // Volumes over the two dependency directories, not just for speed. A local
+  // "Reopen in Container" bind-mounts the host checkout, and on a Mac that
+  // checkout already holds a macOS .venv and node_modules - native binaries the
+  // container cannot run (the same trap frontend/.dockerignore closes for the
+  // image build). The paths stay where start.sh and the Makefile look, so
+  // neither needs to know it is in a container. The third volume keeps the
+  // ~1.5 GB Whisper model across rebuilds. ${devcontainerId} keeps two clones
+  // from sharing one venv.
+  "mounts": [
+    "source=cleancut-venv-${devcontainerId},target=${containerWorkspaceFolder}/backend/.venv,type=volume",
+    "source=cleancut-node-modules-${devcontainerId},target=${containerWorkspaceFolder}/frontend/node_modules,type=volume",
+    "source=cleancut-hf-cache,target=/home/vscode/.cache/huggingface,type=volume"
+  ],
+
+  "postCreateCommand": "bash .devcontainer/post-create.sh",
+
+  // CLEANCUT_HOST stays at its loopback default: VS Code and Codespaces
+  // forward these from inside the container, so nothing has to listen on
+  // 0.0.0.0 for the browser to reach it.
+  "forwardPorts": [3000, 8000],
+  "portsAttributes": {
+    "3000": { "label": "CleanCut", "onAutoForward": "openBrowser" },
+    "8000": { "label": "CleanCut API", "onAutoForward": "silent" }
+  },
+
+  "customizations": {
+    "vscode": {
+      "extensions": [
+        "ms-python.python",
+        "charliermarsh.ruff",
+        "dbaeumer.vscode-eslint"
+      ]
+    }
+  }
+}

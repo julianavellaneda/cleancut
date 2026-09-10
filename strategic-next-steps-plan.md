@@ -36,10 +36,13 @@ Still open, verified by inspection today:
   pytest and coverage; `pytest.ini` was folded into it and deleted.
 - ~~**No coverage measurement.** 585 test functions, no number.~~ **Resolved 2026-09-05 (Phase B).**
   85% with branch coverage over 770 tests, floored at 83 in CI.
-- **No `.devcontainer/`, no `Makefile`, no `justfile`.**
-- **No mock provider.** `_PROVIDERS` in `analysis/providers.py` is `{"openai", "anthropic"}`, and
+- ~~**No `.devcontainer/`, no `Makefile`, no `justfile`.**~~ **Resolved 2026-09-10 (Phase C).**
+  `.devcontainer/` builds a digest-pinned Python 3.12 + Node 22 + FFmpeg image; `Makefile` wraps the
+  commands already documented in README.md and CONTRIBUTING.md.
+- ~~**No mock provider.** `_PROVIDERS` in `analysis/providers.py` is `{"openai", "anthropic"}`, and
   `get_provider` hard-fails on a missing key — so a reviewer with no API key can run the tests and
-  the detector eval, but cannot run *the app*.
+  the detector eval, but cannot run *the app*.~~ **Resolved 2026-09-10 (Phase C).**
+  `CLEANCUT_MODEL=mock:demo` runs the whole pipeline with no key at all.
 - **README is 414 lines** (up from the audited 396) with 20 top-level sections.
 - **Zero `aria-live` anywhere in `frontend/src`** — grep returns nothing. The pipeline status
   (`converting → transcribing → analyzing → completed`) changes visually and silently.
@@ -246,11 +249,66 @@ under "running what CI runs".
 
 ---
 
-## Phase C — Runnable by a stranger (1–2 sessions)
+## Phase C — Runnable by a stranger (1–2 sessions) — ✅ **DONE 2026-09-10**
 
 **Audit reference:** §2.1 and §5.2.3. Today the eval and the tests run with no API key — a genuinely
 rare property. The *app* does not. This closes that gap and is the highest-leverage remaining
 packaging work.
+
+> **As built, with eight deviations from C1–C3 below. What shipped is authoritative; the spec that
+> follows is kept for the reasoning.**
+>
+> 1. **The mock is its own module, `analysis/mock_provider.py`, not a branch inside
+>    `providers.py`.** Its keyword table and sentence-matching logic would otherwise compete for
+>    attention with the provider registry every other reader of that file needs; `providers.py`
+>    only wires it in, via a `_mock_provider` factory imported on use.
+> 2. **`preflight.py` needed a real code change, not just a check that it already does the right
+>    thing.** C1 read as "verify rather than assume"; in fact `missing_requirements` needed a new
+>    branch for `api_key_name is None`, and a new `model_notice()` function was added so the server
+>    prints either `Analysis model: <spec>` or a three-line mock `WARNING` at startup — there was no
+>    existing startup line naming the model at all before this phase.
+> 3. **Every label carries a `Mock: ` prefix, beyond the `MOCK PROVIDER` reasoning prefix C1 called
+>    for.** A suggestion is visible in the sidebar list by its label alone, with the reasoning one
+>    click away; C1's design constraint 4 ("impossible to mistake for a real analysis") was not met
+>    by the reasoning prefix on its own.
+> 4. **Node is copied out of a digest-pinned `node:22-bookworm-slim` image via a multi-stage
+>    `COPY`, not added through a devcontainer "feature."** Features are pinned by major tag and
+>    float exactly the way C2 warned an unpinned base image would.
+> 5. **`.github/dependabot.yml` gained a `docker` entry for `/.devcontainer`,** not scoped by C2 —
+>    needed so the two digest pins age like every other dependency in this repo instead of going
+>    stale silently.
+> 6. **The Python devcontainer base ships a Yarn apt source whose signing key has since rotated,**
+>    which fails `apt-get update` outright before anything else can install. Not anticipated by C2
+>    at all; nothing here uses Yarn, so the Dockerfile removes that source file rather than
+>    re-keying it.
+> 7. **`make eval` carries no `--min-*` floors, and `make lock` re-compiles via
+>    `uvx --from uv==$(UV_VERSION)`** rather than assuming `uv` is installed on the host — both
+>    choices C3 left open. A threshold in the Makefile would be a second, driftable copy of
+>    `ci.yml`'s; `uvx` means `make lock` works with no global `uv` install.
+>    `backend/tests/test_makefile.py` is a separate test file (not folded into
+>    `test_dependency_locks.py`) pinning the uv-version agreement with `ci.yml` and the no-floors
+>    rule.
+> 8. **Two Makefile targets beyond C3's list: `help` (the default goal) and `install`.** A Makefile
+>    with no `help` target contradicts the whole point of a devcontainer — nothing should have to be
+>    read to get started.
+>
+> Also found during the in-container acceptance run, not anticipated by C2: `post-create.sh`'s
+> `chown -R` on the Hugging Face cache directory left its *parent*, `~/.cache`, still owned by root
+> — mounting that named volume creates `~/.cache` itself as root first — which silently disabled
+> pip's cache. `post-create.sh` now also `chown`s `~/.cache` itself, non-recursively, alongside the
+> recursive chown on its `huggingface` subdirectory.
+>
+> **Acceptance, verified twice.** On the host with no keys (`OPENAI_API_KEY=` and
+> `ANTHROPIC_API_KEY=` blank): the demo clip uploaded, completed in 24s, produced 7 `Mock:`
+> suggestions (plus the scrubber's) all on word timings with none approximate; accepting and
+> exporting them cut the original 74.00s to 47.10s, exactly the 26.90s accepted. Separately,
+> **in-container**, against a clean copy of the checkout (no `.env`, no `.venv`, no
+> `node_modules`, the container's own ffmpeg, Whisper medium pre-seeded into the HF volume so this
+> run did not test that download itself): `post-create.sh` ran in ~40s and wrote `.env` with
+> `CLEANCUT_MODEL=mock:demo`; `./start.sh` booted both servers and printed the mock warning; through
+> the frontend's `/api` proxy on :3000, an upload completed in 20s with 18 suggestions (7 `Mock:`,
+> none approximate), and accepting and exporting the 7 cut the original 74.06s to 47.23s (26.82s
+> accepted). An actual GitHub Codespaces boot is still **not** tested.
 
 ### C1. The `mock` provider
 
@@ -469,8 +527,8 @@ the unauthenticated-by-default local-first design.
 | ~~1~~ | ~~A~~ | **Done 2026-09-05.** `uv` locks, Dockerfile, CI drift guard, CONTRIBUTING, `tests/test_dependency_locks.py` | ✅ Re-compile byte-identical; 755 tests and both evals green on a fresh lock install; detector eval still 1.00 / 0.92 |
 | ~~2~~ | ~~B~~ | **Done 2026-09-05.** `pyproject.toml`, ruff + format sweep at 88, CI steps | ✅ `ruff check` and `format --check` green in CI; 5 real defects fixed on the way |
 | ~~3~~ | ~~B~~ | **Done 2026-09-05.** mypy over `app/analysis/`, coverage floor 83 (measured 85). Pre-commit skipped | ✅ Backend gate is format → lint → types → cov; widening mypy is blocked on the SQLAlchemy `Mapped[...]` migration |
-| 4 | C | Mock provider + preflight + tests | App runs end to end with no API key |
-| 5 | C | Devcontainer, Makefile, README quickstart | Codespaces boot runs a job |
+| ~~4~~ | ~~C~~ | **Done 2026-09-10.** `mock_provider.py`, `providers.py`/`preflight.py` wiring, `.env.example`, README | ✅ Verified on the host with no keys: demo clip completed, 7 `Mock:` suggestions on word timings, accepted and exported (74.00s → 47.10s) |
+| ~~5~~ | ~~C~~ | **Done 2026-09-10.** `.devcontainer/`, `Makefile`, dependabot docker entry | ✅ Image builds with the pinned toolchain (Python 3.12.11, Node v22.23.2, npm 10.9.8, ffmpeg 5.1.9); full loop verified in-container against a clean checkout (18 suggestions, 7 `Mock:`, 74.06s → 47.23s). Actual Codespaces boot not tested |
 | 6 | D | README split, `aria-live`, jsx-a11y, CLI help | README ≤ ~130 lines, all links live |
 | 7 | E | Transcript editing — backend | Route creates accepted edits, invalidates export |
 | 8 | E | Transcript editing — frontend + keyboard | Delete a word, see the region |

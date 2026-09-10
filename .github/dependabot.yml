@@ -60,6 +60,16 @@ updates:
       frontend:
         patterns: ["*"]
 
+  # The devcontainer's two base images are pinned by digest. A pin nothing
+  # moves goes stale quietly; this turns each new digest into a PR.
+  - package-ecosystem: docker
+    directory: /.devcontainer
+    schedule:
+      interval: weekly
+    groups:
+      devcontainer:
+        patterns: ["*"]
+
   # The workflows pin actions by major tag (checkout@v4, setup-node@v4), which
   # moves silently. This is what makes a major bump visible as a PR.
   #

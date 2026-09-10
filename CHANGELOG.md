@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-09-10
+
 ### Added
 
 - **The backend has a quality gate.** `ruff check`, `ruff format --check`, `mypy` and a coverage
@@ -20,6 +22,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     wrong type is a silently wrong answer rather than a 500. Widening it to `app/services/` is
     blocked on migrating the SQLAlchemy models to `Mapped[...]`, a change to the data layer that is
     documented as such rather than bundled in.
+- **CleanCut runs with no API key.** `CLEANCUT_MODEL=mock:demo` selects a keyless keyword-matching
+  provider instead of OpenAI or Anthropic, so a reviewer can walk upload → review → export before
+  deciding whether to hand the app a key.
+  - Every suggestion it produces is labelled `Mock: ...`, every `reasoning` opens with
+    `MOCK PROVIDER`, and the server prints a startup warning naming it — it cannot be mistaken for a
+    real analysis on the review screen, in the reasoning, or in the logs.
+  - Preflight's missing-key error now suggests `mock:demo` as the way to try the app without one.
+- **A devcontainer and a `Makefile`** make a fresh checkout runnable with no toolchain installed on
+  the host. `.devcontainer/` builds a digest-pinned Python 3.12 + Node 22 + FFmpeg image (Dependabot
+  now watches those digests too) and, on first create, writes a `.env` with `CLEANCUT_MODEL=mock:demo`
+  if none exists — the first job still downloads Whisper's medium model (~1.5 GB), but nothing else
+  stands between a clone and a running app. `Makefile` is shorthand for the commands already
+  documented in README.md and CONTRIBUTING.md (`make help` lists them); it deliberately carries no
+  coverage floors or eval thresholds of its own, since those already live in `ci.yml` and a second
+  copy is a second place for them to drift.
 
 ### Changed
 
@@ -130,5 +147,6 @@ First tagged release. Publishes `cleancut-backend` and `cleancut-frontend` to GH
   recording, which is the failure worth defending against because it fails toward passing.
 - **Upload limits** enforced on size and duration, failing closed on an unprobeable duration.
 
-[Unreleased]: https://github.com/julianavellaneda/ai-audio-editing/compare/v0.1.0...HEAD
+[Unreleased]: https://github.com/julianavellaneda/ai-audio-editing/compare/v0.2.0...HEAD
+[0.2.0]: https://github.com/julianavellaneda/ai-audio-editing/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/julianavellaneda/ai-audio-editing/releases/tag/v0.1.0
