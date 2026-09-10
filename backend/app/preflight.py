@@ -17,7 +17,12 @@ import os
 import shutil
 from collections.abc import Callable, Mapping
 
-from .analysis.providers import DEFAULT_MODEL_SPEC, ProviderError, parse_model_spec
+from .analysis.providers import (
+    DEFAULT_MODEL_SPEC,
+    KEYLESS_PROVIDERS,
+    ProviderError,
+    parse_model_spec,
+)
 
 # Executables that must be on PATH. ffprobe ships with ffmpeg but is packaged
 # separately by some distributions, and the upload duration cap needs it.
@@ -55,11 +60,16 @@ def missing_requirements(
     except ProviderError as e:
         problems.append(str(e))
     else:
-        if not (env.get(spec.api_key_name) or "").strip():
+        key_name = spec.api_key_name
+        # The mock provider takes no key, so there is nothing to demand - said
+        # as its own branch because "no key needed" and "key missing" must not
+        # both be spelled as an empty string.
+        if key_name is not None and not (env.get(key_name) or "").strip():
             problems.append(
-                f"{spec.api_key_name} is not set, and CLEANCUT_MODEL is '{spec}'. "
+                f"{key_name} is not set, and CLEANCUT_MODEL is '{spec}'. "
                 "Analysis cannot run without it. Copy .env.example to .env at the "
-                "repo root and add your key."
+                "repo root and add your key - or set CLEANCUT_MODEL=mock:demo to "
+                "try the app without one."
             )
 
     for executable in REQUIRED_EXECUTABLES:
@@ -103,3 +113,30 @@ def verify_environment(
         f"CleanCut cannot start - {len(problems)} unmet requirement(s):\n{detail}\n"
         "Set SKIP_PREFLIGHT=1 to start anyway (jobs will fail)."
     )
+
+
+def model_notice(env: Mapping[str, str] | None = None) -> str | None:
+    """
+    The line the server prints at startup about which model answers analysis.
+
+    Always names the model, so a log shows what produced a job's suggestions.
+    For the mock provider it is a warning instead: its suggestions are keyword
+    matches, and anyone reading this log should not have to open a job to find
+    that out. ``None`` for a spec that does not parse - preflight has already
+    reported that one.
+    """
+    env = os.environ if env is None else env
+    spec_value = (env.get("CLEANCUT_MODEL") or "").strip() or DEFAULT_MODEL_SPEC
+    try:
+        spec = parse_model_spec(spec_value)
+    except ProviderError:
+        return None
+    if spec.provider in KEYLESS_PROVIDERS:
+        return (
+            f"WARNING: CLEANCUT_MODEL={spec} - the MOCK provider is answering "
+            "analysis.\n"
+            "         Suggestions are keyword matches labelled 'Mock:', not a model's "
+            "judgement.\n"
+            "         Set CLEANCUT_MODEL to openai:... or anthropic:... for a real review."
+        )
+    return f"Analysis model: {spec}"

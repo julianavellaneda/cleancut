@@ -26,7 +26,7 @@ if _ROOT_ENV:
 # silently ignored while the server still started.
 from .database import init_db  # noqa: E402
 from .network import exposure_warning  # noqa: E402
-from .preflight import verify_environment  # noqa: E402
+from .preflight import model_notice, verify_environment  # noqa: E402
 from .routes import admin, audio, jobs, violations  # noqa: E402
 from .services.retention import start_retention_sweeper  # noqa: E402
 from .services.worker import recover_interrupted_work, start_worker  # noqa: E402
@@ -52,6 +52,9 @@ async def lifespan(app: FastAPI):
     that the media routes carry no authentication.
     """
     verify_environment()
+    notice = model_notice()
+    if notice:
+        print(notice)
     warning = exposure_warning()
     if warning:
         print(warning)

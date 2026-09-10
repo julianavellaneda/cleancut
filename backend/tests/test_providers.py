@@ -109,6 +109,7 @@ def test_the_missing_key_named_is_the_one_this_deployment_needs(monkeypatch):
     [
         ("openai:gpt-4o", "OpenAIProvider"),
         ("anthropic:claude-opus-5", "AnthropicProvider"),
+        ("mock:demo", "MockProvider"),
     ],
 )
 def test_the_spec_picks_the_client(monkeypatch, spec, expected):
@@ -117,6 +118,23 @@ def test_the_spec_picks_the_client(monkeypatch, spec, expected):
     monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-test")
 
     assert type(get_provider()).__name__ == expected
+
+
+def test_a_real_provider_still_demands_its_key_beside_the_keyless_one(monkeypatch):
+    """Adding a provider with no key must not open a path around the check."""
+    monkeypatch.setenv("CLEANCUT_MODEL", "openai:gpt-4o")
+    monkeypatch.delenv("OPENAI_API_KEY", raising=False)
+
+    with pytest.raises(ProviderError):
+        get_provider()
+
+
+def test_the_error_for_a_bad_spec_offers_the_keyless_option():
+    """Whoever is stuck without a key is the reader most likely to see this."""
+    with pytest.raises(ProviderError) as excinfo:
+        parse_model_spec("gpt-4o")
+
+    assert "mock:demo" in str(excinfo.value)
 
 
 # --- the Anthropic path -----------------------------------------------------

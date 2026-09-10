@@ -25,6 +25,12 @@ not — see the README's [local quickstart](README.md#quickstart-local) for the 
 `start.sh`, and its [Privacy](README.md#privacy) section for what changes if you set
 `CLEANCUT_HOST`.
 
+Or skip all of the above and open the repo in the [devcontainer](.devcontainer/devcontainer.json)
+(locally, or as a GitHub Codespace): it installs the same locks CI does and needs no toolchain on
+the host. Its two dependency directories are named volumes rather than the host checkout, because a
+local "Reopen in Container" would otherwise bind-mount a macOS `.venv`/`node_modules` straight into
+a Linux container.
+
 ## Adding a Python dependency
 
 `backend/` keeps the declaration and the resolution in separate files, and only one of them is
@@ -72,6 +78,11 @@ never hand-edit a `.txt`; a re-compile silently overwrites the edit, and
 
 CI is [`.github/workflows/ci.yml`](.github/workflows/ci.yml): **11 checks** — 7 backend, 4
 frontend — all reproducible locally, none of which need an API key.
+
+`make lint`, `make test`, `make eval` and `make lock` are shorthand for the commands below — they
+run the same tools with no coverage flags and no `--min-*` floors, since a threshold belongs in one
+place (`ci.yml`) and the Makefile is deliberately not a second copy of it. The explicit commands
+below remain the reference for what CI actually runs.
 
 ```bash
 # Backend

@@ -83,6 +83,24 @@ by default and read `CLEANCUT_HOST` to change it; the hand-typed commands above 
 variable. To match `start.sh`'s default, run `npm run dev -- --hostname 127.0.0.1`, or just use
 `./start.sh`. See [Privacy](#privacy) for what runs unauthenticated on that port.
 
+Most of the commands above have a `make` shorthand (`make install`, `make dev`, `make test`, ...) —
+run `make help` for the full list.
+
+### No API key?
+
+Set `CLEANCUT_MODEL=mock:demo` in `.env` and leave both provider keys blank. Analysis runs as a
+keyword matcher instead of a model call, so you can see upload → review → export end to end before
+deciding whether a real key is worth adding. Suggestions are unmistakably labelled `Mock:`, every
+reasoning says so too, and the server prints a startup warning — it's for trying the app, not for
+reviewing a real recording.
+
+### Try it in a container
+
+Open this repo in a [devcontainer](.devcontainer/devcontainer.json) or
+[GitHub Codespaces](https://codespaces.new/julianavellaneda/ai-audio-editing): Python, Node and
+FFmpeg come preinstalled, and `postCreateCommand` writes a `.env` with `CLEANCUT_MODEL=mock:demo`
+if you don't already have one, so the app runs with no key from the first boot.
+
 ## Key features
 
 - **Word-level transcription** via `faster-whisper`, with int8 quantization for local CPU use.
@@ -313,7 +331,7 @@ Set in `.env` at the repo root:
 
 | Variable | Default | Purpose |
 |---|---|---|
-| `CLEANCUT_MODEL` | `openai:gpt-4o` | Which model analyses the transcript, as `provider:model`. `openai` or `anthropic` |
+| `CLEANCUT_MODEL` | `openai:gpt-4o` | Which model analyses the transcript, as `provider:model`. `openai`, `anthropic`, or `mock` (`mock:demo` — keyword matches, no key needed) |
 | `OPENAI_API_KEY` | — | Required when `CLEANCUT_MODEL` names `openai` |
 | `ANTHROPIC_API_KEY` | — | Required when `CLEANCUT_MODEL` names `anthropic` |
 | `CLEANCUT_HOST` | `127.0.0.1` | Which interface `start.sh` and Docker Compose listen on. Loopback by default; `0.0.0.0` exposes it to the network, which the unauthenticated media routes are not built for |

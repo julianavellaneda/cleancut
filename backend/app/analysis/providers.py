@@ -8,6 +8,7 @@ model, one function returns something that can be asked a question.
 
     CLEANCUT_MODEL=openai:gpt-4o            # the default; unchanged behaviour
     CLEANCUT_MODEL=anthropic:claude-opus-5
+    CLEANCUT_MODEL=mock:demo                # no key; keyword matches, not analysis
 
 The `provider:model` spec is deliberately a single string rather than a pair of
 variables: a provider and a model that do not go together is the failure mode
@@ -36,6 +37,14 @@ PROVIDER_API_KEYS = {
     "openai": "OPENAI_API_KEY",
     "anthropic": "ANTHROPIC_API_KEY",
 }
+
+# Providers that take no credentials at all. A separate set rather than a blank
+# entry in the dict above: "this provider has no key" and "this provider's key
+# name was left empty by mistake" must not be the same value, and every reader
+# of `api_key_name` has to decide the keyless case out loud.
+KEYLESS_PROVIDERS = frozenset({"mock"})
+
+KNOWN_PROVIDERS = frozenset(PROVIDER_API_KEYS) | KEYLESS_PROVIDERS
 
 
 class ProviderError(RuntimeError):
@@ -73,7 +82,10 @@ class ModelSpec:
         return f"{self.provider}:{self.model}"
 
     @property
-    def api_key_name(self) -> str:
+    def api_key_name(self) -> str | None:
+        """The variable this provider reads its key from, or None if it takes none."""
+        if self.provider in KEYLESS_PROVIDERS:
+            return None
         return PROVIDER_API_KEYS[self.provider]
 
 
@@ -85,11 +97,12 @@ def parse_model_spec(spec: str) -> ModelSpec:
     """
     provider, sep, model = (spec or "").partition(":")
     provider, model = provider.strip().lower(), model.strip()
-    if not sep or not model or provider not in PROVIDER_API_KEYS:
+    if not sep or not model or provider not in KNOWN_PROVIDERS:
         raise ProviderError(
             f"Invalid CLEANCUT_MODEL {spec!r}. Expected 'provider:model' with provider "
-            f"one of {', '.join(sorted(PROVIDER_API_KEYS))} - for example "
-            f"'{DEFAULT_MODEL_SPEC}' or 'anthropic:claude-opus-5'."
+            f"one of {', '.join(sorted(KNOWN_PROVIDERS))} - for example "
+            f"'{DEFAULT_MODEL_SPEC}', 'anthropic:claude-opus-5', or 'mock:demo' to "
+            "run with no API key."
         )
     return ModelSpec(provider=provider, model=model)
 
@@ -187,9 +200,17 @@ class AnthropicProvider:
 # something the type checker knows nothing about. Spelling it out is also what
 # states the registration contract for a third provider: take the model id,
 # return something that answers `complete`.
+def _mock_provider(model: str) -> Provider:
+    # Imported on use: mock_provider imports ProviderError from this module.
+    from .mock_provider import MockProvider
+
+    return MockProvider(model)
+
+
 _PROVIDERS: dict[str, Callable[[str], Provider]] = {
     "openai": OpenAIProvider,
     "anthropic": AnthropicProvider,
+    "mock": _mock_provider,
 }
 
 
@@ -202,10 +223,12 @@ def get_provider(spec: ModelSpec | None = None) -> Provider:
     machine configured for Anthropic, and the SDK's own message would not say so.
     """
     spec = spec or configured_model_spec()
-    if not os.getenv(spec.api_key_name):
-        raise ProviderError(
-            f"{spec.api_key_name} is not set, and CLEANCUT_MODEL is '{spec}'."
-        )
+    key_name = spec.api_key_name
+    # A keyless provider (the mock) skips the check by name, not by finding an
+    # empty variable to read - there is no variable, and pretending there is one
+    # is how a real provider with a typo'd key name would slip through too.
+    if key_name is not None and not os.getenv(key_name):
+        raise ProviderError(f"{key_name} is not set, and CLEANCUT_MODEL is '{spec}'.")
     try:
         return _PROVIDERS[spec.provider](spec.model)
     except ImportError as e:

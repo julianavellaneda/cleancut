@@ -29,13 +29,15 @@ without a human accepting it.
 
 ```
 ai-audio-editing/
+├── .devcontainer/                   # Prebuilt Python+Node+FFmpeg image; see Devcontainer bullet below
+├── Makefile                         # Shorthand for the commands below; carries no CI thresholds
 ├── backend/                        # FastAPI backend
 │   ├── app/
 │   │   ├── main.py                 # FastAPI entry, CORS, lifespan startup
 │   │   ├── config.py               # Root .env discovery
 │   │   ├── auth.py                 # ADMIN_TOKEN gate for the destructive admin routes
 │   │   ├── network.py              # CLEANCUT_HOST: loopback-by-default binding
-│   │   ├── preflight.py            # Startup checks: OPENAI_API_KEY, ffmpeg/ffprobe
+│   │   ├── preflight.py            # Startup checks: model key or mock:demo, ffmpeg/ffprobe
 │   │   ├── limits.py               # Upload size + duration caps
 │   │   ├── database.py             # SQLite setup + hand-rolled column migrations
 │   │   ├── models.py               # SQLAlchemy: Job, Violation
@@ -43,6 +45,8 @@ ai-audio-editing/
 │   │   ├── analysis/
 │   │   │   ├── transcriber.py      # faster-whisper, word-level timestamps
 │   │   │   ├── prompt_analyzer.py  # Chunked LLM analysis + preset registry
+│   │   │   ├── providers.py        # CLEANCUT_MODEL router: openai, anthropic, mock
+│   │   │   ├── mock_provider.py    # Keyless keyword-matcher provider (mock:demo)
 │   │   │   ├── analyze.py          # Standalone CLI
 │   │   │   └── presets/            # Rule preset markdown (income-claims, pii-redaction)
 │   │   ├── eval/
@@ -132,6 +136,12 @@ npm test
 ```
 
 Both at once: `./start.sh`. Or `docker compose up --build`.
+
+`make help` lists shorthand for most of the above (`make install`, `make dev`, `make test`,
+`make lint`, `make eval`, `make eval-live`, `make lock`, `make docker`) — see the Makefile section
+under Key Implementation Details for what it deliberately does not do. `.devcontainer/` builds a
+Python+Node+FFmpeg image with no host toolchain required; `CLEANCUT_MODEL=mock:demo` (see below)
+is what lets the first job in a fresh container run with no API key.
 
 **CLI** (analysis pipeline without the web app):
 Run as a module from `backend/` — `analysis/` uses package-relative imports, so invoking
@@ -260,7 +270,7 @@ test module).
 A `.env` at the **repo root** (not in a subdirectory), discovered by `app/config.py`:
 
 ```
-CLEANCUT_MODEL=            # optional; "provider:model", default openai:gpt-4o
+CLEANCUT_MODEL=            # optional; "provider:model", default openai:gpt-4o. mock:demo needs no key
 OPENAI_API_KEY=your_key_here
 ANTHROPIC_API_KEY=         # required instead when CLEANCUT_MODEL names anthropic
 CLEANCUT_HOST=127.0.0.1   # optional; interface to listen on. Loopback default; 0.0.0.0 exposes it
@@ -294,7 +304,22 @@ System dependency: `brew install ffmpeg`.
   copes with a fenced answer. It does enable server-side refusal fallbacks, and turns a
   `stop_reason == "refusal"` into a `ProviderError` - which `analyze` catches per chunk alongside
   `AnalysisError`, so a declined section becomes a named gap rather than an empty answer that reads
-  as a clean recording.
+  as a clean recording. `mock` (`mock:demo`) is the third vendor and the odd one out: it is in
+  `KEYLESS_PROVIDERS`, a set rather than a blank entry in the key-name map, because "this provider
+  has no key" and "this provider's key name was left empty by mistake" must not collapse into the
+  same value - every reader of `api_key_name` has to decide the keyless case explicitly, and
+  `preflight` and `get_provider` both do. `mock_provider.MockProvider` reads which JSON contract to
+  answer in off the *system prompt* it is handed (`"rule_violated"` present means preset mode) the
+  way a real model would, rather than being told; it is a keyword matcher over the fenced
+  transcript with the user's instruction and any preset rulebook ignored, and a missing
+  `<transcript>` fence raises `ProviderError` rather than returning `{"violations": []}`, for the
+  same reason a real provider's silence must never look like a clean recording. It cannot be
+  mistaken for an analysis by construction, not just by convention: every label carries a `Mock: `
+  prefix, every `reasoning` opens with `MOCK PROVIDER` and says a model never read the transcript,
+  and `preflight.model_notice` prints a three-line startup `WARNING` naming it in place of the
+  usual `Analysis model: <spec>` line - three separate places, because a demo that quietly looks
+  like a real pass is a liability in a compliance tool. It never matches "earn", so the demo clip's
+  honest-disclaimer control is not flagged.
 - **PromptAnalyzer**: two modes.
   - *Prompt mode* (`preset=None`): the user's instruction drives analysis; returns label + action.
   - *Preset mode*: a rulebook from `analysis/presets/` replaces the prompt; returns rule_violated +
@@ -408,8 +433,13 @@ System dependency: `brew install ffmpeg`.
 - **Python dependencies: `.in` declares, `.txt` resolves** (`backend/`). `requirements.in` and
   `requirements-dev.in` are hand-edited and hold the `>=` floors *and the reasoning comments on
   them*; `requirements.txt` and `requirements-dev.txt` are compiled by `uv pip compile` and are what
-  every consumer installs — the Dockerfile, `ci.yml`, `start.sh` and `CONTRIBUTING.md`'s setup
-  block, all with `--require-hashes`. The Dockerfile only ever COPYs the runtime lock; the `.in`
+  every consumer installs — five of them now: the Dockerfile, `ci.yml`, `start.sh`, the
+  devcontainer's `post-create.sh` and the Makefile, all with `--require-hashes`.
+  `tests/test_dependency_locks.py::test_every_consumer_installs_with_require_hashes` pins the list,
+  so a sixth consumer that drops the flag fails loudly instead of quietly resolving a different
+  build. `CONTRIBUTING.md`'s documented setup also installs with `--require-hashes`; it is not in
+  that count because it is prose a human follows, not a file the test can read. The Dockerfile only
+  ever COPYs the runtime lock; the `.in`
   files are `.dockerignore`d, since they matter only to whoever re-compiles.
   The **names are load-bearing and must not be tidied to `requirements.lock`**, which is the obvious
   choice and the wrong one. Dependabot's `pip_compile_file_matcher.rb` recognises a pip-compile
@@ -428,6 +458,39 @@ System dependency: `brew install ffmpeg`.
   consumer that drops `--require-hashes`, and on a second requirements file inside `app/`. CI
   re-compiles and diffs, so a `.in` edited without a re-compile cannot merge; the pinned `uv`
   version in `ci.yml` and `CONTRIBUTING.md` must move together.
+- **Devcontainer and Makefile** (`.devcontainer/`, `Makefile`): what makes a fresh checkout runnable
+  with no toolchain on the host and no API key. Both base images in `.devcontainer/Dockerfile` are
+  pinned by digest, not by tag - a floating tag is the exact failure Phase A removed from the
+  backend's own dependencies, and a devcontainer that floats would be a second, quieter copy of it;
+  `.github/dependabot.yml` carries a `docker` entry for `/.devcontainer` so a new digest still
+  arrives as a PR. Node is copied out of the official `node` image into the Python devcontainer
+  base rather than added through a devcontainer "feature," because features are pinned by major tag
+  and float the same way an unpinned base image would; both stages are Debian bookworm so the
+  copied binary's glibc matches what it was built against. The Python devcontainer base ships a
+  Yarn apt source whose signing key has since rotated, which fails `apt-get update` outright before
+  anything else in the image can install - nothing here uses Yarn, so the Dockerfile removes that
+  source file rather than re-keying it. The two dependency directories, `backend/.venv` and
+  `frontend/node_modules`, are named volumes keyed by `${devcontainerId}` rather than the host
+  checkout: a local "Reopen in Container" bind-mounts the repo as-is, and a macOS checkout already
+  holds a macOS `.venv` and `node_modules` - native binaries a Linux container cannot run, the same
+  trap `frontend/.dockerignore` closes for the image build. A third volume holds the Hugging Face
+  cache so the ~1.5 GB Whisper model survives a rebuild. `post-create.sh` installs
+  `requirements-dev.txt` with `--require-hashes`, runs `npm ci`, and - only when no `.env` exists -
+  writes one from `.env.example` with `CLEANCUT_MODEL=mock:demo` and a blank key, so the first job
+  in a fresh container needs nothing but a wait for Whisper to download; an existing `.env` is never
+  touched, and the script errors out rather than booting silently if the substitution didn't take.
+  Named volumes arrive owned by root while the container runs as `vscode`, so the script `chown`s
+  them - `~/.cache` itself gets a non-recursive `chown` alongside the recursive one on
+  `~/.cache/huggingface`, because mounting that volume creates `~/.cache` as root first and a
+  recursive chown scoped to the child directory alone left the parent root-owned, which silently
+  disabled pip's cache. The Makefile is shorthand only: `BIN ?= .venv/bin/` lets `make test BIN=`
+  target an already-active environment, `lock` re-compiles both locks via `uvx --from uv==$(UV_VERSION)`
+  so nobody needs `uv` installed globally, and that pinned version must match `ci.yml`'s -
+  `tests/test_makefile.py` fails the build if they disagree. `eval` runs both free scorecards with
+  no `--min-*` floors; thresholds live only in `ci.yml`, and `test_makefile.py` also fails if one
+  turns up in the Makefile, because a target that could decide a floor is a second, driftable copy
+  of the gate CI already enforces. `help` (the default goal) and `install` exist for the same
+  reason the devcontainer does - nothing above requires reading this file to get started.
 - **MediaEditor**: FFmpeg `trim`/`atrim` + `concat`, single pass, A/V sync preserved. Mutes are
   applied before cuts, since cutting shifts the timeline under the mute timestamps.
 - **Edit actions**: `schemas.EDIT_ACTIONS` is the single owner of `("cut", "mute")`;
@@ -829,7 +892,9 @@ when application code first runs); on a non-loopback deployment, cap the body at
 too. Documented under "Failure modes" in the README.
 
 **Server won't start**: `preflight.verify_environment()` runs first in the lifespan and lists every
-unmet requirement (`OPENAI_API_KEY`, `ffmpeg`, `ffprobe`). `SKIP_PREFLIGHT=1` boots anyway.
+unmet requirement (the configured provider's key - `OPENAI_API_KEY` or `ANTHROPIC_API_KEY` -
+`ffmpeg`, `ffprobe`). Its message names `CLEANCUT_MODEL=mock:demo` as the way to try the app with no
+key at all. `SKIP_PREFLIGHT=1` boots anyway.
 
 **Slow transcription**: use `--model medium` or `--model small` on the CLI for faster, less accurate
 transcription.

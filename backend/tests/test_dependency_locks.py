@@ -193,13 +193,16 @@ def test_dockerfile_installs_the_lock_with_hashes():
 
 def test_every_consumer_installs_with_require_hashes():
     """
-    Three places install these files independently. One of them drifting back
+    Five places install these files independently. One of them drifting back
     to a bare `pip install -r` is invisible: it still resolves, still boots,
     and quietly stops being the build the other two produce.
 
     Comment lines are skipped, the same way `test_dockerfile_installs_the_lock`
-    strips them: all three of these files explain themselves in prose, and a
-    comment that *names* an install command is not running one. ci.yml's ruff
+    strips them: every one of these files explains itself in prose, and a
+    comment that *names* an install command is not running one. The
+    devcontainer's post-create script and the Makefile joined the list in
+    Phase C; both exist to make "running what CI runs" one command shorter,
+    which is worthless if the command they run is a different build. ci.yml's ruff
     steps say why they do not use astral-sh/ruff-action - because it would
     install a ruff other than the one `pip install -r requirements-dev.txt`
     does - and quoting the command there is the clearest way to say it.
@@ -208,6 +211,8 @@ def test_every_consumer_installs_with_require_hashes():
         "start.sh": REPO_ROOT / "start.sh",
         "ci.yml": REPO_ROOT / ".github" / "workflows" / "ci.yml",
         "Dockerfile": BACKEND_DIR / "Dockerfile",
+        "post-create.sh": REPO_ROOT / ".devcontainer" / "post-create.sh",
+        "Makefile": REPO_ROOT / "Makefile",
     }
     bare_install = re.compile(
         r"pip install\s+(?![^\n]*--require-hashes)[^\n]*-r\s+requirements"
