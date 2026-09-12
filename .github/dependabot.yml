@@ -56,6 +56,18 @@ updates:
     schedule:
       interval: weekly
     open-pull-requests-limit: 5
+    # Both majors are held deliberately (see AGENTS.md, Conventions).
+    # TypeScript 7 is the Go port with no programmatic JS API, so
+    # typescript-eslint refuses to load and `npm run lint` dies before linting a
+    # file. ESLint 10 removed `context.getFilename`, which eslint-plugin-react
+    # 7.37.5 (its latest) still calls. Without these, every weekly frontend
+    # group carries both and fails CI, taking the safe bumps down with it.
+    # Remove each rule when the tooling that blocks it catches up.
+    ignore:
+      - dependency-name: typescript
+        update-types: ["version-update:semver-major"]
+      - dependency-name: eslint
+        update-types: ["version-update:semver-major"]
     groups:
       frontend:
         patterns: ["*"]
