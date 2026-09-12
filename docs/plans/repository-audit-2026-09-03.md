@@ -60,7 +60,7 @@ a weekend.
 | **ESLint in CI** | **FAIL** | `npm run lint` exists in `package.json`; `ci.yml` never calls it. `CLAUDE.md` asserts "eslint runs clean" — unenforced |
 | **Python lint / format / type-check** | **FAIL** | No ruff, no black, no mypy, no config of any kind |
 | ~~**Backend dependency pinning**~~ | ~~**FAIL**~~ → **PASS** (2026-09-05) | ~~`requirements.txt` is all `>=` floors, no lockfile.~~ Resolved in Phase A: `requirements.in` declares, `requirements.txt` is a `uv pip compile --universal --generate-hashes` lock, and every consumer installs it with `--require-hashes`. CI re-compiles and fails on drift |
-| **Dependabot / Renovate** | **FAIL** | Missing. You already ate a "pinned to a Next.js with 28 advisories" incident (commit `0d0343c`) — this is the automation that prevents the sequel |
+| **Dependabot / Renovate** | **FAIL** | Missing. You already ate a "pinned to a Next.js with 28 advisories" incident (commit `7e3e25c`) — this is the automation that prevents the sequel |
 | Pre-commit hooks | FAIL | Missing |
 | Automated releases | WEAK | `release.yml` publishes both GHCR images on `v*` tags — but **zero tags exist**, so it has never run |
 | Coverage reporting | FAIL | None. 585 tests and no measured coverage |
@@ -85,7 +85,7 @@ a weekend.
 
 1. **`README.md:89-90` advertises the wrong GHCR owner.** It says
    `ghcr.io/old-owner/cleancut-backend:v0.1.0`, but `git remote` is
-   `julianavellaneda/ai-audio-editing` and `release.yml` derives the image name from
+   `julianavellaneda/cleancut` and `release.yml` derives the image name from
    `${{ github.repository_owner }}`. Those pull commands will 404. Compounding it: no `v*` tag has
    ever been pushed, so the images do not exist under *either* name.
 
@@ -350,4 +350,4 @@ a measured precision and recall for a given rulebook, which nobody else in that 
 
 ---
 
-*Audit performed against `organic-design-system` @ `3e922b9`.*
+*Audit performed against `organic-design-system` @ `77a1d60`.*

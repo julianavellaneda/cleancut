@@ -28,7 +28,7 @@ without a human accepting it.
 ## Architecture
 
 ```
-ai-audio-editing/
+cleancut/
 ├── .devcontainer/                   # Prebuilt Python+Node+FFmpeg image; see Devcontainer bullet below
 ├── Makefile                         # Shorthand for the commands below; carries no CI thresholds
 ├── backend/                        # FastAPI backend

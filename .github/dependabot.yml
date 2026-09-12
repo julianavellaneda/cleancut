@@ -1,5 +1,5 @@
 # Weekly dependency PRs. This exists because of the Next.js-with-28-advisories
-# incident (0d0343c): the dependencies were pinned and then nothing was watching
+# incident (7e3e25c): the dependencies were pinned and then nothing was watching
 # them, which is the failure mode a lockfile creates and an update bot closes.
 #
 # Everything is grouped per ecosystem, so a quiet week is one PR to review

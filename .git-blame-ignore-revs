@@ -15,4 +15,4 @@
 # checked by comparing the parsed AST of every touched file before and after.
 
 # Reflow every Python file with ruff format (backend, line-length 88)
-0f755936687a5a9db50df52a4583dc9de1e12afb
+c31dd3e8640ef5d9dc699491cb93dec2be9672a4

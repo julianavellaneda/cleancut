@@ -35,9 +35,10 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      # The image name is derived from the owner rather than the repository,
-      # which is `ai-audio-editing` - the product is CleanCut, and that is the
-      # name someone pulling this will be looking for.
+      # The image name is built from the owner plus a fixed `cleancut-`
+      # prefix, not the repository name, so what someone pulls stays named
+      # for the product and does not change if the repository is renamed
+      # again - it already has been once, from `ai-audio-editing`.
       - id: meta
         uses: docker/metadata-action@v6
         with:

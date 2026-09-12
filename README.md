@@ -1,10 +1,10 @@
 # CleanCut
 
-[![CI](https://github.com/julianavellaneda/ai-audio-editing/actions/workflows/ci.yml/badge.svg)](https://github.com/julianavellaneda/ai-audio-editing/actions/workflows/ci.yml)
+[![CI](https://github.com/julianavellaneda/cleancut/actions/workflows/ci.yml/badge.svg)](https://github.com/julianavellaneda/cleancut/actions/workflows/ci.yml)
 [![detector eval: 1.00 precision / 0.92 recall](https://img.shields.io/badge/detector%20eval-1.00%20precision%20%2F%200.92%20recall-brightgreen)](#eval)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 [![Python 3.10+](https://img.shields.io/badge/python-3.10%2B-blue.svg)](https://www.python.org/downloads/)
-[![GHCR](https://img.shields.io/badge/ghcr.io-cleancut-2496ED?logo=docker&logoColor=white)](https://github.com/julianavellaneda/ai-audio-editing/pkgs/container/cleancut-backend)
+[![GHCR](https://img.shields.io/badge/ghcr.io-cleancut-2496ED?logo=docker&logoColor=white)](https://github.com/julianavellaneda/cleancut/pkgs/container/cleancut-backend)
 
 Describe what to find in plain English. Review it on a waveform. Export a surgically edited file.
 
@@ -38,8 +38,8 @@ Every `v*` git tag publishes both images to GHCR, for running CleanCut without b
 image tag drops the leading `v` — a `v0.1.0` tag publishes `0.1.0`, a moving `0.1`, and `latest`:
 
 ```bash
-docker pull ghcr.io/julianavellaneda/cleancut-backend:0.1.0
-docker pull ghcr.io/julianavellaneda/cleancut-frontend:0.1.0
+docker pull ghcr.io/julianavellaneda/cleancut-backend:0.2.0
+docker pull ghcr.io/julianavellaneda/cleancut-frontend:0.2.0
 ```
 
 These are **`linux/amd64` only**. On Apple Silicon, add `--platform linux/amd64` and Docker Desktop
@@ -97,7 +97,7 @@ reviewing a real recording.
 ### Try it in a container
 
 Open this repo in a [devcontainer](.devcontainer/devcontainer.json) or
-[GitHub Codespaces](https://codespaces.new/julianavellaneda/ai-audio-editing): Python, Node and
+[GitHub Codespaces](https://codespaces.new/julianavellaneda/cleancut): Python, Node and
 FFmpeg come preinstalled, and `postCreateCommand` writes a `.env` with `CLEANCUT_MODEL=mock:demo`
 if you don't already have one, so the app runs with no key from the first boot.
 

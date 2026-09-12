@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- **The repository moved to `julianavellaneda/cleancut`**, and commit SHAs from the old
+  `ai-audio-editing` repository do not carry over.
+
 ## [0.2.0] - 2026-09-10
 
 ### Added
@@ -147,6 +152,6 @@ First tagged release. Publishes `cleancut-backend` and `cleancut-frontend` to GH
   recording, which is the failure worth defending against because it fails toward passing.
 - **Upload limits** enforced on size and duration, failing closed on an unprobeable duration.
 
-[Unreleased]: https://github.com/julianavellaneda/ai-audio-editing/compare/v0.2.0...HEAD
-[0.2.0]: https://github.com/julianavellaneda/ai-audio-editing/compare/v0.1.0...v0.2.0
-[0.1.0]: https://github.com/julianavellaneda/ai-audio-editing/releases/tag/v0.1.0
+[Unreleased]: https://github.com/julianavellaneda/cleancut/compare/v0.2.0...HEAD
+[0.2.0]: https://github.com/julianavellaneda/cleancut/compare/v0.1.0...v0.2.0
+[0.1.0]: https://github.com/julianavellaneda/cleancut/releases/tag/v0.1.0

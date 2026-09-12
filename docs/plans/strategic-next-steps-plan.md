@@ -13,7 +13,7 @@ The quick wins from §5.1 are **done**. Confirmed in the tree, not assumed:
 
 | §5.1 item | State |
 |---|---|
-| GHCR owner in README | Fixed (`150c069` corrected a second, quieter instance) |
+| GHCR owner in README | Fixed (`373b363` corrected a second, quieter instance) |
 | `v0.1.0` tag | **Exists** — `release.yml` has run |
 | Demo GIF | `docs/assets/demo.gif` present |
 | Badges | Present, including the hardcoded `1.00 / 0.92` eval badge |
@@ -562,5 +562,5 @@ either half-done across a long gap.
 
 ---
 
-*Planned against `main` @ `150c069`, 2026-09-05. Source: `repository-audit-2026-09-03.md` §5.2, §3,
+*Planned against `main` @ `373b363`, 2026-09-05. Source: `repository-audit-2026-09-03.md` §5.2, §3,
 §2. No code changed while writing this.*

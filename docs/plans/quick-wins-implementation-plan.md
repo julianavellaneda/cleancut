@@ -13,14 +13,14 @@ owner that don't exist, `docs/ARCHITECTURE.md` documents Celery, Zustand and VAD
 *explicitly rejected*), and `frontend/README.md` is untouched create-next-app boilerplate pointing at
 a directory that isn't there. Meanwhile `CLAUDE.md` asserts "eslint runs clean" with nothing
 enforcing it, and there is no automation to prevent a repeat of the Next.js-with-28-advisories
-incident (`0d0343c`).
+incident (`7e3e25c`).
 
 Outcome: a README that sells in five seconds, three lying files corrected, CI that enforces what the
 docs claim, dependency automation, and a real `v0.1.0` release so the pull commands work.
 
 ### Facts verified during planning
 
-- Remote is `julianavellaneda/ai-audio-editing`; `git tag` is **empty**. `release.yml` derives images
+- Remote is `julianavellaneda/cleancut`; `git tag` is **empty**. `release.yml` derives images
   from `${{ github.repository_owner }}` and triggers only on `v*`.
 - `npm run lint` (eslint 9, `frontend/eslint.config.mjs`) **exits 0 clean today** — safe to gate on.
 - `docs/assets/` already exists with four current PNGs; the GIF lands beside them.
@@ -46,7 +46,6 @@ docs claim, dependency automation, and a real `v0.1.0` release so the pull comma
 Generate from the existing capture. Two-pass palette so text in the UI stays legible:
 
 ```bash
-cd .
 ffmpeg -y -t 12 -i docs/demo/captures/scene-06-review.mp4 \
   -vf "fps=12,scale=900:-1:flags=lanczos,palettegen=stats_mode=diff" /tmp/pal.png
 ffmpeg -y -t 12 -i docs/demo/captures/scene-06-review.mp4 -i /tmp/pal.png \
@@ -73,10 +72,10 @@ Insert a badge row between README line 1 (`# CleanCut`) and line 3 (the hook). F
 last one is the differentiated one and is **hardcoded** (no service publishes it):
 
 ```markdown
-[![CI](https://github.com/julianavellaneda/ai-audio-editing/actions/workflows/ci.yml/badge.svg)](https://github.com/julianavellaneda/ai-audio-editing/actions/workflows/ci.yml)
+[![CI](https://github.com/julianavellaneda/cleancut/actions/workflows/ci.yml/badge.svg)](https://github.com/julianavellaneda/cleancut/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 [![Python 3.10+](https://img.shields.io/badge/python-3.10%2B-blue.svg)](https://www.python.org/downloads/)
-[![GHCR](https://img.shields.io/badge/ghcr.io-cleancut-2496ED?logo=docker&logoColor=white)](https://github.com/julianavellaneda/ai-audio-editing/pkgs/container/cleancut-backend)
+[![GHCR](https://img.shields.io/badge/ghcr.io-cleancut-2496ED?logo=docker&logoColor=white)](https://github.com/julianavellaneda/cleancut/pkgs/container/cleancut-backend)
 [![detector eval: 1.00 precision / 0.92 recall](https://img.shields.io/badge/detector%20eval-1.00%20precision%20%2F%200.92%20recall-brightgreen)](#accuracy-measured-not-asserted)
 ```
 
@@ -120,7 +119,7 @@ Verified clean locally, so this should not turn the build red.
 ### 5. `.github/dependabot.yml`
 
 Three ecosystems, weekly, grouped so a quiet week is one PR rather than nine. This is the automation
-that prevents a repeat of `0d0343c`:
+that prevents a repeat of `7e3e25c`:
 
 ```yaml
 version: 2
