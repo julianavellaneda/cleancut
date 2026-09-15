@@ -11,6 +11,11 @@ concurrency:
   group: ci-${{ github.ref }}
   cancel-in-progress: true
 
+# Checkout is all either job does with the token. Said here rather than left to
+# the repository default, which a settings change could widen without a diff.
+permissions:
+  contents: read
+
 jobs:
   backend:
     name: Backend (lint + types + tests)
