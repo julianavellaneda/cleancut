@@ -2,8 +2,7 @@
 
 **Status: Phases 1–4 are shipped.** Kept as the record of how the product got here. The decisions
 behind the current shape live in `DESIGN_NOTES.md`; the current contract is in
-`SPECIFICATION.md`. `notes/REDESIGN_CONTEXT.md` is an undated snapshot taken before the redesign
-and has since gone stale in several places — read it as history, not as a reference.
+`SPECIFICATION.md`.
 
 This document records the phased transition from CleanCut's original incarnation — a specialized
 "Compliance Review" tool hardcoded to one rulebook — to the generalized, prompt-based audio/video
