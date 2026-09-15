@@ -58,7 +58,13 @@ def _waveform_lock(job_id: str) -> threading.Lock:
 
 
 def _get_audio_path(job_id: str) -> Path | None:
-    """Find the audio/video file for a job."""
+    """
+    Find the audio/video file for a job.
+
+    Callers pass `job.id` off the row they looked up, never the id from the URL.
+    The two are equal once the lookup succeeds, but only the stored one is a
+    server-generated uuid4, so a filesystem path is only ever built from that.
+    """
     for ext in [
         ".mp3",
         ".wav",
@@ -77,8 +83,9 @@ def _get_audio_path(job_id: str) -> Path | None:
     return None
 
 
-def _get_export_path(job_id: str, job: Job) -> Path | None:
+def _get_export_path(job: Job) -> Path | None:
     """Find the exported file for a job, or None if no export has been generated."""
+    job_id = job.id
     audio_path = _get_audio_path(job_id)
     export_ext = exports.export_suffix(job, audio_path) if audio_path else ".mp3"
     export_dir = exports.EXPORT_DIR
@@ -98,7 +105,7 @@ def stream_audio(job_id: str, db: Session = Depends(get_db)):
     if not job:
         raise HTTPException(status_code=404, detail="Job not found")
 
-    audio_path = _get_audio_path(job_id)
+    audio_path = _get_audio_path(job.id)
     if not audio_path:
         raise HTTPException(status_code=404, detail="Audio file not found")
 
@@ -118,7 +125,7 @@ def get_waveform(job_id: str, db: Session = Depends(get_db)):
     if job.waveform_data:
         return {"peaks": json.loads(job.waveform_data)}
 
-    audio_path = _get_audio_path(job_id)
+    audio_path = _get_audio_path(job.id)
     if not audio_path:
         raise HTTPException(status_code=404, detail="Audio file not found")
 
@@ -199,7 +206,7 @@ def export_media(
             detail="An export is already in progress for this job. Wait for it to finish.",
         )
 
-    audio_path = _get_audio_path(job_id)
+    audio_path = _get_audio_path(job.id)
     if not audio_path:
         raise HTTPException(status_code=404, detail="Audio file not found")
 
@@ -295,7 +302,7 @@ def _resolve_export(job_id: str, db: Session) -> tuple[Job, Path, str]:
             detail="This export is out of date. The edits changed since it was rendered; export again.",
         )
 
-    export_path = _get_export_path(job_id, job)
+    export_path = _get_export_path(job)
     if not export_path:
         raise HTTPException(
             status_code=404,
