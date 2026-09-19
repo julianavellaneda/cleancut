@@ -48,7 +48,7 @@ jobs:
       # is a silent hole in the gate rather than a red test, so when bumping
       # this, copy a real release tag; do not shorten it to a major.
       - name: Install uv
-        uses: astral-sh/setup-uv@v10.0.1
+        uses: astral-sh/setup-uv@v10.1.0
         with:
           version: "0.12.10"
 
