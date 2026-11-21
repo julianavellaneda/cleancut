@@ -10,9 +10,9 @@
 # devcontainer "feature": features are pinned by major tag and float. Both
 # stages are Debian bookworm, so the copied binary's glibc is the one it was
 # built against.
-FROM node:26-bookworm-slim@sha256:cd9f682fa2885cd1056e830424764158570061c59736a1da836bc3d73df095ae AS node
+FROM node:26-bookworm-slim@sha256:5df79989ed685e09f0a98019db4cebfb22fb9df1a53c0161664a011f7ff6b0f1 AS node
 
-FROM mcr.microsoft.com/devcontainers/python:3.14-bookworm@sha256:8179b9d5f68dab0def4e113f924e6aed989a636e65ab58fbe0c8e808b046ac40
+FROM mcr.microsoft.com/devcontainers/python:3.15-bookworm@sha256:b8311f1315c58c26a06e05fb44fe3f649e1df1ecceb86646d8b9f6a95c94ad07
 
 # The base image ships a Yarn apt source whose signing key has since rotated,
 # which fails `apt-get update` outright. Nothing here uses Yarn - the frontend
